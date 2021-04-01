@@ -22,10 +22,8 @@
 'use strict';
 
 const {
-  ObjectCreate,
   MathTrunc,
   Promise,
-  SymbolToPrimitive
 } = primordials;
 
 const {
@@ -42,7 +40,6 @@ const {
     kRefCount
   },
   kRefed,
-  kHasPrimitive,
   initAsyncResource,
   getTimerDuration,
   timerListMap,
@@ -56,9 +53,7 @@ const {
   promisify: { custom: customPromisify },
   deprecate
 } = require('internal/util');
-let debug = require('internal/util/debuglog').debuglog('timer', (fn) => {
-  debug = fn;
-});
+const debug = require('internal/util/debuglog').debuglog('timer');
 const { validateCallback } = require('internal/validators');
 
 const {
@@ -67,20 +62,12 @@ const {
   emitDestroy
 } = require('internal/async_hooks');
 
-// This stores all the known timer async ids to allow users to clearTimeout and
-// clearInterval using those ids, to match the spec and the rest of the web
-// platform.
-const knownTimersById = ObjectCreate(null);
-
 // Remove a timer. Cancels the timeout and resets the relevant timer properties.
 function unenroll(item) {
   if (item._destroyed)
     return;
 
   item._destroyed = true;
-
-  if (item[kHasPrimitive])
-    delete knownTimersById[item[async_id_symbol]];
 
   // Fewer checks may be possible, but these cover everything.
   if (destroyHooksExist() && item[async_id_symbol] !== undefined)
@@ -172,14 +159,6 @@ function clearTimeout(timer) {
   if (timer && timer._onTimeout) {
     timer._onTimeout = null;
     unenroll(timer);
-    return;
-  }
-  if (typeof timer === 'number' || typeof timer === 'string') {
-    const timerInstance = knownTimersById[timer];
-    if (timerInstance !== undefined) {
-      timerInstance._onTimeout = null;
-      unenroll(timerInstance);
-    }
   }
 }
 
@@ -223,15 +202,6 @@ function clearInterval(timer) {
 Timeout.prototype.close = function() {
   clearTimeout(this);
   return this;
-};
-
-Timeout.prototype[SymbolToPrimitive] = function() {
-  const id = this[async_id_symbol];
-  if (!this[kHasPrimitive]) {
-    this[kHasPrimitive] = true;
-    knownTimersById[id] = this;
-  }
-  return id;
 };
 
 const Immediate = class Immediate {

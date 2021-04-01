@@ -22,7 +22,6 @@
 'use strict';
 
 const {
-  Int8Array,
   ObjectCreate,
   ObjectKeys,
   SafeSet,
@@ -562,7 +561,7 @@ function urlFormat(urlObject, options) {
 // digits
 // alpha (uppercase)
 // alpha (lowercase)
-const noEscapeAuth = new Int8Array([
+const noEscapeAuth = [
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x00 - 0x0F
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x10 - 0x1F
   0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, // 0x20 - 0x2F
@@ -571,7 +570,7 @@ const noEscapeAuth = new Int8Array([
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, // 0x50 - 0x5F
   0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0x60 - 0x6F
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0  // 0x70 - 0x7F
-]);
+];
 
 Url.prototype.format = function format() {
   let auth = this.auth || '';

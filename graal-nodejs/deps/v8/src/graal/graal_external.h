@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -46,9 +46,7 @@
 
 class GraalExternal : public GraalValue {
 public:
-    inline static GraalExternal* Allocate(GraalIsolate* isolate, void* value, jobject java_number);
-    inline static GraalExternal* Allocate(GraalIsolate* isolate, void* value, jobject java_number, void* placement);
-    inline void ReInitialize(void* value, jobject java_object);
+    GraalExternal(GraalIsolate* isolate, void* value, jobject java_external);
     static v8::Local<v8::External> New(v8::Isolate* isolate, void* value);
     bool IsExternal() const;
     bool IsObject() const;
@@ -57,11 +55,10 @@ public:
         return value_;
     }
 protected:
-    inline void Recycle() override;
-    inline GraalExternal(GraalIsolate* isolate, void* value, jobject java_external);
     GraalHandleContent* CopyImpl(jobject java_object_copy) override;
 private:
     void* value_;
 };
 
 #endif /* GRAAL_EXTERNAL_H_ */
+

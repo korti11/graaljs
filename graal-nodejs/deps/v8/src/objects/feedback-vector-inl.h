@@ -149,28 +149,26 @@ bool FeedbackVector::has_optimization_marker() const {
 
 // Conversion from an integer index to either a slot or an ic slot.
 // static
-FeedbackSlot FeedbackVector::ToSlot(intptr_t index) {
-  DCHECK_LE(static_cast<uintptr_t>(index),
-            static_cast<uintptr_t>(std::numeric_limits<int>::max()));
-  return FeedbackSlot(static_cast<int>(index));
+FeedbackSlot FeedbackVector::ToSlot(int index) {
+  DCHECK_GE(index, 0);
+  return FeedbackSlot(index);
 }
 
 MaybeObject FeedbackVector::Get(FeedbackSlot slot) const {
-  const Isolate* isolate = GetIsolateForPtrCompr(*this);
+  Isolate* isolate = GetIsolateForPtrCompr(*this);
   return Get(isolate, slot);
 }
 
-MaybeObject FeedbackVector::Get(const Isolate* isolate,
-                                FeedbackSlot slot) const {
+MaybeObject FeedbackVector::Get(Isolate* isolate, FeedbackSlot slot) const {
   return get(isolate, GetIndex(slot));
 }
 
 MaybeObject FeedbackVector::get(int index) const {
-  const Isolate* isolate = GetIsolateForPtrCompr(*this);
+  Isolate* isolate = GetIsolateForPtrCompr(*this);
   return get(isolate, index);
 }
 
-MaybeObject FeedbackVector::get(const Isolate* isolate, int index) const {
+MaybeObject FeedbackVector::get(Isolate* isolate, int index) const {
   DCHECK_LT(static_cast<unsigned>(index), static_cast<unsigned>(length()));
   int offset = OffsetOfElementAt(index);
   return RELAXED_READ_WEAK_FIELD(*this, offset);
@@ -286,6 +284,10 @@ Handle<Symbol> FeedbackVector::GenericSentinel(Isolate* isolate) {
 
 Handle<Symbol> FeedbackVector::MegamorphicSentinel(Isolate* isolate) {
   return isolate->factory()->megamorphic_symbol();
+}
+
+Handle<Symbol> FeedbackVector::PremonomorphicSentinel(Isolate* isolate) {
+  return isolate->factory()->premonomorphic_symbol();
 }
 
 Symbol FeedbackVector::RawUninitializedSentinel(Isolate* isolate) {

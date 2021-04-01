@@ -4,18 +4,15 @@
 
 'use strict';
 
-import {
-  VIEW_BY_INSTANCE_TYPE,
-  VIEW_BY_INSTANCE_CATEGORY,
-  VIEW_BY_FIELD_TYPE
-} from './details-selection.js';
+const histogram_viewer_template =
+    document.currentScript.ownerDocument.querySelector(
+        '#histogram-viewer-template');
 
-defineCustomElement('histogram-viewer', (templateText) =>
- class HistogramViewer extends HTMLElement {
+class HistogramViewer extends HTMLElement {
   constructor() {
     super();
     const shadowRoot = this.attachShadow({mode: 'open'});
-    shadowRoot.innerHTML = templateText;
+    shadowRoot.appendChild(histogram_viewer_template.content.cloneNode(true));
   }
 
   $(id) {
@@ -188,4 +185,6 @@ defineCustomElement('histogram-viewer', (templateText) =>
     this.show();
     chart.draw(data, options);
   }
-});
+}
+
+customElements.define('histogram-viewer', HistogramViewer);

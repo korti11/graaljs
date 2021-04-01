@@ -181,9 +181,7 @@ const char* HeapEntry::TypeAsString() {
   }
 }
 
-HeapSnapshot::HeapSnapshot(HeapProfiler* profiler, bool global_objects_as_roots)
-    : profiler_(profiler),
-      treat_global_objects_as_roots_(global_objects_as_roots) {
+HeapSnapshot::HeapSnapshot(HeapProfiler* profiler) : profiler_(profiler) {
   // It is very important to keep objects that form a heap snapshot
   // as small as possible. Check assumptions about data structure sizes.
   STATIC_ASSERT((kSystemPointerSize == 4 && sizeof(HeapGraphEdge) == 12) ||
@@ -354,7 +352,7 @@ void HeapObjectsMap::UpdateObjectSize(Address addr, int size) {
 SnapshotObjectId HeapObjectsMap::FindEntry(Address addr) {
   base::HashMap::Entry* entry = entries_map_.Lookup(
       reinterpret_cast<void*>(addr), ComputeAddressHash(addr));
-  if (entry == nullptr) return v8::HeapProfiler::kUnknownObjectId;
+  if (entry == nullptr) return 0;
   int entry_index = static_cast<int>(reinterpret_cast<intptr_t>(entry->value));
   EntryInfo& entry_info = entries_.at(entry_index);
   DCHECK(static_cast<uint32_t>(entries_.size()) > entries_map_.occupancy());
@@ -386,25 +384,6 @@ SnapshotObjectId HeapObjectsMap::FindOrAddEntry(Address addr,
   entries_.push_back(EntryInfo(id, addr, size, accessed));
   DCHECK(static_cast<uint32_t>(entries_.size()) > entries_map_.occupancy());
   return id;
-}
-
-SnapshotObjectId HeapObjectsMap::FindMergedNativeEntry(NativeObject addr) {
-  auto it = merged_native_entries_map_.find(addr);
-  if (it == merged_native_entries_map_.end())
-    return v8::HeapProfiler::kUnknownObjectId;
-  return entries_[it->second].id;
-}
-
-void HeapObjectsMap::AddMergedNativeEntry(NativeObject addr,
-                                          Address canonical_addr) {
-  base::HashMap::Entry* entry =
-      entries_map_.Lookup(reinterpret_cast<void*>(canonical_addr),
-                          ComputeAddressHash(canonical_addr));
-  auto result = merged_native_entries_map_.insert(
-      {addr, reinterpret_cast<size_t>(entry->value)});
-  if (!result.second) {
-    result.first->second = reinterpret_cast<size_t>(entry->value);
-  }
 }
 
 void HeapObjectsMap::StopHeapObjectsTracking() { time_intervals_.clear(); }
@@ -486,20 +465,9 @@ SnapshotObjectId HeapObjectsMap::PushHeapObjectsStats(OutputStream* stream,
 void HeapObjectsMap::RemoveDeadEntries() {
   DCHECK(entries_.size() > 0 && entries_.at(0).id == 0 &&
          entries_.at(0).addr == kNullAddress);
-
-  // Build up temporary reverse map.
-  std::unordered_map<size_t, NativeObject> reverse_merged_native_entries_map;
-  for (const auto& it : merged_native_entries_map_) {
-    auto result =
-        reverse_merged_native_entries_map.emplace(it.second, it.first);
-    DCHECK(result.second);
-    USE(result);
-  }
-
   size_t first_free_entry = 1;
   for (size_t i = 1; i < entries_.size(); ++i) {
     EntryInfo& entry_info = entries_.at(i);
-    auto merged_reverse_it = reverse_merged_native_entries_map.find(i);
     if (entry_info.accessed) {
       if (first_free_entry != i) {
         entries_.at(first_free_entry) = entry_info;
@@ -510,19 +478,11 @@ void HeapObjectsMap::RemoveDeadEntries() {
                               ComputeAddressHash(entry_info.addr));
       DCHECK(entry);
       entry->value = reinterpret_cast<void*>(first_free_entry);
-      if (merged_reverse_it != reverse_merged_native_entries_map.end()) {
-        auto it = merged_native_entries_map_.find(merged_reverse_it->second);
-        DCHECK_NE(merged_native_entries_map_.end(), it);
-        it->second = first_free_entry;
-      }
       ++first_free_entry;
     } else {
       if (entry_info.addr) {
         entries_map_.Remove(reinterpret_cast<void*>(entry_info.addr),
                             ComputeAddressHash(entry_info.addr));
-        if (merged_reverse_it != reverse_merged_native_entries_map.end()) {
-          merged_native_entries_map_.erase(merged_reverse_it->second);
-        }
       }
     }
   }
@@ -880,7 +840,7 @@ void V8HeapExplorer::ExtractJSObjectReferences(HeapEntry* entry,
                          JSGlobalObject::kNativeContextOffset);
     SetInternalReference(entry, "global_proxy", global_obj.global_proxy(),
                          JSGlobalObject::kGlobalProxyOffset);
-    STATIC_ASSERT(JSGlobalObject::kHeaderSize - JSObject::kHeaderSize ==
+    STATIC_ASSERT(JSGlobalObject::kSize - JSObject::kHeaderSize ==
                   2 * kTaggedSize);
   } else if (obj.IsJSArrayBufferView()) {
     JSArrayBufferView view = JSArrayBufferView::cast(obj);
@@ -915,8 +875,7 @@ void V8HeapExplorer::ExtractStringReferences(HeapEntry* entry, String string) {
 }
 
 void V8HeapExplorer::ExtractSymbolReferences(HeapEntry* entry, Symbol symbol) {
-  SetInternalReference(entry, "name", symbol.description(),
-                       Symbol::kDescriptionOffset);
+  SetInternalReference(entry, "name", symbol.name(), Symbol::kNameOffset);
 }
 
 void V8HeapExplorer::ExtractJSCollectionReferences(HeapEntry* entry,
@@ -933,7 +892,7 @@ void V8HeapExplorer::ExtractJSWeakCollectionReferences(HeapEntry* entry,
 
 void V8HeapExplorer::ExtractEphemeronHashTableReferences(
     HeapEntry* entry, EphemeronHashTable table) {
-  for (InternalIndex i : table.IterateEntries()) {
+  for (int i = 0, capacity = table.Capacity(); i < capacity; ++i) {
     int key_index = EphemeronHashTable::EntryToIndex(i) +
                     EphemeronHashTable::kEntryKeyIndex;
     int value_index = EphemeronHashTable::EntryToValueIndex(i);
@@ -944,16 +903,11 @@ void V8HeapExplorer::ExtractEphemeronHashTableReferences(
                      table.OffsetOfElementAt(value_index));
     HeapEntry* key_entry = GetEntry(key);
     HeapEntry* value_entry = GetEntry(value);
-    HeapEntry* table_entry = GetEntry(table);
-    if (key_entry && value_entry && !key.IsUndefined()) {
-      const char* edge_name = names_->GetFormatted(
-          "part of key (%s @%u) -> value (%s @%u) pair in WeakMap (table @%u)",
-          key_entry->name(), key_entry->id(), value_entry->name(),
-          value_entry->id(), table_entry->id());
+    if (key_entry && value_entry) {
+      const char* edge_name =
+          names_->GetFormatted("key %s in WeakMap", key_entry->name());
       key_entry->SetNamedAutoIndexReference(HeapGraphEdge::kInternal, edge_name,
                                             value_entry, names_);
-      table_entry->SetNamedAutoIndexReference(HeapGraphEdge::kInternal,
-                                              edge_name, value_entry, names_);
     }
   }
 }
@@ -978,7 +932,7 @@ void V8HeapExplorer::ExtractContextReferences(HeapEntry* entry,
     int context_locals = scope_info.ContextLocalCount();
     for (int i = 0; i < context_locals; ++i) {
       String local_name = scope_info.ContextLocalName(i);
-      int idx = scope_info.ContextHeaderLength() + i;
+      int idx = Context::MIN_CONTEXT_SLOTS + i;
       SetContextReference(entry, local_name, context.get(idx),
                           Context::OffsetOfElementAt(idx));
     }
@@ -997,11 +951,12 @@ void V8HeapExplorer::ExtractContextReferences(HeapEntry* entry,
       FixedArray::OffsetOfElementAt(Context::SCOPE_INFO_INDEX));
   SetInternalReference(entry, "previous", context.get(Context::PREVIOUS_INDEX),
                        FixedArray::OffsetOfElementAt(Context::PREVIOUS_INDEX));
-  if (context.has_extension()) {
-    SetInternalReference(
-        entry, "extension", context.get(Context::EXTENSION_INDEX),
-        FixedArray::OffsetOfElementAt(Context::EXTENSION_INDEX));
-  }
+  SetInternalReference(entry, "extension",
+                       context.get(Context::EXTENSION_INDEX),
+                       FixedArray::OffsetOfElementAt(Context::EXTENSION_INDEX));
+  SetInternalReference(
+      entry, "native_context", context.get(Context::NATIVE_CONTEXT_INDEX),
+      FixedArray::OffsetOfElementAt(Context::NATIVE_CONTEXT_INDEX));
 
   if (context.IsNativeContext()) {
     TagObject(context.normalized_map_cache(), "(context norm. map cache)");
@@ -1048,7 +1003,8 @@ void V8HeapExplorer::ExtractMapReferences(HeapEntry* entry, Map map) {
       TagObject(transitions, "(transition array)");
       SetInternalReference(entry, "transitions", transitions,
                            Map::kTransitionsOrPrototypeInfoOffset);
-    } else if (raw_transitions_or_prototype_info.IsFixedArray()) {
+    } else if (raw_transitions_or_prototype_info.IsTuple3() ||
+               raw_transitions_or_prototype_info.IsFixedArray()) {
       TagObject(raw_transitions_or_prototype_info, "(transition)");
       SetInternalReference(entry, "transition",
                            raw_transitions_or_prototype_info,
@@ -1070,26 +1026,19 @@ void V8HeapExplorer::ExtractMapReferences(HeapEntry* entry, Map map) {
     SetInternalReference(entry, "layout_descriptor", map.layout_descriptor(),
                          Map::kLayoutDescriptorOffset);
   }
-  if (map.IsContextMap()) {
-    Object native_context = map.native_context();
-    TagObject(native_context, "(native context)");
-    SetInternalReference(entry, "native_context", native_context,
-                         Map::kConstructorOrBackPointerOrNativeContextOffset);
+  Object constructor_or_backpointer = map.constructor_or_backpointer();
+  if (constructor_or_backpointer.IsMap()) {
+    TagObject(constructor_or_backpointer, "(back pointer)");
+    SetInternalReference(entry, "back_pointer", constructor_or_backpointer,
+                         Map::kConstructorOrBackPointerOffset);
+  } else if (constructor_or_backpointer.IsFunctionTemplateInfo()) {
+    TagObject(constructor_or_backpointer, "(constructor function data)");
+    SetInternalReference(entry, "constructor_function_data",
+                         constructor_or_backpointer,
+                         Map::kConstructorOrBackPointerOffset);
   } else {
-    Object constructor_or_backpointer = map.constructor_or_backpointer();
-    if (constructor_or_backpointer.IsMap()) {
-      TagObject(constructor_or_backpointer, "(back pointer)");
-      SetInternalReference(entry, "back_pointer", constructor_or_backpointer,
-                           Map::kConstructorOrBackPointerOrNativeContextOffset);
-    } else if (constructor_or_backpointer.IsFunctionTemplateInfo()) {
-      TagObject(constructor_or_backpointer, "(constructor function data)");
-      SetInternalReference(entry, "constructor_function_data",
-                           constructor_or_backpointer,
-                           Map::kConstructorOrBackPointerOrNativeContextOffset);
-    } else {
-      SetInternalReference(entry, "constructor", constructor_or_backpointer,
-                           Map::kConstructorOrBackPointerOrNativeContextOffset);
-    }
+    SetInternalReference(entry, "constructor", constructor_or_backpointer,
+                         Map::kConstructorOrBackPointerOffset);
   }
   TagObject(map.dependent_code(), "(dependent code)");
   SetInternalReference(entry, "dependent_code", map.dependent_code(),
@@ -1319,7 +1268,8 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject js_obj,
   Isolate* isolate = js_obj.GetIsolate();
   if (js_obj.HasFastProperties()) {
     DescriptorArray descs = js_obj.map().instance_descriptors();
-    for (InternalIndex i : js_obj.map().IterateOwnDescriptors()) {
+    int real_size = js_obj.map().NumberOfOwnDescriptors();
+    for (int i = 0; i < real_size; i++) {
       PropertyDetails details = descs.GetDetails(i);
       switch (details.location()) {
         case kField: {
@@ -1346,8 +1296,9 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject js_obj,
     // We assume that global objects can only have slow properties.
     GlobalDictionary dictionary =
         JSGlobalObject::cast(js_obj).global_dictionary();
+    int length = dictionary.Capacity();
     ReadOnlyRoots roots(isolate);
-    for (InternalIndex i : dictionary.IterateEntries()) {
+    for (int i = 0; i < length; ++i) {
       if (!dictionary.IsKey(roots, dictionary.KeyAt(i))) continue;
       PropertyCell cell = dictionary.CellAt(i);
       Name name = cell.name();
@@ -1357,8 +1308,9 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject js_obj,
     }
   } else {
     NameDictionary dictionary = js_obj.property_dictionary();
+    int length = dictionary.Capacity();
     ReadOnlyRoots roots(isolate);
-    for (InternalIndex i : dictionary.IterateEntries()) {
+    for (int i = 0; i < length; ++i) {
       Object k = dictionary.KeyAt(i);
       if (!dictionary.IsKey(roots, k)) continue;
       Object value = dictionary.ValueAt(i);
@@ -1399,7 +1351,8 @@ void V8HeapExplorer::ExtractElementReferences(JSObject js_obj,
     }
   } else if (js_obj.HasDictionaryElements()) {
     NumberDictionary dictionary = js_obj.element_dictionary();
-    for (InternalIndex i : dictionary.IterateEntries()) {
+    int length = dictionary.Capacity();
+    for (int i = 0; i < length; ++i) {
       Object k = dictionary.KeyAt(i);
       if (!dictionary.IsKey(roots, k)) continue;
       DCHECK(k.IsNumber());
@@ -1487,11 +1440,7 @@ bool V8HeapExplorer::IterateAndExtractReferences(
   // its custom name to a generic builtin.
   RootsReferencesExtractor extractor(this);
   ReadOnlyRoots(heap_).Iterate(&extractor);
-  heap_->IterateRoots(&extractor, base::EnumSet<SkipRoot>{SkipRoot::kWeak});
-  // TODO(ulan): The heap snapshot generator incorrectly considers the weak
-  // string tables as strong retainers. Move IterateWeakRoots after
-  // SetVisitingWeakRoots.
-  heap_->IterateWeakRoots(&extractor, {});
+  heap_->IterateRoots(&extractor, VISIT_ONLY_STRONG);
   extractor.SetVisitingWeakRoots();
   heap_->IterateWeakGlobalHandles(&extractor);
 
@@ -1725,7 +1674,7 @@ void V8HeapExplorer::SetGcSubrootReference(Root root, const char* description,
 
   // For full heap snapshots we do not emit user roots but rather rely on
   // regular GC roots to retain objects.
-  if (!snapshot_->treat_global_objects_as_roots()) return;
+  if (FLAG_raw_heap_snapshots) return;
 
   // Add a shortcut to JS global object reference at snapshot root.
   // That allows the user to easily find global objects. They are
@@ -1904,14 +1853,10 @@ HeapEntry* EmbedderGraphEntriesAllocator::AllocateEntry(HeapThing ptr) {
       reinterpret_cast<EmbedderGraphImpl::Node*>(ptr);
   DCHECK(node->IsEmbedderNode());
   size_t size = node->SizeInBytes();
-  Address lookup_address = reinterpret_cast<Address>(node->GetNativeObject());
-  SnapshotObjectId id =
-      (lookup_address) ? heap_object_map_->FindOrAddEntry(lookup_address, 0)
-                       : static_cast<SnapshotObjectId>(
-                             reinterpret_cast<uintptr_t>(node) << 1);
-  return snapshot_->AddEntry(EmbedderGraphNodeType(node),
-                             EmbedderGraphNodeName(names_, node), id,
-                             static_cast<int>(size), 0);
+  return snapshot_->AddEntry(
+      EmbedderGraphNodeType(node), EmbedderGraphNodeName(names_, node),
+      static_cast<SnapshotObjectId>(reinterpret_cast<uintptr_t>(node) << 1),
+      static_cast<int>(size), 0);
 }
 
 NativeObjectsExplorer::NativeObjectsExplorer(
@@ -1920,14 +1865,12 @@ NativeObjectsExplorer::NativeObjectsExplorer(
           Isolate::FromHeap(snapshot->profiler()->heap_object_map()->heap())),
       snapshot_(snapshot),
       names_(snapshot_->profiler()->names()),
-      heap_object_map_(snapshot_->profiler()->heap_object_map()),
       embedder_graph_entries_allocator_(
           new EmbedderGraphEntriesAllocator(snapshot)) {}
 
 HeapEntry* NativeObjectsExplorer::EntryForEmbedderGraphNode(
     EmbedderGraphImpl::Node* node) {
   EmbedderGraphImpl::Node* wrapper = node->WrapperNode();
-  NativeObject native_object = node->GetNativeObject();
   if (wrapper) {
     node = wrapper;
   }
@@ -1939,16 +1882,8 @@ HeapEntry* NativeObjectsExplorer::EntryForEmbedderGraphNode(
         static_cast<EmbedderGraphImpl::V8NodeImpl*>(node);
     Object object = v8_node->GetObject();
     if (object.IsSmi()) return nullptr;
-    HeapEntry* entry = generator_->FindEntry(
+    return generator_->FindEntry(
         reinterpret_cast<void*>(Object::cast(object).ptr()));
-    if (native_object) {
-      HeapObject heap_object = HeapObject::cast(object);
-      heap_object_map_->AddMergedNativeEntry(native_object,
-                                             heap_object.address());
-      DCHECK_EQ(entry->id(),
-                heap_object_map_->FindMergedNativeEntry(native_object));
-    }
-    return entry;
   }
 }
 

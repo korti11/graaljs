@@ -181,11 +181,6 @@ function resumeStream(stream) {
 }
 
 const proxySocketHandler = {
-  has(stream, prop) {
-    const ref = stream.session !== undefined ? stream.session[kSocket] : stream;
-    return (prop in stream) || (prop in ref);
-  },
-
   get(stream, prop) {
     switch (prop) {
       case 'on':
@@ -287,7 +282,7 @@ function onStreamTimeout(kind) {
 
 class Http2ServerRequest extends Readable {
   constructor(stream, headers, options, rawHeaders) {
-    super({ autoDestroy: false, ...options });
+    super(options);
     this[kState] = {
       closed: false,
       didRead: false,
@@ -410,9 +405,9 @@ class Http2ServerRequest extends Readable {
   }
 
   setTimeout(msecs, callback) {
-    if (!this[kState].closed)
-      this[kStream].setTimeout(msecs, callback);
-    return this;
+    if (this[kState].closed)
+      return;
+    this[kStream].setTimeout(msecs, callback);
   }
 }
 
@@ -588,13 +583,6 @@ class Http2ServerResponse extends Stream {
       throw new ERR_HTTP2_HEADERS_SENT();
 
     name = name.trim().toLowerCase();
-
-    if (name === 'date') {
-      this[kState].sendDate = false;
-
-      return;
-    }
-
     delete this[kHeaders][name];
   }
 
@@ -787,7 +775,6 @@ class Http2ServerResponse extends Stream {
     const options = {
       endStream: state.ending,
       waitForTrailers: true,
-      sendDate: state.sendDate
     };
     this[kStream].respond(headers, options);
   }

@@ -13,9 +13,7 @@ let arr = ["a","b","c"];
 // Test under no HasHoleyElements();
 assertFalse(%HasHoleyElements(arr));
 assertDoesNotThrow(()=>(new Intl.ListFormat()).format(arr));
-// ICU uses bubblesort, so keep the array reasonably small (as of mid-2019:
-// 100 entries -> 1ms, 1,000 entries -> 64ms, 10,000 entries -> 5s).
-for (var i = 0; i < 100; i++) {
+for (var i = 0; i < 10000; i++) {
   arr.push("xx");
 }
 assertFalse(%HasHoleyElements(arr));

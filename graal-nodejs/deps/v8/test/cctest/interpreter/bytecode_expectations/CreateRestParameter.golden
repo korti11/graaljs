@@ -13,10 +13,11 @@ snippet: "
 "
 frame size: 2
 parameter count: 1
-bytecode array length: 6
+bytecode array length: 7
 bytecodes: [
-  /*   10 E> */ B(CreateRestParameter),
+                B(CreateRestParameter),
                 B(Star), R(1),
+  /*   10 E> */ B(StackCheck),
                 B(Star), R(0),
   /*   42 S> */ B(Return),
 ]
@@ -32,10 +33,11 @@ snippet: "
 "
 frame size: 3
 parameter count: 2
-bytecode array length: 12
+bytecode array length: 13
 bytecodes: [
-  /*   10 E> */ B(CreateRestParameter),
+                B(CreateRestParameter),
                 B(Star), R(2),
+  /*   10 E> */ B(StackCheck),
                 B(Mov), R(arg0), R(0),
                 B(Mov), R(2), R(1),
   /*   29 S> */ B(Ldar), R(1),
@@ -53,10 +55,11 @@ snippet: "
 "
 frame size: 3
 parameter count: 2
-bytecode array length: 14
+bytecode array length: 15
 bytecodes: [
-  /*   10 E> */ B(CreateRestParameter),
+                B(CreateRestParameter),
                 B(Star), R(2),
+  /*   10 E> */ B(StackCheck),
                 B(Mov), R(arg0), R(0),
                 B(Mov), R(2), R(1),
   /*   29 S> */ B(LdaZero),
@@ -75,12 +78,13 @@ snippet: "
 "
 frame size: 5
 parameter count: 2
-bytecode array length: 26
+bytecode array length: 27
 bytecodes: [
-  /*   10 E> */ B(CreateUnmappedArguments),
+                B(CreateUnmappedArguments),
                 B(Star), R(3),
                 B(CreateRestParameter),
                 B(Star), R(2),
+  /*   10 E> */ B(StackCheck),
                 B(Mov), R(arg0), R(0),
                 B(Mov), R(2), R(1),
   /*   29 S> */ B(LdaZero),

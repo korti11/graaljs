@@ -35,3 +35,5 @@ while (true) {
 }
 
 assertSame(true, ok);
+
+true;

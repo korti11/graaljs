@@ -40,18 +40,15 @@
  */
 package com.oracle.truffle.js.nodes.access;
 
-import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.js.nodes.JavaScriptBaseNode;
 import com.oracle.truffle.js.runtime.BigInt;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.SafeInteger;
 import com.oracle.truffle.js.runtime.Symbol;
 
-@ImportStatic({JSConfig.class})
 public abstract class IsPrimitiveNode extends JavaScriptBaseNode {
 
     public abstract boolean executeBoolean(Object operand);
@@ -112,7 +109,7 @@ public abstract class IsPrimitiveNode extends JavaScriptBaseNode {
         return false;
     }
 
-    @Specialization(guards = {"isForeignObject(operand)"}, limit = "InteropLibraryLimit")
+    @Specialization(guards = {"isForeignObject(operand)"}, limit = "5")
     protected static boolean doForeignObject(Object operand,
                     @CachedLibrary("operand") InteropLibrary interop) {
         if (interop.isNull(operand)) {

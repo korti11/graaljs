@@ -72,6 +72,7 @@ events.captureRejections = true;
   }));
 }
 
+
 {
   // Test error thrown in 'request' event
 
@@ -135,7 +136,6 @@ events.captureRejections = true;
     const session = connect(`http://localhost:${port}`);
 
     const req = session.request();
-    req.resume();
 
     session.on('stream', common.mustCall(async (stream) => {
       session.close();

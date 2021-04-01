@@ -5,12 +5,10 @@ const {
   ArrayPrototypeMap,
   JSONStringify,
   ObjectCreate,
-  SafeSet,
+  Set,
 } = primordials;
 
-let debug = require('internal/util/debuglog').debuglog('esm', (fn) => {
-  debug = fn;
-});
+const debug = require('internal/util/debuglog').debuglog('esm');
 
 function createImport(impt, index) {
   const imptPath = JSONStringify(impt);
@@ -38,7 +36,7 @@ import.meta.done();
   const { ModuleWrap, callbackMap } = internalBinding('module_wrap');
   const m = new ModuleWrap(`${url}`, undefined, source, 0, 0);
 
-  const readyfns = new SafeSet();
+  const readyfns = new Set();
   const reflect = {
     exports: ObjectCreate(null),
     onReady: (cb) => { readyfns.add(cb); },

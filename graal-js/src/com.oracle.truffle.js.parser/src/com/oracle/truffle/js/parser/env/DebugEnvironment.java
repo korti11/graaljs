@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -40,12 +40,8 @@
  */
 package com.oracle.truffle.js.parser.env;
 
+import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.FrameSlot;
-import com.oracle.truffle.api.frame.MaterializedFrame;
-import com.oracle.truffle.api.interop.InteropLibrary;
-import com.oracle.truffle.api.interop.NodeLibrary;
-import com.oracle.truffle.api.interop.UnsupportedMessageException;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.js.nodes.NodeFactory;
 import com.oracle.truffle.js.runtime.JSContext;
 
@@ -54,18 +50,16 @@ import com.oracle.truffle.js.runtime.JSContext;
  * lexical environment it's to be evaluated in.
  */
 public class DebugEnvironment extends Environment {
-    private final Node locationNode;
-    private final MaterializedFrame lexicalContextFrame;
+    private final FrameDescriptor frameDescriptor;
 
-    public DebugEnvironment(Environment parent, NodeFactory factory, JSContext context, Node locationNode, MaterializedFrame lexicalContextFrame) {
+    public DebugEnvironment(Environment parent, NodeFactory factory, JSContext context, FrameDescriptor frameDescriptor) {
         super(parent, factory, context);
-        this.locationNode = locationNode;
-        this.lexicalContextFrame = lexicalContextFrame;
+        this.frameDescriptor = frameDescriptor;
     }
 
     @Override
     protected FrameSlot findBlockFrameSlot(String name) {
-        return null;
+        return frameDescriptor.findFrameSlot(name);
     }
 
     @Override
@@ -76,14 +70,5 @@ public class DebugEnvironment extends Environment {
     @Override
     public boolean isStrictMode() {
         return true;
-    }
-
-    public boolean hasMember(String name) {
-        try {
-            Object scope = NodeLibrary.getUncached().getScope(locationNode, lexicalContextFrame, true);
-            return InteropLibrary.getUncached().isMemberReadable(scope, name);
-        } catch (UnsupportedMessageException e) {
-            return false;
-        }
     }
 }

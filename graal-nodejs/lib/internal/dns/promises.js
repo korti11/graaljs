@@ -31,8 +31,7 @@ const {
 } = codes;
 const {
   validatePort,
-  validateString,
-  validateOneOf,
+  validateString
 } = require('internal/validators');
 
 function onlookup(err, addresses) {
@@ -117,7 +116,8 @@ function lookup(hostname, options) {
     family = options >>> 0;
   }
 
-  validateOneOf(family, 'family', [0, 4, 6], true);
+  if (family !== 0 && family !== 4 && family !== 6)
+    throw new ERR_INVALID_OPT_VALUE('family', family);
 
   return createLookupPromise(family, hostname, all, hints, verbatim);
 }

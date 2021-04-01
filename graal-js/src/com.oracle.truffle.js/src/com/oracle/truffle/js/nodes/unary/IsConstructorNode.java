@@ -41,14 +41,12 @@
 package com.oracle.truffle.js.nodes.unary;
 
 import com.oracle.truffle.api.dsl.GenerateUncached;
-import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.js.nodes.JavaScriptBaseNode;
 import com.oracle.truffle.js.runtime.BigInt;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.Symbol;
 import com.oracle.truffle.js.runtime.builtins.JSFunction;
@@ -58,7 +56,6 @@ import com.oracle.truffle.js.runtime.builtins.JSFunction;
  *
  * @see JSRuntime#isConstructor(Object)
  */
-@ImportStatic({JSConfig.class})
 @GenerateUncached
 public abstract class IsConstructorNode extends JavaScriptBaseNode {
 
@@ -108,7 +105,7 @@ public abstract class IsConstructorNode extends JavaScriptBaseNode {
         return false;
     }
 
-    @Specialization(guards = "isForeignObject(obj)", limit = "InteropLibraryLimit")
+    @Specialization(guards = "isForeignObject(obj)", limit = "3")
     protected static boolean doTruffleObject(Object obj,
                     @CachedLibrary("obj") InteropLibrary interop) {
         return interop.isInstantiable(obj);

@@ -9,7 +9,7 @@ const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_OPT_VALUE
 } = require('internal/errors').codes;
-const { validateEncoding, validateString } = require('internal/validators');
+const { validateString } = require('internal/validators');
 const {
   Sign: _Sign,
   Verify: _Verify,
@@ -50,15 +50,8 @@ Sign.prototype._write = function _write(chunk, encoding, callback) {
 
 Sign.prototype.update = function update(data, encoding) {
   encoding = encoding || getDefaultEncoding();
-
-  if (typeof data === 'string') {
-    validateEncoding(data, encoding);
-  } else if (!isArrayBufferView(data)) {
-    throw new ERR_INVALID_ARG_TYPE(
-      'data', ['string', 'Buffer', 'TypedArray', 'DataView'], data);
-  }
-
-  this[kHandle].update(data, encoding);
+  data = getArrayBufferView(data, 'data', encoding);
+  this[kHandle].update(data);
   return this;
 };
 

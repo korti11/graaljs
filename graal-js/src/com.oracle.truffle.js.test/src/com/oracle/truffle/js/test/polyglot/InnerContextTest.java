@@ -85,13 +85,13 @@ public class InnerContextTest {
                     private Object innerJS() {
                         TruffleLanguage.Env env = TruffleLanguage.getCurrentContext(TestLanguage.class).getEnv();
                         TruffleContext innerContext = env.newContextBuilder().build();
-                        Object prev = innerContext.enter(this);
+                        Object prev = innerContext.enter();
                         try {
                             TruffleLanguage.Env innerEnv = TruffleLanguage.getCurrentContext(TestLanguage.class).getEnv();
                             CallTarget answer = innerEnv.parsePublic(com.oracle.truffle.api.source.Source.newBuilder(JavaScriptLanguage.ID, "42", "test.js").build());
                             return answer.call();
                         } finally {
-                            innerContext.leave(this, prev);
+                            innerContext.leave(prev);
                         }
                     }
                 });
@@ -123,7 +123,7 @@ public class InnerContextTest {
                     private Object innerJS() {
                         TruffleLanguage.Env env = TruffleLanguage.getCurrentContext(TestLanguage.class).getEnv();
                         TruffleContext innerContext = env.newContextBuilder().build();
-                        Object prev = innerContext.enter(this);
+                        Object prev = innerContext.enter();
                         try {
                             TruffleLanguage.Env innerEnv = TruffleLanguage.getCurrentContext(TestLanguage.class).getEnv();
                             String jsCode = "b + s + i + l + f + d + c + str";
@@ -132,7 +132,7 @@ public class InnerContextTest {
                             CallTarget answer = innerEnv.parsePublic(source, "b", "s", "i", "l", "f", "d", "c", "str");
                             return answer.call((byte) 1, (short) 2, 3, 4L, 0.1f, 1.5, ':', "test");
                         } finally {
-                            innerContext.leave(this, prev);
+                            innerContext.leave(prev);
                         }
                     }
                 });

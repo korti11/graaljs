@@ -12,7 +12,7 @@
 namespace v8 {
 namespace internal {
 
-#if defined(V8_TARGET_ARCH_PPC) || defined(V8_TARGET_ARCH_PPC64)
+#if defined(V8_TARGET_ARCH_PPC)
 
 const ConstantPoolEntry::Type kPtrType = ConstantPoolEntry::INTPTR;
 const ConstantPoolEntry::Type kDblType = ConstantPoolEntry::DOUBLE;
@@ -25,7 +25,7 @@ const int kReach = 1 << kReachBits;
 
 TEST(ConstantPoolPointers) {
   ConstantPoolBuilder builder(kReachBits, kReachBits);
-  const int kRegularCount = kReach / kSystemPointerSize;
+  const int kRegularCount = kReach / kPointerSize;
   ConstantPoolEntry::Access access;
   int pos = 0;
   intptr_t value = 0;
@@ -67,9 +67,8 @@ TEST(ConstantPoolDoubles) {
 
 TEST(ConstantPoolMixedTypes) {
   ConstantPoolBuilder builder(kReachBits, kReachBits);
-  const int kRegularCount =
-      (((kReach / (kDoubleSize + kSystemPointerSize)) * 2) +
-       ((kSystemPointerSize < kDoubleSize) ? 1 : 0));
+  const int kRegularCount = (((kReach / (kDoubleSize + kPointerSize)) * 2) +
+                             ((kPointerSize < kDoubleSize) ? 1 : 0));
   ConstantPoolEntry::Type type = kPtrType;
   ConstantPoolEntry::Access access;
   int pos = 0;
@@ -104,11 +103,11 @@ TEST(ConstantPoolMixedReach) {
   const int ptrReach = 1 << ptrReachBits;
   const int dblReachBits = kReachBits;
   const int dblReach = kReach;
-  const int dblRegularCount = Min(
-      dblReach / kDoubleSize, ptrReach / (kDoubleSize + kSystemPointerSize));
+  const int dblRegularCount =
+      Min(dblReach / kDoubleSize, ptrReach / (kDoubleSize + kPointerSize));
   const int ptrRegularCount =
-      ((ptrReach - (dblRegularCount * (kDoubleSize + kSystemPointerSize))) /
-       kSystemPointerSize) +
+      ((ptrReach - (dblRegularCount * (kDoubleSize + kPointerSize))) /
+       kPointerSize) +
       dblRegularCount;
   ConstantPoolBuilder builder(ptrReachBits, dblReachBits);
   ConstantPoolEntry::Access access;
@@ -153,9 +152,8 @@ TEST(ConstantPoolMixedReach) {
 
 TEST(ConstantPoolSharing) {
   ConstantPoolBuilder builder(kReachBits, kReachBits);
-  const int kRegularCount =
-      (((kReach / (kDoubleSize + kSystemPointerSize)) * 2) +
-       ((kSystemPointerSize < kDoubleSize) ? 1 : 0));
+  const int kRegularCount = (((kReach / (kDoubleSize + kPointerSize)) * 2) +
+                             ((kPointerSize < kDoubleSize) ? 1 : 0));
   ConstantPoolEntry::Access access;
 
   CHECK(builder.IsEmpty());
@@ -203,9 +201,8 @@ TEST(ConstantPoolSharing) {
 
 TEST(ConstantPoolNoSharing) {
   ConstantPoolBuilder builder(kReachBits, kReachBits);
-  const int kRegularCount =
-      (((kReach / (kDoubleSize + kSystemPointerSize)) * 2) +
-       ((kSystemPointerSize < kDoubleSize) ? 1 : 0));
+  const int kRegularCount = (((kReach / (kDoubleSize + kPointerSize)) * 2) +
+                             ((kPointerSize < kDoubleSize) ? 1 : 0));
   ConstantPoolEntry::Access access;
 
   CHECK(builder.IsEmpty());
@@ -252,7 +249,7 @@ TEST(ConstantPoolNoSharing) {
   CHECK_EQ(access, kOvflAccess);
 }
 
-#endif  // defined(V8_TARGET_ARCH_PPC) || defined(V8_TARGET_ARCH_PPC64)
+#endif  // defined(V8_TARGET_ARCH_PPC)
 
 }  // namespace internal
 }  // namespace v8

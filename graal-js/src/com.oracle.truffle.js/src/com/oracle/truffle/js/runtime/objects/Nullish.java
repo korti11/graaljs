@@ -48,7 +48,6 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.js.lang.JavaScriptLanguage;
 import com.oracle.truffle.js.nodes.JSGuards;
 import com.oracle.truffle.js.runtime.Errors;
@@ -139,29 +138,29 @@ public final class Nullish extends JSDynamicObject {
 
     @TruffleBoundary
     @Override
-    public Object getOwnHelper(Object thisObj, Object name, Node encapsulatingNode) {
+    public Object getOwnHelper(Object thisObj, Object name) {
         throw cannotDoPropertyOf("get", name, thisObj);
     }
 
     @TruffleBoundary
     @Override
-    public Object getOwnHelper(Object thisObj, long index, Node encapsulatingNode) {
+    public Object getOwnHelper(Object thisObj, long index) {
         throw cannotDoPropertyOf("get", index, thisObj);
     }
 
     @Override
-    public Object getMethodHelper(Object thisObj, Object name, Node encapsulatingNode) {
-        return getHelper(thisObj, name, encapsulatingNode);
+    public Object getMethodHelper(Object thisObj, Object name) {
+        return getHelper(thisObj, name);
     }
 
     @Override
-    public Object getHelper(Object thisObj, Object name, Node encapsulatingNode) {
-        return getOwnHelper(thisObj, name, encapsulatingNode);
+    public Object getHelper(Object thisObj, Object name) {
+        return getOwnHelper(thisObj, name);
     }
 
     @Override
-    public Object getHelper(Object thisObj, long index, Node encapsulatingNode) {
-        return getOwnHelper(thisObj, index, encapsulatingNode);
+    public Object getHelper(Object thisObj, long index) {
+        return getOwnHelper(thisObj, index);
     }
 
     @Override
@@ -186,13 +185,13 @@ public final class Nullish extends JSDynamicObject {
 
     @TruffleBoundary
     @Override
-    public boolean set(Object key, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    public boolean set(Object key, Object value, Object receiver, boolean isStrict) {
         throw cannotDoPropertyOf("set", key, this);
     }
 
     @TruffleBoundary
     @Override
-    public boolean set(long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    public boolean set(long index, Object value, Object receiver, boolean isStrict) {
         throw cannotDoPropertyOf("set", index, this);
     }
 

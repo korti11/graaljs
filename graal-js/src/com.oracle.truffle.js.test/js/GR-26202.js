@@ -8,3 +8,5 @@
 load('assert.js');
 
 assertSame(undefined, eval('do { try { 42 } finally { break } } while (false)'));
+
+true;

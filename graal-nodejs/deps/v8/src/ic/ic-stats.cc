@@ -94,7 +94,6 @@ ICInfo::ICInfo()
       script_offset(0),
       script_name(nullptr),
       line_num(-1),
-      column_num(-1),
       is_constructor(false),
       is_optimized(false),
       map(nullptr),
@@ -107,7 +106,6 @@ void ICInfo::Reset() {
   script_offset = 0;
   script_name = nullptr;
   line_num = -1;
-  column_num = -1;
   is_constructor = false;
   is_optimized = false;
   state.clear();
@@ -129,7 +127,6 @@ void ICInfo::AppendToTracedValue(v8::tracing::TracedValue* value) const {
   if (script_offset) value->SetInteger("offset", script_offset);
   if (script_name) value->SetString("scriptName", script_name);
   if (line_num != -1) value->SetInteger("lineNum", line_num);
-  if (column_num != -1) value->SetInteger("columnNum", column_num);
   if (is_constructor) value->SetInteger("constructor", is_constructor);
   if (!state.empty()) value->SetString("state", state);
   if (map) {

@@ -125,7 +125,7 @@ class Log {
 
   // Buffer used for formatting log messages. This is a singleton buffer and
   // mutex_ should be acquired before using it.
-  std::unique_ptr<char[]> format_buffer_;
+  char* format_buffer_;
 
   Logger* logger_;
 

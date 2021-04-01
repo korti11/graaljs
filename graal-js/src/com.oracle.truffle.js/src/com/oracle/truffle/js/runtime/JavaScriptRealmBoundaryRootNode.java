@@ -87,7 +87,7 @@ public abstract class JavaScriptRealmBoundaryRootNode extends JavaScriptRootNode
 
         if (enterContext) {
             childContext = realm.getTruffleContext();
-            prev = childContext.enter(this);
+            prev = childContext.enter();
         }
         try {
             return executeInRealm(frame);
@@ -109,7 +109,7 @@ public abstract class JavaScriptRealmBoundaryRootNode extends JavaScriptRootNode
             throw Errors.createRangeErrorStackOverflow(this);
         } finally {
             if (enterContext) {
-                childContext.leave(this, prev);
+                childContext.leave(prev);
             }
         }
     }

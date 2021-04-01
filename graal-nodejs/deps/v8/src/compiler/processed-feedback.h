@@ -18,10 +18,7 @@ class ElementAccessFeedback;
 class ForInFeedback;
 class GlobalAccessFeedback;
 class InstanceOfFeedback;
-class LiteralFeedback;
 class NamedAccessFeedback;
-class RegExpLiteralFeedback;
-class TemplateObjectFeedback;
 
 class ProcessedFeedback : public ZoneObject {
  public:
@@ -34,10 +31,7 @@ class ProcessedFeedback : public ZoneObject {
     kForIn,
     kGlobalAccess,
     kInstanceOf,
-    kLiteral,
     kNamedAccess,
-    kRegExpLiteral,
-    kTemplateObject,
   };
   Kind kind() const { return kind_; }
 
@@ -52,9 +46,6 @@ class ProcessedFeedback : public ZoneObject {
   GlobalAccessFeedback const& AsGlobalAccess() const;
   InstanceOfFeedback const& AsInstanceOf() const;
   NamedAccessFeedback const& AsNamedAccess() const;
-  LiteralFeedback const& AsLiteral() const;
-  RegExpLiteralFeedback const& AsRegExpLiteral() const;
-  TemplateObjectFeedback const& AsTemplateObject() const;
 
  protected:
   ProcessedFeedback(Kind kind, FeedbackSlotKind slot_kind);
@@ -196,9 +187,7 @@ class SingleValueFeedback : public ProcessedFeedback {
         (K == kBinaryOperation && slot_kind == FeedbackSlotKind::kBinaryOp) ||
         (K == kCompareOperation && slot_kind == FeedbackSlotKind::kCompareOp) ||
         (K == kForIn && slot_kind == FeedbackSlotKind::kForIn) ||
-        (K == kInstanceOf && slot_kind == FeedbackSlotKind::kInstanceOf) ||
-        ((K == kLiteral || K == kRegExpLiteral || K == kTemplateObject) &&
-         slot_kind == FeedbackSlotKind::kLiteral));
+        (K == kInstanceOf && slot_kind == FeedbackSlotKind::kInstanceOf));
   }
 
   T value() const { return value_; }
@@ -210,24 +199,6 @@ class SingleValueFeedback : public ProcessedFeedback {
 class InstanceOfFeedback
     : public SingleValueFeedback<base::Optional<JSObjectRef>,
                                  ProcessedFeedback::kInstanceOf> {
-  using SingleValueFeedback::SingleValueFeedback;
-};
-
-class LiteralFeedback
-    : public SingleValueFeedback<AllocationSiteRef,
-                                 ProcessedFeedback::kLiteral> {
-  using SingleValueFeedback::SingleValueFeedback;
-};
-
-class RegExpLiteralFeedback
-    : public SingleValueFeedback<JSRegExpRef,
-                                 ProcessedFeedback::kRegExpLiteral> {
-  using SingleValueFeedback::SingleValueFeedback;
-};
-
-class TemplateObjectFeedback
-    : public SingleValueFeedback<JSArrayRef,
-                                 ProcessedFeedback::kTemplateObject> {
   using SingleValueFeedback::SingleValueFeedback;
 };
 

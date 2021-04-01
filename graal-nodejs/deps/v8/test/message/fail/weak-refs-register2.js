@@ -4,6 +4,6 @@
 
 // Flags: --harmony-weak-refs
 
-let fg = new FinalizationRegistry(() => {});
+let fg = new FinalizationGroup(() => {});
 let o = {};
 fg.register(o, o);

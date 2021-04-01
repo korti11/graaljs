@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -922,7 +922,7 @@ public final class RegExpPrototypeBuiltins extends JSBuiltinsContainer.SwitchEnu
             this.isCallableNode = IsCallableNode.create();
             this.hasLazyRegexResultNode = HasHiddenKeyCacheNode.create(JSArray.LAZY_REGEX_RESULT_ID);
             this.stringBuilderProfile = StringBuilderProfile.create(context.getStringLengthLimit());
-            this.lazyRegexResultNode = DynamicObjectLibrary.getFactory().createDispatched(JSConfig.PropertyCacheLimit);
+            this.lazyRegexResultNode = DynamicObjectLibrary.getFactory().createDispatched(5);
         }
 
         @Specialization(guards = {"cachedReplaceValue.equals(replaceValue)"})
@@ -1583,9 +1583,11 @@ public final class RegExpPrototypeBuiltins extends JSBuiltinsContainer.SwitchEnu
             dotAll(0);
 
             private final int length;
+            private final Object key;
 
             RegExpPrototypeGetters(int length) {
                 this.length = length;
+                this.key = "get " + name();
             }
 
             @Override
@@ -1605,8 +1607,8 @@ public final class RegExpPrototypeBuiltins extends JSBuiltinsContainer.SwitchEnu
             }
 
             @Override
-            public boolean isGetter() {
-                return true;
+            public Object getKey() {
+                return key;
             }
         }
 

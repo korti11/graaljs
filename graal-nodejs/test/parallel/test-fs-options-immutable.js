@@ -1,10 +1,12 @@
 'use strict';
 const common = require('../common');
 
-// These tests make sure that the `options` object passed to these functions are
-// never altered.
-//
-// Refer: https://github.com/nodejs/node/issues/7655
+/*
+ * These tests make sure that the `options` object passed to these functions are
+ * never altered.
+ *
+ * Refer: https://github.com/nodejs/node/issues/7655
+ */
 
 const assert = require('assert');
 const fs = require('fs');
@@ -68,6 +70,6 @@ if (!common.isIBMi) { // IBMi does not suppport fs.watch()
 {
   const fileName = path.resolve(tmpdir.path, 'streams');
   fs.WriteStream(fileName, options).once('open', common.mustCall(() => {
-    fs.ReadStream(fileName, options).destroy();
-  })).end();
+    fs.ReadStream(fileName, options);
+  }));
 }

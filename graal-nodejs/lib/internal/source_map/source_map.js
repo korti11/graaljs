@@ -113,8 +113,7 @@ class StringCharIterator {
 }
 
 /**
- * Implements Source Map V3 model.
- * See https://github.com/google/closure-compiler/wiki/Source-Maps
+ * Implements Source Map V3 model. See http://code.google.com/p/closure-compiler/wiki/SourceMaps
  * for format description.
  * @constructor
  * @param {string} sourceMappingURL

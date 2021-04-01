@@ -4,52 +4,52 @@
 
 // Flags: --harmony-weak-refs
 
-(function TestConstructFinalizationRegistry() {
-  let fg = new FinalizationRegistry(() => {});
-  assertEquals(fg.toString(), "[object FinalizationRegistry]");
+(function TestConstructFinalizationGroup() {
+  let fg = new FinalizationGroup(() => {});
+  assertEquals(fg.toString(), "[object FinalizationGroup]");
   assertNotSame(fg.__proto__, Object.prototype);
   assertSame(fg.__proto__.__proto__, Object.prototype);
 })();
 
-(function TestFinalizationRegistryConstructorCallAsFunction() {
+(function TestFinalizationGroupConstructorCallAsFunction() {
   let caught = false;
   let message = "";
   try {
-    let f = FinalizationRegistry(() => {});
+    let f = FinalizationGroup(() => {});
   } catch (e) {
     message = e.message;
     caught = true;
   } finally {
     assertTrue(caught);
-    assertEquals(message, "Constructor FinalizationRegistry requires 'new'");
+    assertEquals(message, "Constructor FinalizationGroup requires 'new'");
   }
 })();
 
-(function TestConstructFinalizationRegistryCleanupNotCallable() {
-  let message = "FinalizationRegistry: cleanup must be callable";
-  assertThrows(() => { let fg = new FinalizationRegistry(); }, TypeError, message);
-  assertThrows(() => { let fg = new FinalizationRegistry(1); }, TypeError, message);
-  assertThrows(() => { let fg = new FinalizationRegistry(null); }, TypeError, message);
+(function TestConstructFinalizationGroupCleanupNotCallable() {
+  let message = "FinalizationGroup: cleanup must be callable";
+  assertThrows(() => { let fg = new FinalizationGroup(); }, TypeError, message);
+  assertThrows(() => { let fg = new FinalizationGroup(1); }, TypeError, message);
+  assertThrows(() => { let fg = new FinalizationGroup(null); }, TypeError, message);
 })();
 
-(function TestConstructFinalizationRegistryWithCallableProxyAsCleanup() {
+(function TestConstructFinalizationGroupWithCallableProxyAsCleanup() {
   let handler = {};
   let obj = () => {};
   let proxy = new Proxy(obj, handler);
-  let fg = new FinalizationRegistry(proxy);
+  let fg = new FinalizationGroup(proxy);
 })();
 
-(function TestConstructFinalizationRegistryWithNonCallableProxyAsCleanup() {
-  let message = "FinalizationRegistry: cleanup must be callable";
+(function TestConstructFinalizationGroupWithNonCallableProxyAsCleanup() {
+  let message = "FinalizationGroup: cleanup must be callable";
   let handler = {};
   let obj = {};
   let proxy = new Proxy(obj, handler);
-  assertThrows(() => { let fg = new FinalizationRegistry(proxy); }, TypeError, message);
+  assertThrows(() => { let fg = new FinalizationGroup(proxy); }, TypeError, message);
 })();
 
 (function TestRegisterWithNonObjectTarget() {
-  let fg = new FinalizationRegistry(() => {});
-  let message = "FinalizationRegistry.prototype.register: target must be an object";
+  let fg = new FinalizationGroup(() => {});
+  let message = "FinalizationGroup.prototype.register: target must be an object";
   assertThrows(() => fg.register(1, "holdings"), TypeError, message);
   assertThrows(() => fg.register(false, "holdings"), TypeError, message);
   assertThrows(() => fg.register("foo", "holdings"), TypeError, message);
@@ -62,40 +62,40 @@
   let handler = {};
   let obj = {};
   let proxy = new Proxy(obj, handler);
-  let fg = new FinalizationRegistry(() => {});
+  let fg = new FinalizationGroup(() => {});
   fg.register(proxy);
 })();
 
 (function TestRegisterTargetAndHoldingsSameValue() {
-  let fg = new FinalizationRegistry(() => {});
+  let fg = new FinalizationGroup(() => {});
   let obj = {a: 1};
   // SameValue(target, holdings) not ok
   assertThrows(() => fg.register(obj, obj), TypeError,
-               "FinalizationRegistry.prototype.register: target and holdings must not be same");
+               "FinalizationGroup.prototype.register: target and holdings must not be same");
   let holdings = {a: 1};
   fg.register(obj, holdings);
 })();
 
-(function TestRegisterWithoutFinalizationRegistry() {
-  assertThrows(() => FinalizationRegistry.prototype.register.call({}, {}, "holdings"), TypeError);
+(function TestRegisterWithoutFinalizationGroup() {
+  assertThrows(() => FinalizationGroup.prototype.register.call({}, {}, "holdings"), TypeError);
   // Does not throw:
-  let fg = new FinalizationRegistry(() => {});
-  FinalizationRegistry.prototype.register.call(fg, {}, "holdings");
+  let fg = new FinalizationGroup(() => {});
+  FinalizationGroup.prototype.register.call(fg, {}, "holdings");
 })();
 
 (function TestUnregisterWithNonExistentKey() {
-  let fg = new FinalizationRegistry(() => {});
+  let fg = new FinalizationGroup(() => {});
   let success = fg.unregister({"k": "whatever"});
   assertFalse(success);
 })();
 
-(function TestUnregisterWithNonFinalizationRegistry() {
-  assertThrows(() => FinalizationRegistry.prototype.unregister.call({}, {}),
+(function TestUnregisterWithNonFinalizationGroup() {
+  assertThrows(() => FinalizationGroup.prototype.unregister.call({}, {}),
                TypeError);
 })();
 
 (function TestUnregisterWithNonObjectUnregisterToken() {
-  let fg = new FinalizationRegistry(() => {});
+  let fg = new FinalizationGroup(() => {});
   assertThrows(() => fg.unregister(1), TypeError);
   assertThrows(() => fg.unregister(1n), TypeError);
   assertThrows(() => fg.unregister('one'), TypeError);
@@ -147,4 +147,24 @@
   let obj = {};
   let proxy = new Proxy(obj, handler);
   let wr = new WeakRef(proxy);
+})();
+
+(function TestCleanupSomeWithoutFinalizationGroup() {
+  assertThrows(() => FinalizationGroup.prototype.cleanupSome.call({}), TypeError);
+  // Does not throw:
+  let fg = new FinalizationGroup(() => {});
+  let rv = FinalizationGroup.prototype.cleanupSome.call(fg);
+  assertEquals(undefined, rv);
+})();
+
+(function TestCleanupSomeWithNonCallableCallback() {
+  let fg = new FinalizationGroup(() => {});
+  assertThrows(() => fg.cleanupSome(1), TypeError);
+  assertThrows(() => fg.cleanupSome(1n), TypeError);
+  assertThrows(() => fg.cleanupSome(Symbol()), TypeError);
+  assertThrows(() => fg.cleanupSome({}), TypeError);
+  assertThrows(() => fg.cleanupSome('foo'), TypeError);
+  assertThrows(() => fg.cleanupSome(true), TypeError);
+  assertThrows(() => fg.cleanupSome(false), TypeError);
+  assertThrows(() => fg.cleanupSome(null), TypeError);
 })();

@@ -29,9 +29,6 @@
 // when using an immutable binding in an assigment or with
 // prefix/postfix decrement/increment operators.
 
-// Optimization stress is not useful for early syntax errors.
-// Flags: --nostress-opt --noalways-opt
-
 "use strict";
 
 const decls = [
@@ -138,8 +135,7 @@ let usecontexts = [
 function Test(program, error) {
   program = "'use strict'; " + program;
   try {
-    // If you need to debug this test, enable the following line:
-    // print(program, "  // throw " + error.name);
+    print(program, "  // throw " + error.name);
     eval(program);
   } catch (e) {
     assertInstanceof(e, error);

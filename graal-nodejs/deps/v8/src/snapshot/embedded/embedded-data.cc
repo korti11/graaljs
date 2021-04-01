@@ -7,7 +7,6 @@
 #include "src/codegen/assembler-inl.h"
 #include "src/codegen/callable.h"
 #include "src/objects/objects-inl.h"
-#include "src/snapshot/snapshot-utils.h"
 #include "src/snapshot/snapshot.h"
 
 namespace v8 {
@@ -15,8 +14,12 @@ namespace internal {
 
 // static
 bool InstructionStream::PcIsOffHeap(Isolate* isolate, Address pc) {
-  const Address start = reinterpret_cast<Address>(isolate->embedded_blob());
-  return start <= pc && pc < start + isolate->embedded_blob_size();
+  if (FLAG_embedded_builtins) {
+    const Address start = reinterpret_cast<Address>(isolate->embedded_blob());
+    return start <= pc && pc < start + isolate->embedded_blob_size();
+  } else {
+    return false;
+  }
 }
 
 // static
@@ -201,6 +204,16 @@ EmbeddedData EmbeddedData::FromIsolate(Isolate* isolate) {
         saw_unsafe_builtin = true;
         fprintf(stderr, "%s is not isolate-independent.\n", Builtins::name(i));
       }
+      if (Builtins::IsWasmRuntimeStub(i) &&
+          RelocInfo::RequiresRelocation(code)) {
+        // Wasm additionally requires that its runtime stubs must be
+        // individually PIC (i.e. we must be able to copy each stub outside the
+        // embedded area without relocations). In particular, that means
+        // pc-relative calls to other builtins are disallowed.
+        saw_unsafe_builtin = true;
+        fprintf(stderr, "%s is a wasm runtime stub but needs relocation.\n",
+                Builtins::name(i));
+      }
       if (BuiltinAliasesOffHeapTrampolineRegister(isolate, code)) {
         saw_unsafe_builtin = true;
         fprintf(stderr, "%s aliases the off-heap trampoline register.\n",
@@ -307,10 +320,7 @@ Address EmbeddedData::InstructionEndOfBytecodeHandlers() const {
 size_t EmbeddedData::CreateEmbeddedBlobHash() const {
   STATIC_ASSERT(EmbeddedBlobHashOffset() == 0);
   STATIC_ASSERT(EmbeddedBlobHashSize() == kSizetSize);
-  // Hash the entire blob except the hash field itself.
-  Vector<const byte> payload(data_ + EmbeddedBlobHashSize(),
-                             size_ - EmbeddedBlobHashSize());
-  return Checksum(payload);
+  return base::hash_range(data_ + EmbeddedBlobHashSize(), data_ + size_);
 }
 
 void EmbeddedData::PrintStatistics() const {

@@ -2,7 +2,6 @@
 
 const common = require('../common');
 if (!common.hasCrypto) common.skip('missing crypto');
-common.requireNoPackageJSONAbove();
 
 const tmpdir = require('../common/tmpdir');
 const assert = require('assert');
@@ -20,33 +19,28 @@ function hash(algo, body) {
   return h.digest('base64');
 }
 
-const tmpdirPath = path.join(tmpdir.path, 'test-policy-parse-integrity');
-fs.rmSync(tmpdirPath, { maxRetries: 3, recursive: true, force: true });
-fs.mkdirSync(tmpdirPath, { recursive: true });
+const policyFilepath = path.join(tmpdir.path, 'policy');
 
-const policyFilepath = path.join(tmpdirPath, 'policy');
-
-const parentFilepath = path.join(tmpdirPath, 'parent.js');
+const parentFilepath = path.join(tmpdir.path, 'parent.js');
 const parentBody = "require('./dep.js')";
 
-const depFilepath = path.join(tmpdirPath, 'dep.js');
+const depFilepath = path.join(tmpdir.path, 'dep.js');
 const depURL = pathToFileURL(depFilepath);
 const depBody = '';
 
 fs.writeFileSync(parentFilepath, parentBody);
 fs.writeFileSync(depFilepath, depBody);
 
-const tmpdirURL = pathToFileURL(tmpdirPath);
+const tmpdirURL = pathToFileURL(tmpdir.path);
 if (!tmpdirURL.pathname.endsWith('/')) {
   tmpdirURL.pathname += '/';
 }
 
-const packageFilepath = path.join(tmpdirPath, 'package.json');
+const packageFilepath = path.join(tmpdir.path, 'package.json');
 const packageURL = pathToFileURL(packageFilepath);
 const packageBody = '{"main": "dep.js"}';
 
-function test({ shouldFail, integrity, manifest = {} }) {
-  manifest.resources = {};
+function test({ shouldFail, integrity }) {
   const resources = {
     [packageURL]: {
       body: packageBody,
@@ -56,6 +50,9 @@ function test({ shouldFail, integrity, manifest = {} }) {
       body: depBody,
       integrity
     }
+  };
+  const manifest = {
+    resources: {},
   };
   for (const [url, { body, integrity }] of Object.entries(resources)) {
     manifest.resources[url] = {
@@ -94,18 +91,4 @@ test({
     'sha256',
     depBody
   )}`,
-});
-test({
-  shouldFail: true,
-  integrity: `sha256-${hash('sha256', 'file:///')}`,
-  manifest: {
-    onerror: 'exit'
-  }
-});
-test({
-  shouldFail: false,
-  integrity: `sha256-${hash('sha256', 'file:///')}`,
-  manifest: {
-    onerror: 'log'
-  }
 });

@@ -387,8 +387,8 @@ module.exports = function() {
           defineProperty(this, prop, {
             value: newValue,
             writable: true,
-            enumerable: true,
-            configurable: true
+            enumerable: desc.enumerable,
+            configurable: desc.configurable
           });
         }
       }

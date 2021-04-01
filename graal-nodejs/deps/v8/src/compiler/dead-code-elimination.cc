@@ -317,10 +317,7 @@ Reduction DeadCodeElimination::ReduceDeoptimizeOrReturnOrTerminateOrTailCall(
          node->opcode() == IrOpcode::kTailCall);
   Reduction reduction = PropagateDeadControl(node);
   if (reduction.Changed()) return reduction;
-  // Terminate nodes are not part of actual control flow, so they should never
-  // be replaced with Throw.
-  if (node->opcode() != IrOpcode::kTerminate &&
-      FindDeadInput(node) != nullptr) {
+  if (FindDeadInput(node) != nullptr) {
     Node* effect = NodeProperties::GetEffectInput(node, 0);
     Node* control = NodeProperties::GetControlInput(node, 0);
     if (effect->opcode() != IrOpcode::kUnreachable) {

@@ -51,8 +51,7 @@ for (const service of services) {
   assertEquals("sr", strLocale[0]);
 
   var locales = ["sr-Thai-RS", "de", "zh-CN"];
-  let multiLocale = service.supportedLocalesOf(
-      locales, {localeMatcher: "lookup"});
+  let multiLocale = service.supportedLocalesOf(locales);
   assertEquals("sr-Thai-RS", multiLocale[0]);
   assertEquals("de", multiLocale[1]);
   assertEquals("zh-CN", multiLocale[2]);
@@ -84,15 +83,16 @@ for (const service of services) {
   privateuseLocale = service.supportedLocalesOf("en-US-x-twain");
   assertEquals("en-US-x-twain", privateuseLocale[0]);
 
-  assertThrows(() => service.supportedLocalesOf("x-twain"), RangeError);
-
+  privateuseLocale2 = service.supportedLocalesOf("x-twain");
+  assertEquals(undefined, privateuseLocale2[0]);
 
   if (service != Intl.PluralRules) {
     grandfatheredLocale = service.supportedLocalesOf("art-lojban");
     assertEquals(undefined, grandfatheredLocale[0]);
   }
 
-  assertThrows(() => service.supportedLocalesOf("x-pwn"), RangeError);
+  grandfatheredLocale2 = service.supportedLocalesOf("i-pwn");
+  assertEquals(undefined, grandfatheredLocale2[0]);
 
   unicodeInPrivateuseLocale = service.supportedLocalesOf(
     "en-US-x-u-co-phonebk"

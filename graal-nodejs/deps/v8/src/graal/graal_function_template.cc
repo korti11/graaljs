@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -46,9 +46,8 @@
 #include "graal_object_template.h"
 #include "graal_string.h"
 
-#include "graal_function-inl.h"
-#include "graal_function_template-inl.h"
-#include "graal_object_template-inl.h"
+GraalFunctionTemplate::GraalFunctionTemplate(GraalIsolate* isolate, jobject java_template, int id) : GraalTemplate(isolate, java_template), id_(id) {
+}
 
 GraalHandleContent* GraalFunctionTemplate::CopyImpl(jobject java_object_copy) {
     return new GraalFunctionTemplate(Isolate(), java_object_copy, id_);
@@ -64,8 +63,7 @@ v8::Local<v8::FunctionTemplate> GraalFunctionTemplate::New(
         v8::Local<v8::Value> data,
         v8::Local<v8::Signature> signature,
         int length,
-        v8::ConstructorBehavior behavior,
-        bool single_function_template) {
+        v8::ConstructorBehavior behavior) {
     GraalIsolate* graal_isolate = reinterpret_cast<GraalIsolate*> (isolate);
     jint id = graal_isolate->NextFunctionTemplateID();
     jlong callback_ptr = (jlong) callback;
@@ -79,10 +77,9 @@ v8::Local<v8::FunctionTemplate> GraalFunctionTemplate::New(
     jobject java_data = graal_data->GetJavaObject();
     jint java_length = length;
     jboolean is_constructor = behavior == v8::ConstructorBehavior::kAllow;
-    jboolean java_single_function = (jboolean) single_function_template;
     GraalFunctionTemplate* graal_signature = reinterpret_cast<GraalFunctionTemplate*> (*signature);
     jobject java_signature = (graal_signature == nullptr) ? NULL : graal_signature->GetJavaObject();
-    JNI_CALL(jobject, java_object, isolate, GraalAccessMethod::function_template_new, Object, id, callback_ptr, java_data, java_signature, java_length, is_constructor, java_single_function);
+    JNI_CALL(jobject, java_object, isolate, GraalAccessMethod::function_template_new, Object, id, callback_ptr, java_data, java_signature, java_length, is_constructor);
     GraalFunctionTemplate* graal_function_template = new GraalFunctionTemplate(graal_isolate, java_object, id);
     graal_isolate->SetFunctionTemplateData(id, graal_data);
     graal_isolate->SetFunctionTemplateCallback(id, callback);
@@ -91,13 +88,13 @@ v8::Local<v8::FunctionTemplate> GraalFunctionTemplate::New(
 
 v8::Local<v8::ObjectTemplate> GraalFunctionTemplate::InstanceTemplate() {
     JNI_CALL(jobject, java_instance_template, Isolate(), GraalAccessMethod::function_template_instance_template, Object, GetJavaObject());
-    GraalObjectTemplate* graal_object_template = GraalObjectTemplate::Allocate(Isolate(), java_instance_template);
+    GraalObjectTemplate* graal_object_template = new GraalObjectTemplate(Isolate(), java_instance_template);
     return reinterpret_cast<v8::ObjectTemplate*> (graal_object_template);
 }
 
 v8::Local<v8::ObjectTemplate> GraalFunctionTemplate::PrototypeTemplate() {
     JNI_CALL(jobject, java_prototype_template, Isolate(), GraalAccessMethod::function_template_prototype_template, Object, GetJavaObject());
-    GraalObjectTemplate* graal_object_template = GraalObjectTemplate::Allocate(Isolate(), java_prototype_template);
+    GraalObjectTemplate* graal_object_template = new GraalObjectTemplate(Isolate(), java_prototype_template);
     return reinterpret_cast<v8::ObjectTemplate*> (graal_object_template);
 }
 
@@ -105,7 +102,7 @@ v8::Local<v8::Function> GraalFunctionTemplate::GetFunction(v8::Local<v8::Context
     GraalContext* graal_context = reinterpret_cast<GraalContext*> (*context);
     jobject java_context = graal_context->GetJavaObject();
     JNI_CALL(jobject, java_function, Isolate(), GraalAccessMethod::function_template_get_function, Object, java_context, GetJavaObject());
-    GraalFunction* graal_function = GraalFunction::Allocate(Isolate(), java_function);
+    GraalFunction* graal_function = new GraalFunction(Isolate(), java_function);
     return reinterpret_cast<v8::Function*> (graal_function);
 }
 
@@ -119,7 +116,7 @@ void GraalFunctionTemplate::SetCallHandler(v8::FunctionCallback callback, v8::Lo
     jlong callback_ptr = (jlong) callback;
     GraalValue* graal_data = reinterpret_cast<GraalValue*> (*data);
     if (graal_data == nullptr) {
-        graal_data = Isolate()->GetUndefined();
+        graal_data = Isolate()->GetUndefined();        
     } else {
         graal_data = reinterpret_cast<GraalValue*>(graal_data->Copy(true));
         graal_data->MakeWeak();

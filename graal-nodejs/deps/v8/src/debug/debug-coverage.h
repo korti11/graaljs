@@ -5,7 +5,6 @@
 #ifndef V8_DEBUG_DEBUG_COVERAGE_H_
 #define V8_DEBUG_DEBUG_COVERAGE_H_
 
-#include <memory>
 #include <vector>
 
 #include "src/debug/debug-interface.h"

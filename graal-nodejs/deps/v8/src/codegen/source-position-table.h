@@ -5,12 +5,10 @@
 #ifndef V8_CODEGEN_SOURCE_POSITION_TABLE_H_
 #define V8_CODEGEN_SOURCE_POSITION_TABLE_H_
 
-#include "src/base/export-template.h"
 #include "src/codegen/source-position.h"
 #include "src/common/assert-scope.h"
 #include "src/common/checks.h"
 #include "src/common/globals.h"
-#include "src/utils/vector.h"
 #include "src/zone/zone-containers.h"
 
 namespace v8 {
@@ -24,9 +22,7 @@ class Zone;
 
 struct PositionTableEntry {
   PositionTableEntry()
-      : code_offset(kFunctionEntryBytecodeOffset),
-        source_position(0),
-        is_statement(false) {}
+      : code_offset(0), source_position(0), is_statement(false) {}
   PositionTableEntry(int offset, int64_t source, bool statement)
       : code_offset(offset), source_position(source), is_statement(statement) {}
 
@@ -54,9 +50,7 @@ class V8_EXPORT_PRIVATE SourcePositionTableBuilder {
   void AddPosition(size_t code_offset, SourcePosition source_position,
                    bool is_statement);
 
-  template <typename LocalIsolate>
-  EXPORT_TEMPLATE_DECLARE(V8_EXPORT_PRIVATE)
-  Handle<ByteArray> ToSourcePositionTable(LocalIsolate* isolate);
+  Handle<ByteArray> ToSourcePositionTable(Isolate* isolate);
   OwnedVector<byte> ToSourcePositionTableVector();
 
   inline bool Omit() const { return mode_ != RECORD_SOURCE_POSITIONS; }
@@ -75,23 +69,13 @@ class V8_EXPORT_PRIVATE SourcePositionTableBuilder {
 
 class V8_EXPORT_PRIVATE SourcePositionTableIterator {
  public:
-  // Filter that applies when advancing the iterator. If the filter isn't
-  // satisfied, we advance the iterator again.
   enum IterationFilter { kJavaScriptOnly = 0, kExternalOnly = 1, kAll = 2 };
-  // Filter that applies only to the first entry of the source position table.
-  // If it is kSkipFunctionEntry, it will skip the FunctionEntry entry if it
-  // exists.
-  enum FunctionEntryFilter {
-    kSkipFunctionEntry = 0,
-    kDontSkipFunctionEntry = 1
-  };
 
   // Used for saving/restoring the iterator.
   struct IndexAndPositionState {
     int index_;
     PositionTableEntry position_;
-    IterationFilter iteration_filter_;
-    FunctionEntryFilter function_entry_filter_;
+    IterationFilter filter_;
   };
 
   // We expose three flavours of the iterator, depending on the argument passed
@@ -100,23 +84,18 @@ class V8_EXPORT_PRIVATE SourcePositionTableIterator {
   // Handlified iterator allows allocation, but it needs a handle (and thus
   // a handle scope). This is the preferred version.
   explicit SourcePositionTableIterator(
-      Handle<ByteArray> byte_array,
-      IterationFilter iteration_filter = kJavaScriptOnly,
-      FunctionEntryFilter function_entry_filter = kSkipFunctionEntry);
+      Handle<ByteArray> byte_array, IterationFilter filter = kJavaScriptOnly);
 
   // Non-handlified iterator does not need a handle scope, but it disallows
   // allocation during its lifetime. This is useful if there is no handle
   // scope around.
   explicit SourcePositionTableIterator(
-      ByteArray byte_array, IterationFilter iteration_filter = kJavaScriptOnly,
-      FunctionEntryFilter function_entry_filter = kSkipFunctionEntry);
+      ByteArray byte_array, IterationFilter filter = kJavaScriptOnly);
 
   // Handle-safe iterator based on an a vector located outside the garbage
   // collected heap, allows allocation during its lifetime.
   explicit SourcePositionTableIterator(
-      Vector<const byte> bytes,
-      IterationFilter iteration_filter = kJavaScriptOnly,
-      FunctionEntryFilter function_entry_filter = kSkipFunctionEntry);
+      Vector<const byte> bytes, IterationFilter filter = kJavaScriptOnly);
 
   void Advance();
 
@@ -134,30 +113,22 @@ class V8_EXPORT_PRIVATE SourcePositionTableIterator {
   }
   bool done() const { return index_ == kDone; }
 
-  IndexAndPositionState GetState() const {
-    return {index_, current_, iteration_filter_, function_entry_filter_};
-  }
+  IndexAndPositionState GetState() const { return {index_, current_, filter_}; }
 
   void RestoreState(const IndexAndPositionState& saved_state) {
     index_ = saved_state.index_;
     current_ = saved_state.position_;
-    iteration_filter_ = saved_state.iteration_filter_;
-    function_entry_filter_ = saved_state.function_entry_filter_;
+    filter_ = saved_state.filter_;
   }
 
  private:
-  // Initializes the source position interator with the first valid bytecode.
-  // Also sets the FunctionEntry SourcePosition if it exists.
-  void Initialize();
-
   static const int kDone = -1;
 
   Vector<const byte> raw_table_;
   Handle<ByteArray> table_;
   int index_ = 0;
   PositionTableEntry current_;
-  IterationFilter iteration_filter_;
-  FunctionEntryFilter function_entry_filter_;
+  IterationFilter filter_;
   DISALLOW_HEAP_ALLOCATION(no_gc)
 };
 

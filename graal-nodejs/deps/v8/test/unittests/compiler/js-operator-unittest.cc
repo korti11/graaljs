@@ -54,6 +54,9 @@ std::ostream& operator<<(std::ostream& os, const SharedOperator& sop) {
   return os << IrOpcode::Mnemonic(sop.opcode);
 }
 
+}  // namespace
+
+
 class JSSharedOperatorTest
     : public TestWithZone,
       public ::testing::WithParamInterface<SharedOperator> {};
@@ -108,7 +111,6 @@ TEST_P(JSSharedOperatorTest, Properties) {
 INSTANTIATE_TEST_SUITE_P(JSOperatorTest, JSSharedOperatorTest,
                          ::testing::ValuesIn(kSharedOperators));
 
-}  // namespace
 }  // namespace js_operator_unittest
 }  // namespace compiler
 }  // namespace internal

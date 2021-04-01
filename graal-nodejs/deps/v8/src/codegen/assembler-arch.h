@@ -15,7 +15,7 @@
 #include "src/codegen/arm64/assembler-arm64.h"
 #elif V8_TARGET_ARCH_ARM
 #include "src/codegen/arm/assembler-arm.h"
-#elif V8_TARGET_ARCH_PPC || V8_TARGET_ARCH_PPC64
+#elif V8_TARGET_ARCH_PPC
 #include "src/codegen/ppc/assembler-ppc.h"
 #elif V8_TARGET_ARCH_MIPS
 #include "src/codegen/mips/assembler-mips.h"

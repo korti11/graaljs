@@ -7,12 +7,11 @@ const bench = common.createBenchmark(main, {
   n: [2e6],
   sync: ['yes', 'no'],
   writev: ['yes', 'no'],
-  callback: ['yes', 'no'],
-  len: [1024, 32 * 1024]
+  callback: ['yes', 'no']
 });
 
-function main({ n, sync, writev, callback, len }) {
-  const b = Buffer.allocUnsafe(len);
+function main({ n, sync, writev, callback }) {
+  const b = Buffer.allocUnsafe(1024);
   const s = new Writable();
   sync = sync === 'yes';
 

@@ -22,7 +22,8 @@ const url = pathToFileURL(p);
 assert(url instanceof URL);
 
 // Check that we can pass in a URL object successfully
-fs.readFile(url, common.mustSucceed((data) => {
+fs.readFile(url, common.mustCall((err, data) => {
+  assert.ifError(err);
   assert(Buffer.isBuffer(data));
 }));
 
@@ -62,7 +63,7 @@ if (common.isWindows) {
       code: 'ERR_INVALID_ARG_VALUE',
       name: 'TypeError',
       message: 'The argument \'path\' must be a string or Uint8Array without ' +
-               "null bytes. Received 'c:\\\\tmp\\\\\\x00test'"
+               'null bytes. Received \'c:\\\\tmp\\\\\\u0000test\''
     }
   );
 } else {
@@ -96,7 +97,7 @@ if (common.isWindows) {
       code: 'ERR_INVALID_ARG_VALUE',
       name: 'TypeError',
       message: "The argument 'path' must be a string or Uint8Array without " +
-               "null bytes. Received '/tmp/\\x00test'"
+               "null bytes. Received '/tmp/\\u0000test'"
     }
   );
 }

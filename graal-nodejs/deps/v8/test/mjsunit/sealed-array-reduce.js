@@ -3,11 +3,10 @@
 // found in the LICENSE file.
 
 // Flags: --allow-natives-syntax --opt --no-always-opt
-// Flags: --no-lazy-feedback-allocation
 
-// TODO(v8:10195): Fix these tests s.t. we assert deoptimization occurs when
-// expected (e.g. in a %DeoptimizeNow call), then remove
-// --no-lazy-feedback-allocation.
+/**
+ * @fileoverview Test reduce and reduceRight
+ */
 
 function clone(v) {
   // Shallow-copies arrays, returns everything else verbatim.

@@ -80,6 +80,11 @@ describe('FunctionTemplate', function () {
             assert.strictEqual(module.FunctionTemplate_CheckPrototypeTemplate(), true);
         });
     });
+    describe('SetHiddenPrototype', function () {
+        it('simple check on SetHiddenPrototype', function () {
+            assert.strictEqual(module.FunctionTemplate_CheckSetHiddenPrototype(), true);
+        });
+    });
     describe('Set', function () {
         it('should set properties on a new Function object instance', function () {
             var obj = module.FunctionTemplate_SetOnInstanceTemplate("foo", "bar");
@@ -109,3 +114,4 @@ describe('FunctionTemplate', function () {
         });
     });
 });
+

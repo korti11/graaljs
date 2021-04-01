@@ -2,9 +2,6 @@
 
 const {
   ArrayIsArray,
-  ArrayPrototypePush,
-  NumberParseInt,
-  StringPrototypeReplace,
 } = primordials;
 
 const errors = require('internal/errors');
@@ -81,9 +78,9 @@ class Resolver {
         ipVersion = isIP(match[1]);
 
         if (ipVersion !== 0) {
-          const port = NumberParseInt(
-            StringPrototypeReplace(serv, addrSplitRE, '$2')) || IANA_DNS_PORT;
-          return ArrayPrototypePush(newSet, [ipVersion, match[1], port]);
+          const port =
+            parseInt(serv.replace(addrSplitRE, '$2')) || IANA_DNS_PORT;
+          return newSet.push([ipVersion, match[1], port]);
         }
       }
 
@@ -97,8 +94,7 @@ class Resolver {
         ipVersion = isIP(hostIP);
 
         if (ipVersion !== 0) {
-          return ArrayPrototypePush(
-            newSet, [ipVersion, hostIP, NumberParseInt(port)]);
+          return newSet.push([ipVersion, hostIP, parseInt(port)]);
         }
       }
 

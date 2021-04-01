@@ -15,3 +15,5 @@ assertThrows(function () {
     (undefined?.foo)(f());
 }, TypeError);
 assertSame(true, argumentsEvaluated);
+
+true;

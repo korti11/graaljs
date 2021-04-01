@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -143,7 +143,6 @@ public class JavaScriptTCKLanguageProvider implements LanguageProvider {
                                         "    apply: function(target, thisArg, argumentsList) {}\n" +
                                         "});",
                         TypeDescriptor.intersection(
-                                        TypeDescriptor.ITERABLE,
                                         TypeDescriptor.EXECUTABLE,
                                         TypeDescriptor.OBJECT)));
         return Collections.unmodifiableList(vals);
@@ -156,7 +155,18 @@ public class JavaScriptTCKLanguageProvider implements LanguageProvider {
                         TypeDescriptor.NUMBER,
                         TypeDescriptor.BOOLEAN,
                         TypeDescriptor.NULL);
-        final TypeDescriptor nonNumeric = ANY.subtract(numericAndNull);
+        final TypeDescriptor noType = TypeDescriptor.intersection();
+        final TypeDescriptor nonNumeric = TypeDescriptor.union(
+                        TypeDescriptor.STRING,
+                        TypeDescriptor.OBJECT,
+                        TypeDescriptor.ARRAY,
+                        TypeDescriptor.EXECUTABLE_ANY,
+                        TypeDescriptor.TIME,
+                        TypeDescriptor.DATE,
+                        TypeDescriptor.DURATION,
+                        TypeDescriptor.TIME_ZONE,
+                        TypeDescriptor.META_OBJECT,
+                        noType);
         // +
         ops.add(createBinaryOperator(context, "+", TypeDescriptor.NUMBER, numericAndNull, numericAndNull));
         ops.add(createBinaryOperator(context, "+", TypeDescriptor.STRING, nonNumeric, ANY, JavaScriptVerifier.numericVerifier(null)));
@@ -260,10 +270,11 @@ public class JavaScriptTCKLanguageProvider implements LanguageProvider {
         // for of
         res.add(createStatement(context, "for-of", "for (let v of {1});",
                         TypeDescriptor.NULL,
-                        JavaScriptVerifier.hasIteratorVerifier(null),
-                        TypeDescriptor.ANY));
-        // Using ANY because of GR-30278. Should be: union(STRING, ARRAY, ITERABLE, HASH).
-
+                        JavaScriptVerifier.foreignOrHasIteratorVerifier(context, null),
+                        TypeDescriptor.union(
+                                        TypeDescriptor.STRING,
+                                        TypeDescriptor.OBJECT,
+                                        TypeDescriptor.ARRAY)));
         // with
         res.add(createStatement(context, "with", "with({1}) undefined",
                         TypeDescriptor.NULL,
@@ -523,21 +534,26 @@ public class JavaScriptTCKLanguageProvider implements LanguageProvider {
         }
 
         /**
-         * Creates a {@link ResultVerifier} ignoring errors caused by non-iterable objects. Use this
-         * verifier in case the operator formally accepts arbitrary types but requires objects to
-         * provide an {@link Value#hasIterator() iterator}.
+         * Creates a {@link ResultVerifier} ignoring errors caused by missing iterator method. Use
+         * this verifier in case the operator accepts arbitrary foreign Objects for iteration but
+         * requires iterator for JSObject.
          *
          * @param next the next {@link ResultVerifier} to be called, null for last one
-         *
          * @return the {@link ResultVerifier}
          */
-        static ResultVerifier hasIteratorVerifier(ResultVerifier next) {
+        static ResultVerifier foreignOrHasIteratorVerifier(final Context context, ResultVerifier next) {
             return new JavaScriptVerifier(next) {
                 @Override
                 public void accept(SnippetRun snippetRun) throws PolyglotException {
                     if (snippetRun.getException() != null) {
                         final Value param = snippetRun.getParameters().get(0);
-                        if (!param.hasIterator() && !param.hasArrayElements() && !param.hasHashEntries() && !param.isString()) {
+                        final boolean jsObject = context.eval(ID, "Object").isMetaInstance(param);
+                        boolean hasIterator = false;
+                        try {
+                            hasIterator = !context.eval(ID, "(function(a) {return a[Symbol.iterator];})").execute(param).isNull();
+                        } catch (Exception e) {
+                        }
+                        if (jsObject && !hasIterator) {
                             // Expected for not iterable
                             return;
                         }
@@ -559,7 +575,7 @@ public class JavaScriptTCKLanguageProvider implements LanguageProvider {
                 public void accept(SnippetRun snippetRun) throws PolyglotException {
                     if (snippetRun.getException() != null) {
                         final Value arg = snippetRun.getParameters().get(0);
-                        if (arg.isNull() || !arg.hasMembers()) {
+                        if (!arg.hasMembers()) {
                             return;
                         }
                     }
@@ -587,7 +603,7 @@ public class JavaScriptTCKLanguageProvider implements LanguageProvider {
                     if (snippetRun.getException() == null) {
                         TypeDescriptor numericTypes = TypeDescriptor.union(TypeDescriptor.NUMBER, TypeDescriptor.BOOLEAN, TypeDescriptor.NULL);
                         for (Value actualParameter : snippetRun.getParameters()) {
-                            allNumeric &= numericTypes.isAssignable(TypeDescriptor.forValue(actualParameter)) || actualParameter.isInstant();
+                            allNumeric &= numericTypes.isAssignable(TypeDescriptor.forValue(actualParameter));
                         }
                         if (allNumeric) {
                             TypeDescriptor resultType = TypeDescriptor.forValue(snippetRun.getResult());

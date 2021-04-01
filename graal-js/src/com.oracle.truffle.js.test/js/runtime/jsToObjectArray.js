@@ -21,3 +21,5 @@ testReflect(true);
 testReflect(42);
 testReflect(42.5);
 testReflect("test");
+
+true;

@@ -20,7 +20,6 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "udp_wrap.h"
-#include "allocated_buffer-inl.h"
 #include "env-inl.h"
 #include "node_buffer.h"
 #include "node_sockaddr-inl.h"
@@ -146,7 +145,7 @@ void UDPWrap::Initialize(Local<Object> target,
   Local<FunctionTemplate> get_fd_templ =
       FunctionTemplate::New(env->isolate(),
                             UDPWrap::GetFD,
-                            Local<Value>(),
+                            env->as_callback_data(),
                             signature);
 
   t->PrototypeTemplate()->SetAccessorProperty(env->fd_string(),
@@ -689,7 +688,7 @@ void UDPWrap::OnAlloc(uv_handle_t* handle,
 }
 
 uv_buf_t UDPWrap::OnAlloc(size_t suggested_size) {
-  return AllocatedBuffer::AllocateManaged(env(), suggested_size).release();
+  return env()->AllocateManaged(suggested_size).release();
 }
 
 void UDPWrap::OnRecv(uv_udp_t* handle,

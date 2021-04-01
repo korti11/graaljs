@@ -77,7 +77,7 @@ using compiler::Node;
 
 // For tests that must manually import a JSFunction with source code.
 struct ManuallyImportedJSFunction {
-  const FunctionSig* sig;
+  FunctionSig* sig;
   Handle<JSFunction> js_function;
 };
 
@@ -89,7 +89,6 @@ class TestingModuleBuilder {
  public:
   TestingModuleBuilder(Zone*, ManuallyImportedJSFunction*, ExecutionTier,
                        RuntimeExceptionSupport, LowerSimd);
-  ~TestingModuleBuilder();
 
   void ChangeOriginToAsmjs() { test_module_->origin = kAsmJsSloppyOrigin; }
 
@@ -104,16 +103,19 @@ class TestingModuleBuilder {
   }
 
   template <typename T>
-  T* AddGlobal(ValueType type = ValueType::For(MachineTypeForC<T>())) {
+  T* AddGlobal(
+      ValueType type = ValueTypes::ValueTypeFor(MachineTypeForC<T>())) {
     const WasmGlobal* global = AddGlobal(type);
     return reinterpret_cast<T*>(globals_data_ + global->offset);
   }
 
-  byte AddSignature(const FunctionSig* sig) {
-    // TODO(7748): This will need updating for struct/array types support.
-    DCHECK_EQ(test_module_->types.size(), test_module_->signature_ids.size());
-    test_module_->add_signature(sig);
-    size_t size = test_module_->types.size();
+  byte AddSignature(FunctionSig* sig) {
+    DCHECK_EQ(test_module_->signatures.size(),
+              test_module_->signature_ids.size());
+    test_module_->signatures.push_back(sig);
+    auto canonical_sig_num = test_module_->signature_map.FindOrInsert(*sig);
+    test_module_->signature_ids.push_back(canonical_sig_num);
+    size_t size = test_module_->signatures.size();
     CHECK_GT(127, size);
     return static_cast<byte>(size - 1);
   }
@@ -178,8 +180,7 @@ class TestingModuleBuilder {
   void SetHasSharedMemory() { test_module_->has_shared_memory = true; }
 
   enum FunctionType { kImport, kWasm };
-  uint32_t AddFunction(const FunctionSig* sig, const char* name,
-                       FunctionType type);
+  uint32_t AddFunction(FunctionSig* sig, const char* name, FunctionType type);
 
   // Freezes the signature map of the module and allocates the storage for
   // export wrappers.
@@ -195,7 +196,7 @@ class TestingModuleBuilder {
 
   uint32_t AddBytes(Vector<const byte> bytes);
 
-  uint32_t AddException(const FunctionSig* sig);
+  uint32_t AddException(FunctionSig* sig);
 
   uint32_t AddPassiveDataSegment(Vector<const byte> bytes);
   uint32_t AddPassiveElementSegment(const std::vector<uint32_t>& entries);
@@ -219,12 +220,6 @@ class TestingModuleBuilder {
   }
 
   void SetExecutable() { native_module_->SetExecutable(true); }
-
-  void TierDown() {
-    native_module_->SetTieringState(kTieredDown);
-    native_module_->TriggerRecompilation();
-    execution_tier_ = ExecutionTier::kLiftoff;
-  }
 
   CompilationEnv CreateCompilationEnv();
 
@@ -254,6 +249,7 @@ class TestingModuleBuilder {
   std::vector<byte> data_segment_data_;
   std::vector<Address> data_segment_starts_;
   std::vector<uint32_t> data_segment_sizes_;
+  std::vector<byte> dropped_data_segments_;
   std::vector<byte> dropped_elem_segments_;
 
   const WasmGlobal* AddGlobal(ValueType type);
@@ -262,7 +258,7 @@ class TestingModuleBuilder {
 };
 
 void TestBuildingGraph(Zone* zone, compiler::JSGraph* jsgraph,
-                       CompilationEnv* module, const FunctionSig* sig,
+                       CompilationEnv* module, FunctionSig* sig,
                        compiler::SourcePositionTable* source_position_table,
                        const byte* start, const byte* end);
 
@@ -341,11 +337,11 @@ class WasmFunctionCompiler : public compiler::GraphAndBuilders {
  private:
   friend class WasmRunnerBase;
 
-  WasmFunctionCompiler(Zone* zone, const FunctionSig* sig,
+  WasmFunctionCompiler(Zone* zone, FunctionSig* sig,
                        TestingModuleBuilder* builder, const char* name);
 
   compiler::JSGraph jsgraph;
-  const FunctionSig* sig;
+  FunctionSig* sig;
   // The call descriptor is initialized when the function is compiled.
   CallDescriptor* descriptor_;
   TestingModuleBuilder* builder_;
@@ -387,7 +383,7 @@ class WasmRunnerBase : public HandleAndZoneScope {
   // Resets the state for building the next function.
   // The main function called will be the last generated function.
   // Returns the index of the previously built function.
-  WasmFunctionCompiler& NewFunction(const FunctionSig* sig,
+  WasmFunctionCompiler& NewFunction(FunctionSig* sig,
                                     const char* name = nullptr) {
     functions_.emplace_back(
         new WasmFunctionCompiler(&zone_, sig, &builder_, name));
@@ -411,25 +407,18 @@ class WasmRunnerBase : public HandleAndZoneScope {
 
   bool interpret() { return builder_.interpret(); }
 
-  void TierDown() { builder_.TierDown(); }
-
   template <typename ReturnType, typename... ParamTypes>
   FunctionSig* CreateSig() {
-    return WasmRunnerBase::CreateSig<ReturnType, ParamTypes...>(&zone_);
-  }
-
-  template <typename ReturnType, typename... ParamTypes>
-  static FunctionSig* CreateSig(Zone* zone) {
     std::array<MachineType, sizeof...(ParamTypes)> param_machine_types{
         {MachineTypeForC<ParamTypes>()...}};
     Vector<MachineType> param_vec(param_machine_types.data(),
                                   param_machine_types.size());
-    return CreateSig(zone, MachineTypeForC<ReturnType>(), param_vec);
+    return CreateSig(MachineTypeForC<ReturnType>(), param_vec);
   }
 
  private:
-  static FunctionSig* CreateSig(Zone* zone, MachineType return_type,
-                                Vector<MachineType> param_types);
+  FunctionSig* CreateSig(MachineType return_type,
+                         Vector<MachineType> param_types);
 
  protected:
   v8::internal::AccountingAllocator allocator_;
@@ -569,17 +558,6 @@ class WasmRunner : public WasmRunnerBase {
     Handle<Object> buffer[] = {isolate->factory()->NewNumber(p)...,
                                Handle<Object>()};
     CheckCallApplyViaJS(expected, function()->func_index, buffer, sizeof...(p));
-  }
-
-  void CheckCallViaJSTraps(ParamTypes... p) {
-    CheckCallViaJS(static_cast<double>(0xDEADBEEF), p...);
-  }
-
-  void CheckUsedExecutionTier(ExecutionTier expected_tier) {
-    // Liftoff can fail and fallback to Turbofan, so check that the function
-    // gets compiled by the tier requested, to guard against accidental success.
-    CHECK(compiled_);
-    CHECK_EQ(expected_tier, builder_.GetFunctionCode(0)->tier());
   }
 
   Handle<Code> GetWrapperCode() { return wrapper_.GetWrapperCode(); }

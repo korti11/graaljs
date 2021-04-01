@@ -46,7 +46,6 @@ import java.util.List;
 import java.util.Set;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.HiddenKey;
 import com.oracle.truffle.api.object.Shape;
@@ -182,34 +181,33 @@ public final class JSProxy extends AbstractJSClass implements PrototypeSupplier 
 
     @TruffleBoundary
     @Override
-    public Object getOwnHelper(DynamicObject store, Object receiver, Object key, Node encapsulatingNode) {
+    public Object getOwnHelper(DynamicObject store, Object receiver, Object key) {
         assert JSRuntime.isPropertyKey(key);
-        return proxyGetHelper(store, key, receiver, encapsulatingNode);
+        return proxyGetHelper(store, key, receiver);
     }
 
     @TruffleBoundary
     @Override
-    public Object getOwnHelper(DynamicObject store, Object receiver, long index, Node encapsulatingNode) {
+    public Object getOwnHelper(DynamicObject store, Object receiver, long index) {
         assert JSRuntime.isSafeInteger(index);
-        return proxyGetHelper(store, Boundaries.stringValueOf(index), receiver, encapsulatingNode);
+        return proxyGetHelper(store, Boundaries.stringValueOf(index), receiver);
     }
 
     @TruffleBoundary
-    private static Object proxyGetHelper(DynamicObject proxy, Object key, Object receiver, Node encapsulatingNode) {
+    private static Object proxyGetHelper(DynamicObject proxy, Object key, Object receiver) {
         assert JSRuntime.isPropertyKey(key);
         DynamicObject handler = getHandlerChecked(proxy);
         Object target = getTarget(proxy);
         Object trap = getTrapFromObject(handler, GET);
         if (trap == Undefined.instance) {
             if (JSDynamicObject.isJSDynamicObject(target)) {
-                JSDynamicObject jsobj = (JSDynamicObject) target;
-                return JSObject.getJSClass(jsobj).getHelper(jsobj, receiver, key, encapsulatingNode);
+                return JSObject.getJSClass((DynamicObject) target).getHelper((DynamicObject) target, receiver, key);
             } else {
                 return JSInteropUtil.readMemberOrDefault(target, key, null);
             }
         }
 
-        Object trapResult = JSRuntime.call(trap, handler, new Object[]{target, key, receiver}, encapsulatingNode);
+        Object trapResult = JSRuntime.call(trap, handler, new Object[]{target, key, receiver});
         checkProxyGetTrapInvariants(target, key, trapResult);
         return trapResult;
     }
@@ -239,33 +237,32 @@ public final class JSProxy extends AbstractJSClass implements PrototypeSupplier 
 
     @TruffleBoundary
     @Override
-    public boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
-        return proxySet(thisObj, key, value, receiver, isStrict, encapsulatingNode);
+    public boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict) {
+        return proxySet(thisObj, key, value, receiver, isStrict);
     }
 
     @TruffleBoundary
     @Override
-    public boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
-        return proxySet(thisObj, Boundaries.stringValueOf(index), value, receiver, isStrict, encapsulatingNode);
+    public boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict) {
+        return proxySet(thisObj, Boundaries.stringValueOf(index), value, receiver, isStrict);
     }
 
     @TruffleBoundary
-    private static boolean proxySet(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    private static boolean proxySet(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict) {
         assert JSRuntime.isPropertyKey(key);
         DynamicObject handler = getHandlerChecked(thisObj);
         Object target = getTarget(thisObj);
         Object trap = getTrapFromObject(handler, SET);
         if (trap == Undefined.instance) {
             if (JSDynamicObject.isJSDynamicObject(target)) {
-                JSDynamicObject jsobj = (JSDynamicObject) target;
-                return JSObject.getJSClass(jsobj).set(jsobj, key, value, receiver, isStrict, encapsulatingNode);
+                return JSObject.setWithReceiver((DynamicObject) target, key, value, receiver, isStrict);
             } else {
                 JSInteropUtil.writeMember(target, key, value);
                 return true;
             }
         }
 
-        Object trapResult = JSRuntime.call(trap, handler, new Object[]{target, key, value, receiver}, encapsulatingNode);
+        Object trapResult = JSRuntime.call(trap, handler, new Object[]{target, key, value, receiver});
         boolean booleanTrapResult = JSRuntime.toBoolean(trapResult);
         if (!booleanTrapResult) {
             if (isStrict) {

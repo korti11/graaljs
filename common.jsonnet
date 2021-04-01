@@ -1,21 +1,21 @@
-local common_json = (import "common.json");
+local jdks = (import "common.json").jdks;
 
 {
   jdk8: {
     downloads+: {
-      JAVA_HOME: common_json.jdks.oraclejdk8,
+      JAVA_HOME: jdks.oraclejdk8,
     },
   },
 
   jdk11: {
     downloads+: {
-      JAVA_HOME: common_json.jdks["labsjdk-ce-11"],
+      JAVA_HOME: jdks["labsjdk-ce-11"],
     },
   },
 
-  jdk16: {
+  jdk15: {
     downloads+: {
-      JAVA_HOME: common_json.jdks["oraclejdk16"],
+      JAVA_HOME: jdks["oraclejdk15"],
     },
   },
 
@@ -26,7 +26,6 @@ local common_json = (import "common.json");
   dailyBench:  {targets+: ['bench', 'daily']},
   weeklyBench: {targets+: ['bench', 'weekly']},
   manualBench: {targets+: ['bench']},
-  daily:       {targets+: ['daily']},
   weekly:      {targets+: ['weekly']},
 
   local python3 = {
@@ -50,11 +49,14 @@ local common_json = (import "common.json");
   },
 
   linux: common + {
-    packages+: common_json.sulong.deps.linux.packages + {
+    packages+: {
       'apache/ab': '==2.3',
-      devtoolset: '==7', # GCC 7.3.1, make 4.2.1, binutils 2.28, valgrind 3.13.0
+      binutils: '==2.23.2',
+      cmake: '==3.6.1',
+      gcc: '==8.3.0',
       git: '>=1.8.3',
       maven: '==3.3.9',
+      valgrind: '>=3.9.0',
     },
     capabilities+: ['linux', 'amd64'],
   },
@@ -67,42 +69,46 @@ local common_json = (import "common.json");
     capabilities+: ['no_frequency_scaling', 'tmpfs25g', 'x52'],
   },
 
+  sparc: common + {
+    capabilities: ['solaris', 'sparcv9'],
+  },
+
   linux_aarch64: common + {
     capabilities+: ['linux', 'aarch64'],
     packages+: {
-      devtoolset: '==7', # GCC 7.3.1, make 4.2.1, binutils 2.28, valgrind 3.13.0
+      gcc: '==8.3.0',
     }
   },
 
   darwin: common + {
-    packages+: common_json.sulong.deps.darwin.packages,
     environment+: {
       // for compatibility with macOS El Capitan
       MACOSX_DEPLOYMENT_TARGET: '10.11',
     },
-    capabilities: ['darwin_mojave', 'amd64'],
+    capabilities: ['darwin', 'amd64'],
   },
 
   windows: common + {
+    packages+: {
+      'devkit:VS2017-15.5.5+1': '==0',
+    },
+    downloads+: {
+      NASM: {name: 'nasm', version: '2.14.02', platformspecific: true},
+    },
+    environment+: {
+      PATH: '$PATH;$NASM',
+    },
+    setup+: [
+      ['set-export', 'DEVKIT_ROOT', '$VS2017_15_5_5_1_0_ROOT'],
+      ['set-export', 'DEVKIT_VERSION', '2017'],
+    ],
     capabilities: ['windows', 'amd64'],
   },
 
-  windows_jdk16: self.windows + common_json.devkits["windows-jdk16"] + {
-    setup+: [
-      ['set-export', 'DEVKIT_VERSION', '2019'],
-    ],
-  },
-
- windows_jdk11: self.windows + common_json.devkits["windows-jdk11"] + {
-    setup+: [
-      ['set-export', 'DEVKIT_VERSION', '2017'],
-    ],
-  },
-
-  windows_jdk8: self.windows + common_json.devkits["windows-oraclejdk8"] + {
-    setup+: [
-      ['set-export', 'DEVKIT_VERSION', '2017'],
-    ],
+  windows_vs2010: self.windows + {
+    packages+: {
+      msvc : '==10.0',
+    },
   },
 
   local gateCmd = ['mx', '--strict-compliance', 'gate', '-B=--force-deprecation-as-warning', '--strict-mode', '--tags', '${TAGS}'],

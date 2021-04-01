@@ -18,7 +18,9 @@ namespace internal {
 // while tools like cctest need to work in either configuration.
 
 void InitializeExternalStartupData(const char* directory_path);
-void InitializeExternalStartupDataFromFile(const char* snapshot_blob);
+
+void InitializeExternalStartupData(const char* natives_blob,
+                                   const char* snapshot_blob);
 
 }  // namespace internal
 }  // namespace v8

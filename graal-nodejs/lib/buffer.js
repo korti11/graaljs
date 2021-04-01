@@ -39,7 +39,6 @@ const {
   ObjectSetPrototypeOf,
   SymbolSpecies,
   SymbolToPrimitive,
-  Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
 
@@ -61,11 +60,13 @@ const {
   zeroFill: bindingZeroFill
 } = internalBinding('buffer');
 const {
+  arraybuffer_untransferable_private_symbol,
   getOwnNonIndexProperties,
   propertyFilter: {
     ALL_PROPERTIES,
     ONLY_ENUMERABLE
   },
+  setHiddenValue,
 } = internalBinding('util');
 const {
   customInspectSymbol,
@@ -83,6 +84,7 @@ const {
 } = require('internal/util/inspect');
 const { encodings } = internalBinding('string_decoder');
 
+
 const {
   codes: {
     ERR_BUFFER_OUT_OF_BOUNDS,
@@ -97,16 +99,12 @@ const {
 } = require('internal/errors');
 const {
   validateBuffer,
-  validateInteger,
+  validateInt32,
   validateString
 } = require('internal/validators');
-// Provide validateInteger() but with kMaxLength as the default maximum value.
-const validateOffset = (value, name, min = 0, max = kMaxLength) =>
-  validateInteger(value, name, min, max);
 
 const {
   FastBuffer,
-  markAsUntransferable,
   addBufferPrototypeMethods
 } = require('internal/buffer');
 
@@ -161,7 +159,7 @@ function createUnsafeBuffer(size) {
 function createPool() {
   poolSize = Buffer.poolSize;
   allocPool = createUnsafeBuffer(poolSize).buffer;
-  markAsUntransferable(allocPool);
+  setHiddenValue(allocPool, arraybuffer_untransferable_private_symbol, true);
   poolOffset = 0;
 }
 createPool();
@@ -407,7 +405,7 @@ function SlowBuffer(length) {
   return createUnsafeBuffer(length);
 }
 
-ObjectSetPrototypeOf(SlowBuffer.prototype, Uint8ArrayPrototype);
+ObjectSetPrototypeOf(SlowBuffer.prototype, Uint8Array.prototype);
 ObjectSetPrototypeOf(SlowBuffer, Uint8Array);
 
 function allocate(size) {
@@ -564,7 +562,7 @@ Buffer.concat = function concat(list, length) {
       }
     }
   } else {
-    validateOffset(length, 'length');
+    validateInt32(length, 'length', 0);
   }
 
   const buffer = Buffer.allocUnsafe(length);
@@ -871,22 +869,22 @@ Buffer.prototype.compare = function compare(target,
   if (targetStart === undefined)
     targetStart = 0;
   else
-    validateOffset(targetStart, 'targetStart');
+    validateInt32(targetStart, 'targetStart', 0);
 
   if (targetEnd === undefined)
     targetEnd = target.length;
   else
-    validateOffset(targetEnd, 'targetEnd', 0, target.length);
+    validateInt32(targetEnd, 'targetEnd', 0, target.length);
 
   if (sourceStart === undefined)
     sourceStart = 0;
   else
-    validateOffset(sourceStart, 'sourceStart');
+    validateInt32(sourceStart, 'sourceStart', 0);
 
   if (sourceEnd === undefined)
     sourceEnd = this.length;
   else
-    validateOffset(sourceEnd, 'sourceEnd', 0, this.length);
+    validateInt32(sourceEnd, 'sourceEnd', 0, this.length);
 
   if (sourceStart >= sourceEnd)
     return (targetStart >= targetEnd ? 0 : -1);
@@ -1010,12 +1008,12 @@ function _fill(buf, value, offset, end, encoding) {
     offset = 0;
     end = buf.length;
   } else {
-    validateOffset(offset, 'offset');
+    validateInt32(offset, 'offset', 0);
     // Invalid ranges are not set to a default, so can range check early.
     if (end === undefined) {
       end = buf.length;
     } else {
-      validateOffset(end, 'end', 0, buf.length);
+      validateInt32(end, 'end', 0, buf.length);
     }
     if (offset >= end)
       return buf;
@@ -1055,7 +1053,7 @@ Buffer.prototype.write = function write(string, offset, length, encoding) {
 
   // Buffer#write(string, offset[, length][, encoding])
   } else {
-    validateOffset(offset, 'offset', 0, this.length);
+    validateInt32(offset, 'offset', 0, this.length);
 
     const remaining = this.length - offset;
 
@@ -1065,7 +1063,7 @@ Buffer.prototype.write = function write(string, offset, length, encoding) {
       encoding = length;
       length = remaining;
     } else {
-      validateOffset(length, 'length', 0, this.length);
+      validateInt32(length, 'length', 0, this.length);
       if (length > remaining)
         length = remaining;
     }

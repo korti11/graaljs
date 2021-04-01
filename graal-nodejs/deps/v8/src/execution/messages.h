@@ -83,8 +83,6 @@ class StackFrameBase {
   virtual int GetLineNumber() = 0;
   // Return 1-based column number, including column offset if first line.
   virtual int GetColumnNumber() = 0;
-  // Return 0-based Wasm function index. Returns -1 for non-Wasm frames.
-  virtual int GetWasmFunctionIndex();
 
   // Returns index for Promise.all() async frames, or -1 for other frames.
   virtual int GetPromiseIndex() const = 0;
@@ -169,16 +167,15 @@ class WasmStackFrame : public StackFrameBase {
 
   Handle<Object> GetFileName() override { return Null(); }
   Handle<Object> GetFunctionName() override;
-  Handle<Object> GetScriptNameOrSourceUrl() override;
+  Handle<Object> GetScriptNameOrSourceUrl() override { return Null(); }
   Handle<Object> GetMethodName() override { return Null(); }
   Handle<Object> GetTypeName() override { return Null(); }
   Handle<Object> GetWasmModuleName() override;
   Handle<Object> GetWasmInstance() override;
 
   int GetPosition() const override;
-  int GetLineNumber() override { return 0; }
+  int GetLineNumber() override { return wasm_func_index_; }
   int GetColumnNumber() override;
-  int GetWasmFunctionIndex() override { return wasm_func_index_; }
 
   int GetPromiseIndex() const override { return GetPosition(); }
 
@@ -269,18 +266,14 @@ class ErrorUtils : public AllStatic {
   // |kNone| is useful when you don't need the stack information at all, for
   // example when creating a deserialized error.
   enum class StackTraceCollection { kDetailed, kSimple, kNone };
-  static MaybeHandle<JSObject> Construct(Isolate* isolate,
-                                         Handle<JSFunction> target,
-                                         Handle<Object> new_target,
-                                         Handle<Object> message);
-  static MaybeHandle<JSObject> Construct(
+  static MaybeHandle<Object> Construct(
       Isolate* isolate, Handle<JSFunction> target, Handle<Object> new_target,
       Handle<Object> message, FrameSkipMode mode, Handle<Object> caller,
       StackTraceCollection stack_trace_collection);
 
   static MaybeHandle<String> ToString(Isolate* isolate, Handle<Object> recv);
 
-  static Handle<JSObject> MakeGenericError(
+  static MaybeHandle<Object> MakeGenericError(
       Isolate* isolate, Handle<JSFunction> constructor, MessageTemplate index,
       Handle<Object> arg0, Handle<Object> arg1, Handle<Object> arg2,
       FrameSkipMode mode);
@@ -297,8 +290,6 @@ class ErrorUtils : public AllStatic {
                                                   Handle<Object> source);
   static Handle<Object> NewConstructedNonConstructable(Isolate* isolate,
                                                        Handle<Object> source);
-  static Object ThrowSpreadArgError(Isolate* isolate, MessageTemplate id,
-                                    Handle<Object> object);
   static Object ThrowLoadFromNullOrUndefined(Isolate* isolate,
                                              Handle<Object> object);
   static Object ThrowLoadFromNullOrUndefined(Isolate* isolate,
@@ -317,9 +308,7 @@ class MessageFormatter {
                                                       Handle<String> arg2);
 
   static Handle<String> Format(Isolate* isolate, MessageTemplate index,
-                               Handle<Object> arg0,
-                               Handle<Object> arg1 = Handle<Object>(),
-                               Handle<Object> arg2 = Handle<Object>());
+                               Handle<Object> arg);
 };
 
 // A message handler is a convenience interface for accessing the list

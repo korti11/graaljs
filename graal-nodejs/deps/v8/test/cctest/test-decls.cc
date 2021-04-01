@@ -147,7 +147,9 @@ void DeclarationContext::Check(const char* source, int get, int set, int query,
   catcher.SetVerbose(true);
   Local<Context> context = CcTest::isolate()->GetCurrentContext();
   MaybeLocal<Script> script = Script::Compile(
-      context, String::NewFromUtf8(CcTest::isolate(), source).ToLocalChecked());
+      context,
+      String::NewFromUtf8(CcTest::isolate(), source, v8::NewStringType::kNormal)
+          .ToLocalChecked());
   if (expectations == EXPECT_ERROR) {
     CHECK(script.IsEmpty());
     return;
@@ -443,8 +445,9 @@ class SimpleContext {
     TryCatch catcher(context_->GetIsolate());
     catcher.SetVerbose(true);
     MaybeLocal<Script> script = Script::Compile(
-        context_,
-        String::NewFromUtf8(context_->GetIsolate(), source).ToLocalChecked());
+        context_, String::NewFromUtf8(context_->GetIsolate(), source,
+                                      v8::NewStringType::kNormal)
+                      .ToLocalChecked());
     if (expectations == EXPECT_ERROR) {
       CHECK(script.IsEmpty());
       return;
@@ -745,10 +748,14 @@ TEST(CrossScriptDynamicLookup) {
 
   {
     SimpleContext context;
-    Local<String> undefined_string = String::NewFromUtf8Literal(
-        CcTest::isolate(), "undefined", v8::NewStringType::kInternalized);
-    Local<String> number_string = String::NewFromUtf8Literal(
-        CcTest::isolate(), "number", v8::NewStringType::kInternalized);
+    Local<String> undefined_string =
+        String::NewFromUtf8(CcTest::isolate(), "undefined",
+                            v8::NewStringType::kInternalized)
+            .ToLocalChecked();
+    Local<String> number_string =
+        String::NewFromUtf8(CcTest::isolate(), "number",
+                            v8::NewStringType::kInternalized)
+            .ToLocalChecked();
 
     context.Check(
         "function f(o) { with(o) { return x; } }"
@@ -818,10 +825,14 @@ TEST(CrossScriptStaticLookupUndeclared) {
 
   {
     SimpleContext context;
-    Local<String> undefined_string = String::NewFromUtf8Literal(
-        CcTest::isolate(), "undefined", v8::NewStringType::kInternalized);
-    Local<String> number_string = String::NewFromUtf8Literal(
-        CcTest::isolate(), "number", v8::NewStringType::kInternalized);
+    Local<String> undefined_string =
+        String::NewFromUtf8(CcTest::isolate(), "undefined",
+                            v8::NewStringType::kInternalized)
+            .ToLocalChecked();
+    Local<String> number_string =
+        String::NewFromUtf8(CcTest::isolate(), "number",
+                            v8::NewStringType::kInternalized)
+            .ToLocalChecked();
 
     context.Check(
         "function f(o) { return x; }"

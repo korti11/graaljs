@@ -40,53 +40,17 @@
  */
 package com.oracle.truffle.js.runtime.interop;
 
-import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.dsl.ImportStatic;
-import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.TruffleObject;
-import com.oracle.truffle.api.library.CachedLibrary;
-import com.oracle.truffle.api.library.ExportLibrary;
-import com.oracle.truffle.api.library.ExportMessage;
-import com.oracle.truffle.api.utilities.TriState;
-import com.oracle.truffle.js.runtime.JSConfig;
-import com.oracle.truffle.js.runtime.builtins.JSFunctionObject;
-import com.oracle.truffle.js.runtime.objects.JSDynamicObject;
+import com.oracle.truffle.api.object.DynamicObject;
 
-@ImportStatic({JSConfig.class})
-@ExportLibrary(value = InteropLibrary.class)
 public abstract class InteropFunction implements TruffleObject {
-    private final JSFunctionObject function;
+    private final DynamicObject function;
 
-    InteropFunction(JSFunctionObject function) {
+    InteropFunction(DynamicObject function) {
         this.function = function;
     }
 
-    public final JSFunctionObject getFunction() {
+    public final DynamicObject getFunction() {
         return function;
     }
-
-    @ExportMessage
-    @TruffleBoundary
-    public final TriState isIdenticalOrUndefined(Object other,
-                    @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary thisLib,
-                    @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary otherLib) {
-        if (this == other) {
-            return TriState.TRUE;
-        } else if (other instanceof JSDynamicObject) {
-            return TriState.valueOf(this.function == other);
-        }
-
-        if (otherLib.hasIdentity(other)) {
-            return TriState.valueOf(thisLib.isIdentical(this.function, other, otherLib));
-        } else {
-            return TriState.UNDEFINED;
-        }
-    }
-
-    @ExportMessage
-    @TruffleBoundary
-    public final int identityHashCode() {
-        return function.hashCode();
-    }
-
 }

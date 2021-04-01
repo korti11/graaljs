@@ -463,11 +463,7 @@ class RegExpQuantifier final : public RegExpTree {
 class RegExpCapture final : public RegExpTree {
  public:
   explicit RegExpCapture(int index)
-      : body_(nullptr),
-        index_(index),
-        min_match_(0),
-        max_match_(0),
-        name_(nullptr) {}
+      : body_(nullptr), index_(index), name_(nullptr) {}
   void* Accept(RegExpVisitor* visitor, void* data) override;
   RegExpNode* ToNode(RegExpCompiler* compiler, RegExpNode* on_success) override;
   static RegExpNode* ToNode(RegExpTree* body, int index,
@@ -477,14 +473,10 @@ class RegExpCapture final : public RegExpTree {
   bool IsAnchoredAtEnd() override;
   Interval CaptureRegisters() override;
   bool IsCapture() override;
-  int min_match() override { return min_match_; }
-  int max_match() override { return max_match_; }
+  int min_match() override { return body_->min_match(); }
+  int max_match() override { return body_->max_match(); }
   RegExpTree* body() { return body_; }
-  void set_body(RegExpTree* body) {
-    body_ = body;
-    min_match_ = body->min_match();
-    max_match_ = body->max_match();
-  }
+  void set_body(RegExpTree* body) { body_ = body; }
   int index() const { return index_; }
   const ZoneVector<uc16>* name() const { return name_; }
   void set_name(const ZoneVector<uc16>* name) { name_ = name; }
@@ -494,17 +486,12 @@ class RegExpCapture final : public RegExpTree {
  private:
   RegExpTree* body_;
   int index_;
-  int min_match_;
-  int max_match_;
   const ZoneVector<uc16>* name_;
 };
 
 class RegExpGroup final : public RegExpTree {
  public:
-  explicit RegExpGroup(RegExpTree* body)
-      : body_(body),
-        min_match_(body->min_match()),
-        max_match_(body->max_match()) {}
+  explicit RegExpGroup(RegExpTree* body) : body_(body) {}
   void* Accept(RegExpVisitor* visitor, void* data) override;
   RegExpNode* ToNode(RegExpCompiler* compiler,
                      RegExpNode* on_success) override {
@@ -514,15 +501,13 @@ class RegExpGroup final : public RegExpTree {
   bool IsAnchoredAtStart() override { return body_->IsAnchoredAtStart(); }
   bool IsAnchoredAtEnd() override { return body_->IsAnchoredAtEnd(); }
   bool IsGroup() override;
-  int min_match() override { return min_match_; }
-  int max_match() override { return max_match_; }
+  int min_match() override { return body_->min_match(); }
+  int max_match() override { return body_->max_match(); }
   Interval CaptureRegisters() override { return body_->CaptureRegisters(); }
   RegExpTree* body() { return body_; }
 
  private:
   RegExpTree* body_;
-  int min_match_;
-  int max_match_;
 };
 
 class RegExpLookaround final : public RegExpTree {

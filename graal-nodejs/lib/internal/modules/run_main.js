@@ -24,9 +24,9 @@ function shouldUseESMLoader(mainPath) {
   const userLoader = getOptionValue('--experimental-loader');
   if (userLoader)
     return true;
-  const esModuleSpecifierResolution =
+  const experimentalSpecifierResolution =
     getOptionValue('--experimental-specifier-resolution');
-  if (esModuleSpecifierResolution === 'node')
+  if (experimentalSpecifierResolution === 'node')
     return true;
   // Determine the module format of the main
   if (mainPath && mainPath.endsWith('.mjs'))
@@ -40,23 +40,22 @@ function shouldUseESMLoader(mainPath) {
 function runMainESM(mainPath) {
   const esmLoader = require('internal/process/esm_loader');
   const { pathToFileURL } = require('internal/url');
-  handleMainPromise(esmLoader.loadESM((ESMLoader) => {
+  const { hasUncaughtExceptionCaptureCallback } =
+      require('internal/process/execution');
+  return esmLoader.initializeLoader().then(() => {
     const main = path.isAbsolute(mainPath) ?
       pathToFileURL(mainPath).href : mainPath;
-    return ESMLoader.import(main);
-  }));
-}
-
-function handleMainPromise(promise) {
-  // Handle a Promise from running code that potentially does Top-Level Await.
-  // In that case, it makes sense to set the exit code to a specific non-zero
-  // value if the main code never finishes running.
-  function handler() {
-    if (process.exitCode === undefined)
-      process.exitCode = 13;
-  }
-  process.on('exit', handler);
-  return promise.finally(() => process.off('exit', handler));
+    return esmLoader.ESMLoader.import(main);
+  }).catch((e) => {
+    if (hasUncaughtExceptionCaptureCallback()) {
+      process._fatalException(e);
+      return;
+    }
+    internalBinding('errors').triggerUncaughtException(
+      e,
+      true /* fromPromise */
+    );
+  });
 }
 
 // For backwards compatibility, we have to run a bunch of
@@ -74,6 +73,5 @@ function executeUserEntryPoint(main = process.argv[1]) {
 }
 
 module.exports = {
-  executeUserEntryPoint,
-  handleMainPromise,
+  executeUserEntryPoint
 };

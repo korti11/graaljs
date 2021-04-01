@@ -62,6 +62,8 @@ class CommonSharedOperatorTest
     : public TestWithZone,
       public ::testing::WithParamInterface<SharedOperator> {};
 
+}  // namespace
+
 
 TEST_P(CommonSharedOperatorTest, InstancesAreGloballyShared) {
   const SharedOperator& sop = GetParam();
@@ -385,7 +387,6 @@ TEST_F(CommonOperatorTest, Projection) {
   }
 }
 
-}  // namespace
 }  // namespace common_operator_unittest
 }  // namespace compiler
 }  // namespace internal

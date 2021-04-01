@@ -45,7 +45,7 @@ void FuncNameInferrer::RemoveAsyncKeywordFromEnd() {
   }
 }
 
-AstConsString* FuncNameInferrer::MakeNameFromStack() {
+const AstConsString* FuncNameInferrer::MakeNameFromStack() {
   if (names_stack_.size() == 0) {
     return ast_value_factory_->empty_cons_string();
   }
@@ -70,7 +70,7 @@ AstConsString* FuncNameInferrer::MakeNameFromStack() {
 }
 
 void FuncNameInferrer::InferFunctionsNames() {
-  AstConsString* func_name = MakeNameFromStack();
+  const AstConsString* func_name = MakeNameFromStack();
   for (FunctionLiteral* func : funcs_to_infer_) {
     func->set_raw_inferred_name(func_name);
   }

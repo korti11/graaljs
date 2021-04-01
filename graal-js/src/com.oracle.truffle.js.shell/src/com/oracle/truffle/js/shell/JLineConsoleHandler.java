@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -44,43 +44,32 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-import org.graalvm.shadowed.org.jline.reader.EndOfFileException;
-import org.graalvm.shadowed.org.jline.reader.History;
-import org.graalvm.shadowed.org.jline.reader.LineReader;
-import org.graalvm.shadowed.org.jline.reader.LineReaderBuilder;
-import org.graalvm.shadowed.org.jline.reader.UserInterruptException;
-import org.graalvm.shadowed.org.jline.reader.impl.history.DefaultHistory;
-import org.graalvm.shadowed.org.jline.terminal.Terminal;
-import org.graalvm.shadowed.org.jline.terminal.TerminalBuilder;
+import jline.console.ConsoleReader;
+import jline.console.history.MemoryHistory;
 
 public class JLineConsoleHandler implements ConsoleHandler {
 
-    private final Terminal terminal;
-    private final LineReader reader;
-    private final History history;
-    private final String prompt;
+    private final ConsoleReader console;
 
-    public JLineConsoleHandler(InputStream inStream, OutputStream outStream, String prompt) throws IOException {
-        this.terminal = TerminalBuilder.builder().jna(false).streams(inStream, outStream).system(true).build();
-        this.history = new DefaultHistory();
-        this.prompt = prompt;
+    public JLineConsoleHandler(InputStream in, OutputStream out, String prompt) throws IOException {
+        this.console = createConsole(in, out, prompt);
+    }
 
-        LineReaderBuilder builder = LineReaderBuilder.builder().terminal(terminal).history(history);
-        builder.option(LineReader.Option.DISABLE_EVENT_EXPANSION, true);
-        builder.variable(LineReader.COMMENT_BEGIN, "//");
-        builder.variable(LineReader.BELL_STYLE, "off");
-        this.reader = builder.build();
+    private static ConsoleReader createConsole(InputStream in, OutputStream out, String prompt) throws IOException {
+        ConsoleReader console = new ConsoleReader(in, out);
+        MemoryHistory history = new MemoryHistory();
+        console.setHistory(history);
+        console.setExpandEvents(false);
+        console.setBellEnabled(false);
+        console.setHandleUserInterrupt(false);
+        console.setCommentBegin("//");
+        console.setPrompt(prompt);
+        return console;
     }
 
     @Override
     public String readLine() throws IOException {
-        try {
-            return reader.readLine(prompt);
-        } catch (EndOfFileException e) {
-            return null;
-        } catch (UserInterruptException e) {
-            return null;
-        }
+        return console.readLine();
     }
 
 }

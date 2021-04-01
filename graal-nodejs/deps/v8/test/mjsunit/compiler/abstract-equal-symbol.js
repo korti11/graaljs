@@ -47,9 +47,6 @@
   assertFalse(foo(a));
   %OptimizeFunctionOnNextCall(foo);
   assertTrue(foo(b));
-  // Re-prepare the function immediately to make sure type feedback isn't
-  // cleared by untimely gc, as re-optimization on new feedback is tested below
-  %PrepareFunctionForOptimization(foo);
   assertFalse(foo(a));
   assertOptimized(foo);
 
@@ -58,6 +55,7 @@
   assertUnoptimized(foo);
 
   // Make sure TurboFan learns the new feedback
+  %PrepareFunctionForOptimization(foo);
   %OptimizeFunctionOnNextCall(foo);
   assertFalse(foo("a"));
   assertOptimized(foo);

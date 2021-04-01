@@ -4,6 +4,8 @@ const { ObjectDefineProperty } = primordials;
 
 delete process._debugProcess;
 delete process._debugEnd;
+delete process._startProfilerIdleNotifier;
+delete process._stopProfilerIdleNotifier;
 
 function defineStream(name, getter) {
   ObjectDefineProperty(process, name, {

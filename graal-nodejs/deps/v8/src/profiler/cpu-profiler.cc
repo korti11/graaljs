@@ -12,7 +12,6 @@
 #include "src/debug/debug.h"
 #include "src/execution/frames-inl.h"
 #include "src/execution/vm-state-inl.h"
-#include "src/libsampler/sampler.h"
 #include "src/logging/counters.h"
 #include "src/logging/log.h"
 #include "src/profiler/cpu-profiler-inl.h"
@@ -85,6 +84,7 @@ ProfilerEventsProcessor::ProfilerEventsProcessor(
     : Thread(Thread::Options("v8:ProfEvntProc", kProfilerStackSize)),
       generator_(generator),
       code_observer_(code_observer),
+      running_(1),
       last_code_event_id_(0),
       last_processed_code_event_id_(0),
       isolate_(isolate) {
@@ -149,10 +149,7 @@ void ProfilerEventsProcessor::AddSample(TickSample sample) {
 }
 
 void ProfilerEventsProcessor::StopSynchronously() {
-  bool expected = true;
-  if (!running_.compare_exchange_strong(expected, false,
-                                        std::memory_order_relaxed))
-    return;
+  if (!base::Relaxed_AtomicExchange(&running_, 0)) return;
   {
     base::MutexGuard guard(&running_mutex_);
     running_cond_.NotifyOne();
@@ -227,7 +224,7 @@ SamplingEventsProcessor::ProcessOneSample() {
 
 void SamplingEventsProcessor::Run() {
   base::MutexGuard guard(&running_mutex_);
-  while (running_.load(std::memory_order_relaxed)) {
+  while (!!base::Relaxed_Load(&running_)) {
     base::TimeTicks nextSampleTime =
         base::TimeTicks::HighResolutionNow() + period_;
     base::TimeTicks now;
@@ -264,7 +261,7 @@ void SamplingEventsProcessor::Run() {
           // If true was returned, we got interrupted before the timeout
           // elapsed. If this was not due to a change in running state, a
           // spurious wakeup occurred (thus we should continue to wait).
-          if (!running_.load(std::memory_order_relaxed)) {
+          if (!base::Relaxed_Load(&running_)) {
             break;
           }
           now = base::TimeTicks::HighResolutionNow();
@@ -290,7 +287,7 @@ void SamplingEventsProcessor::SetSamplingInterval(base::TimeDelta period) {
   StopSynchronously();
 
   period_ = period;
-  running_.store(true, std::memory_order_relaxed);
+  base::Relaxed_Store(&running_, 1);
 
   StartSynchronously();
 }

@@ -27,7 +27,6 @@ int main(int argc, char* argv[]) {
 #endif  // _WIN32
 
   v8::V8::SetFlagsFromString("--random_seed=42");
-  v8::V8::SetFlagsFromString("--harmony-top-level-await");
 
   if (argc < 2) {
     std::cerr << "Usage: " << argv[0] << " <path/to/output.cc>\n";
@@ -49,8 +48,9 @@ int main(int argc, char* argv[]) {
 
   // Create a new Isolate and make it the current one.
   Isolate::CreateParams create_params;
-  create_params.array_buffer_allocator_shared.reset(
-      ArrayBuffer::Allocator::NewDefaultAllocator());
+  std::unique_ptr<ArrayBuffer::Allocator> array_buffer_allocator {
+      ArrayBuffer::Allocator::NewDefaultAllocator() };
+  create_params.array_buffer_allocator = array_buffer_allocator.get();
   Isolate* isolate = Isolate::New(create_params);
   {
     Isolate::Scope isolate_scope(isolate);

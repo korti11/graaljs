@@ -53,7 +53,3 @@ module.exports = function(context) {
     [astSelector]: (node) => checkNamesArgument(node)
   };
 };
-
-module.exports.meta = {
-  fixable: 'code'
-};

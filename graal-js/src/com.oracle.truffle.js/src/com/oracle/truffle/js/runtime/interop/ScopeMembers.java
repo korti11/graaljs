@@ -56,11 +56,8 @@ import com.oracle.truffle.api.interop.TruffleObject;
 import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
-import com.oracle.truffle.api.nodes.BlockNode;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.NodeVisitor;
-import com.oracle.truffle.api.object.DynamicObject;
-import com.oracle.truffle.api.object.DynamicObjectLibrary;
 import com.oracle.truffle.api.source.SourceSection;
 import com.oracle.truffle.js.nodes.FrameDescriptorProvider;
 import com.oracle.truffle.js.nodes.JavaScriptNode;
@@ -142,8 +139,7 @@ final class ScopeMembers implements TruffleObject {
             for (;;) { // frameLevel
                 Frame outerScope = outerFrame;
                 for (;;) { // scopeLevel
-                    FrameDescriptor frameDescriptor = outerScope.getFrameDescriptor();
-                    for (FrameSlot slot : frameDescriptor.getSlots()) {
+                    for (FrameSlot slot : outerScope.getFrameDescriptor().getSlots()) {
                         if (JSFrameUtil.isInternal(slot)) {
                             continue;
                         }
@@ -153,19 +149,9 @@ final class ScopeMembers implements TruffleObject {
                         membersList.add(new Key(slot.getIdentifier().toString(), descNode, slot));
                     }
 
-                    FrameSlot parentSlot = frameDescriptor.findFrameSlot(ScopeFrameNode.PARENT_SCOPE_IDENTIFIER);
+                    FrameSlot parentSlot = outerScope.getFrameDescriptor().findFrameSlot(ScopeFrameNode.PARENT_SCOPE_IDENTIFIER);
                     if (parentSlot == null) {
                         membersList.add(new Key(ScopeVariables.RECEIVER_MEMBER, descNode, null));
-
-                        // insert direct eval scope variables
-                        FrameSlot evalScopeSlot = frameDescriptor.findFrameSlot(ScopeFrameNode.EVAL_SCOPE_IDENTIFIER);
-                        if (evalScopeSlot != null) {
-                            DynamicObject evalScope = (DynamicObject) FrameUtil.getObjectSafe(outerScope, evalScopeSlot);
-                            DynamicObjectLibrary objLib = DynamicObjectLibrary.getUncached();
-                            for (Object key : objLib.getKeyArray(evalScope)) {
-                                membersList.add(new Key(key.toString(), descNode, null));
-                            }
-                        }
                         break;
                     }
                     outerScope = (Frame) FrameUtil.getObjectSafe(outerScope, parentSlot);
@@ -271,8 +257,6 @@ final class ScopeMembers implements TruffleObject {
                             }
                             return true;
                         } else if (node == blockOrRoot) {
-                            return true;
-                        } else if (node instanceof BlockNode) {
                             return true;
                         } else {
                             return false;

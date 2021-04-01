@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -55,6 +55,7 @@ import com.ibm.icu.text.CaseMap;
 import com.ibm.icu.text.CaseMap.Lower;
 import com.ibm.icu.text.CaseMap.Upper;
 import com.ibm.icu.text.NumberingSystem;
+import com.ibm.icu.util.Region;
 import com.ibm.icu.util.ULocale;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.object.DynamicObject;
@@ -396,11 +397,6 @@ public final class IntlUtil {
         }
     }
 
-    // Placeholders used to work around incorrect modifications of local extensions
-    // performed by ULocale.Builder
-    private static final String YES_PLACEHOLDER = "yes31415";
-    private static final String TRUE_PLACEHOLDER = "true2718";
-
     @TruffleBoundary
     // https://tc39.github.io/ecma402/#sec-canonicalizelanguagetag
     public static String validateAndCanonicalizeLanguageTag(String languageTag) {
@@ -412,12 +408,74 @@ public final class IntlUtil {
                 throw Errors.createRangeErrorFormat("Language tag is not well-formed: %s", null, languageTag);
             }
 
-            ULocale locale = ULocale.createCanonical(ULocale.getName(languageTag));
-            ULocale.Builder builder = new ULocale.Builder().setLocale(locale);
+            Locale.Builder builder = new Locale.Builder().setLanguageTag(languageTag);
+            Locale locale = builder.build();
+
+            // Canonicalization is supposed to replace language aliases
+            // but (U)Locale fails to do so.
+            String language = locale.getLanguage();
+            if (!language.isEmpty()) {
+                String canonicalLanguage;
+                // ICU fails to handle mo->ro, cmn->zh replacements from
+                // https://github.com/unicode-org/cldr/blob/master/common/supplemental/supplementalMetadata.xml
+                if ("mo".equals(language)) {
+                    canonicalLanguage = "ro";
+                } else if ("cmn".equals(language)) {
+                    canonicalLanguage = "zh";
+                } else {
+                    if ("cnr".equals(language)) {
+                        builder.setRegion("ME");
+                    } else if ("sh".equals(language) && locale.getScript().isEmpty()) {
+                        builder.setScript("Latn");
+                    }
+                    // ULocale.createCanonical() fails to canonicalize other parts
+                    // of language tag (like region) and even modifies extensions in an undesirable
+                    // way => we use it for the canonicalization of the language only
+                    canonicalLanguage = ULocale.createCanonical(language).getLanguage();
+                }
+                builder.setLanguage(canonicalLanguage);
+            }
+
+            // Canonicalization is supposed to replace region aliases but (U)Locale fails to do so.
+            String region = locale.getCountry();
+            if (!region.isEmpty()) {
+                try {
+                    Region icuRegion = Region.getInstance(region);
+                    if (icuRegion.getType() == Region.RegionType.DEPRECATED) {
+                        ULocale baseLocale = new ULocale.Builder().setLanguage(language).setScript(locale.getScript()).build();
+                        String preferredRegionName = ULocale.addLikelySubtags(baseLocale).getCountry();
+                        Region preferredRegion = Region.getInstance(preferredRegionName);
+                        List<Region> replacements = icuRegion.getPreferredValues();
+                        if (replacements.contains(preferredRegion)) {
+                            icuRegion = preferredRegion;
+                        } else {
+                            icuRegion = replacements.get(0);
+                        }
+                    }
+                    String canonicalRegion = icuRegion.toString();
+                    builder.setRegion(canonicalRegion);
+                } catch (IllegalArgumentException iaex) {
+                    // ICU is not aware of this region => let's assume that it is canonicalized.
+                }
+            }
 
             String variant = locale.getVariant();
-            if (variant.indexOf('_') != -1 || variant.indexOf('-') != -1) {
-                String[] variants = variant.split("[_-]");
+            if (!variant.isEmpty()) {
+                String[] variants = variant.toLowerCase().split("[_-]");
+                // Perform some replacements required by
+                // https://github.com/unicode-org/cldr/blob/master/common/supplemental/supplementalMetadata.xml
+                for (int i = 0; i < variants.length; i++) {
+                    if ("heploc".equals(variants[i])) {
+                        variants[i] = "alalc97";
+                    } else if ("arevela".equals(variants[i])) {
+                        variants[i] = "";
+                    } else if ("arevmda".equals(variants[i])) {
+                        variants[i] = "";
+                        if ("hy".equals(locale.getLanguage())) {
+                            builder.setLanguage("hyw");
+                        }
+                    }
+                }
                 if (new HashSet<>(Arrays.asList(variants)).size() != variants.length) {
                     throw Errors.createRangeErrorFormat("Language tag with duplicate variants: %s", null, languageTag);
                 }
@@ -446,16 +504,24 @@ public final class IntlUtil {
                     }
                 }
 
-                Locale loc = new Locale.Builder().setLanguageTag(languageTag).build();
-                for (String key : loc.getUnicodeLocaleKeys()) {
-                    String type = loc.getUnicodeLocaleType(key);
-                    if ("yes".equals(type)) {
-                        if (!("kb".equals(key) || "kc".equals(key) || "kh".equals(key) || "kk".equals(key) || "kn".equals(key))) {
-                            type = YES_PLACEHOLDER;
+                for (String key : locale.getUnicodeLocaleKeys()) {
+                    String type = locale.getUnicodeLocaleType(key);
+                    if ("true".equals(type)) {
+                        type = "";
+                    } else if ("yes".equals(type)) {
+                        if ("kb".equals(key) || "kc".equals(key) || "kh".equals(key) || "kk".equals(key) || "kn".equals(key)) {
+                            type = "";
                         }
-                    }
-                    if ("rg".equals(key) || "sd".equals(key)) {
+                    } else if ("ca".equals(key)) {
+                        type = normalizeCAType(type);
+                    } else if ("ks".equals(key)) {
+                        type = normalizeKSType(type);
+                    } else if ("ms".equals(key)) {
+                        type = normalizeMSType(type);
+                    } else if ("rg".equals(key) || "sd".equals(key)) {
                         type = normalizeRGType(type);
+                    } else if ("tz".equals(key)) {
+                        type = normalizeTZType(type);
                     }
                     builder.setUnicodeLocaleKeyword(key, type);
                 }
@@ -466,8 +532,7 @@ public final class IntlUtil {
                     builder.setExtension('t', normalizeTransformedExtension(transformedExt));
                 }
             }
-            String result = maybeAppendMissingLanguageSubTag(builder.build().toLanguageTag());
-            return result.replaceAll("-" + YES_PLACEHOLDER, "-yes").replaceAll("-" + TRUE_PLACEHOLDER, "-true");
+            return maybeAppendMissingLanguageSubTag(builder.build().toLanguageTag());
         } catch (IllformedLocaleException e) {
             throw Errors.createRangeError(e.getMessage());
         }
@@ -486,6 +551,22 @@ public final class IntlUtil {
         return type;
     }
 
+    private static String normalizeKSType(String type) {
+        if ("primary".equals(type)) {
+            return "level1";
+        } else if ("tertiary".equals(type)) {
+            return "level3";
+        }
+        return type;
+    }
+
+    private static String normalizeMSType(String type) {
+        if ("imperial".equals(type)) {
+            return "uksystem";
+        }
+        return type;
+    }
+
     private static String normalizeRGType(String type) {
         if ("cn11".equals(type)) {
             return "cnbj";
@@ -497,6 +578,23 @@ public final class IntlUtil {
             return "lucl";
         } else if ("no23".equals(type)) {
             return "no50";
+        }
+        return type;
+    }
+
+    private static String normalizeTZType(String type) {
+        if ("cnckg".equals(type)) {
+            return "cnsha";
+        } else if ("eire".equals(type)) {
+            return "iedub";
+        } else if ("est".equals(type)) {
+            return "utcw05";
+        } else if ("gmt0".equals(type)) {
+            return "gmt";
+        } else if ("uct".equals(type)) {
+            return "utc";
+        } else if ("zulu".equals(type)) {
+            return "utc";
         }
         return type;
     }
@@ -543,9 +641,6 @@ public final class IntlUtil {
             String value = entry.getValue();
             if ("names".equalsIgnoreCase(value)) {
                 value = "prprname";
-            }
-            if ("true".equals(value)) {
-                value = TRUE_PLACEHOLDER;
             }
             normalized.append(entry.getKey()).append('-').append(value);
         }

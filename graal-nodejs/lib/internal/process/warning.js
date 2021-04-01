@@ -3,32 +3,21 @@
 const {
   ArrayIsArray,
   Error,
-  ErrorCaptureStackTrace,
-  String,
 } = primordials;
 
-const assert = require('internal/assert');
 const { ERR_INVALID_ARG_TYPE } = require('internal/errors').codes;
 
 // Lazily loaded
 let fs;
 let fd;
 let warningFile;
-let options;
 
 function lazyOption() {
   // This will load `warningFile` only once. If the flag is not set,
   // `warningFile` will be set to an empty string.
   if (warningFile === undefined) {
-    options = require('internal/options');
-    if (options.getOptionValue('--diagnostic-dir') !== '') {
-      warningFile = options.getOptionValue('--diagnostic-dir');
-    }
-    if (options.getOptionValue('--redirect-warnings') !== '') {
-      warningFile = options.getOptionValue('--redirect-warnings');
-    } else {
-      warningFile = '';
-    }
+    warningFile = require('internal/options')
+                  .getOptionValue('--redirect-warnings');
   }
   return warningFile;
 }
@@ -65,10 +54,9 @@ function writeToFile(message) {
 }
 
 function doEmitWarning(warning) {
-  process.emit('warning', warning);
+  return () => process.emit('warning', warning);
 }
 
-let traceWarningHelperShown = false;
 function onWarning(warning) {
   if (!(warning instanceof Error)) return;
   const isDeprecation = warning.name === 'DeprecationWarning';
@@ -89,13 +77,6 @@ function onWarning(warning) {
   if (typeof warning.detail === 'string') {
     msg += `\n${warning.detail}`;
   }
-  if (!trace && !traceWarningHelperShown) {
-    const flag = isDeprecation ? '--trace-deprecation' : '--trace-warnings';
-    const argv0 = require('path').basename(process.argv0 || 'node', '.exe');
-    msg += `\n(Use \`${argv0} ${flag} ...\` to show where the warning ` +
-           'was created)';
-    traceWarningHelperShown = true;
-  }
   const warningFile = lazyOption();
   if (warningFile) {
     return writeToFile(msg);
@@ -106,7 +87,7 @@ function onWarning(warning) {
 // process.emitWarning(error)
 // process.emitWarning(str[, type[, code]][, ctor])
 // process.emitWarning(str[, options])
-function emitWarning(warning, type, code, ctor) {
+function emitWarning(warning, type, code, ctor, now) {
   let detail;
   if (type !== null && typeof type === 'object' && !ArrayIsArray(type)) {
     ctor = type.ctor;
@@ -129,7 +110,18 @@ function emitWarning(warning, type, code, ctor) {
     throw new ERR_INVALID_ARG_TYPE('code', 'string', code);
   }
   if (typeof warning === 'string') {
-    warning = createWarningObject(warning, type, code, ctor, detail);
+    // Improve error creation performance by skipping the error frames.
+    // They are added in the `captureStackTrace()` function below.
+    const tmpStackLimit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 0;
+    // eslint-disable-next-line no-restricted-syntax
+    warning = new Error(warning);
+    Error.stackTraceLimit = tmpStackLimit;
+    warning.name = String(type || 'Warning');
+    if (code !== undefined) warning.code = code;
+    if (detail !== undefined) warning.detail = detail;
+    // eslint-disable-next-line no-restricted-syntax
+    Error.captureStackTrace(warning, ctor || process.emitWarning);
   } else if (!(warning instanceof Error)) {
     throw new ERR_INVALID_ARG_TYPE('warning', ['Error', 'string'], warning);
   }
@@ -139,31 +131,11 @@ function emitWarning(warning, type, code, ctor) {
     if (process.throwDeprecation)
       throw warning;
   }
-  process.nextTick(doEmitWarning, warning);
-}
-
-function emitWarningSync(warning) {
-  process.emit('warning', createWarningObject(warning));
-}
-
-function createWarningObject(warning, type, code, ctor, detail) {
-  assert(typeof warning === 'string');
-  // Improve error creation performance by skipping the error frames.
-  // They are added in the `captureStackTrace()` function below.
-  const tmpStackLimit = Error.stackTraceLimit;
-  Error.stackTraceLimit = 0;
-  // eslint-disable-next-line no-restricted-syntax
-  warning = new Error(warning);
-  Error.stackTraceLimit = tmpStackLimit;
-  warning.name = String(type || 'Warning');
-  if (code !== undefined) warning.code = code;
-  if (detail !== undefined) warning.detail = detail;
-  ErrorCaptureStackTrace(warning, ctor || process.emitWarning);
-  return warning;
+  if (now) process.emit('warning', warning);
+  else process.nextTick(doEmitWarning(warning));
 }
 
 module.exports = {
-  emitWarning,
-  emitWarningSync,
   onWarning,
+  emitWarning
 };

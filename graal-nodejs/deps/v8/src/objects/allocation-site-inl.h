@@ -16,11 +16,12 @@
 namespace v8 {
 namespace internal {
 
-TQ_OBJECT_CONSTRUCTORS_IMPL(AllocationMemento)
+OBJECT_CONSTRUCTORS_IMPL(AllocationMemento, Struct)
 OBJECT_CONSTRUCTORS_IMPL(AllocationSite, Struct)
 
 NEVER_READ_ONLY_SPACE_IMPL(AllocationSite)
 
+CAST_ACCESSOR(AllocationMemento)
 CAST_ACCESSOR(AllocationSite)
 
 ACCESSORS(AllocationSite, transition_info_or_boilerplate, Object,
@@ -58,9 +59,9 @@ bool AllocationSite::HasWeakNext() const {
 }
 
 void AllocationSite::Initialize() {
-  set_transition_info_or_boilerplate(Smi::zero());
+  set_transition_info_or_boilerplate(Smi::kZero);
   SetElementsKind(GetInitialFastElementsKind());
-  set_nested_site(Smi::zero());
+  set_nested_site(Smi::kZero);
   set_pretenure_data(0);
   set_pretenure_create_count(0);
   set_dependent_code(
@@ -224,7 +225,7 @@ bool AllocationSite::DigestTransitionFeedback(Handle<AllocationSite> site,
         }
         JSObject::TransitionElementsKind(boilerplate, to_kind);
         site->dependent_code().DeoptimizeDependentCodeGroup(
-            DependentCode::kAllocationSiteTransitionChangedGroup);
+            isolate, DependentCode::kAllocationSiteTransitionChangedGroup);
         result = true;
       }
     }
@@ -244,7 +245,7 @@ bool AllocationSite::DigestTransitionFeedback(Handle<AllocationSite> site,
       }
       site->SetElementsKind(to_kind);
       site->dependent_code().DeoptimizeDependentCodeGroup(
-          DependentCode::kAllocationSiteTransitionChangedGroup);
+          isolate, DependentCode::kAllocationSiteTransitionChangedGroup);
       result = true;
     }
   }

@@ -1,7 +1,9 @@
 'use strict';
 
-// This test makes sure that `writeFile()` always writes from the current
-// position of the file, instead of truncating the file.
+/*
+ * This test makes sure that `writeFile()` always writes from the current
+ * position of the file, instead of truncating the file.
+ */
 
 const common = require('../common');
 const assert = require('assert');
@@ -27,8 +29,6 @@ async function writeFileTest() {
 
   /* New content should be written at position five, instead of zero. */
   assert.deepStrictEqual(readFileSync(fn).toString(), 'HelloWorld');
-
-  await handle.close();
 }
 
 

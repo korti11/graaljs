@@ -14,10 +14,10 @@ const optionsIPv4 = {
 };
 
 const optionsIPv6 = {
-  host: '::1',
+  host: common.localhostIPv6,
   port: common.PORT + 2,
   localPort: common.PORT + 3,
-  localAddress: '::1',
+  localAddress: common.localhostIPv6
 };
 
 function onError(err, options) {

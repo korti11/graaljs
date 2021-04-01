@@ -5,8 +5,6 @@
 #ifndef V8_WASM_WASM_INTERPRETER_H_
 #define V8_WASM_WASM_INTERPRETER_H_
 
-#include <memory>
-
 #include "src/wasm/wasm-opcodes.h"
 #include "src/wasm/wasm-value.h"
 #include "src/zone/zone-containers.h"
@@ -133,11 +131,15 @@ class V8_EXPORT_PRIVATE WasmInterpreter {
 
     // Stack inspection and modification.
     pc_t GetBreakpointPc();
+    // TODO(clemensh): Make this uint32_t.
     int GetFrameCount();
     // The InterpretedFrame is only valid as long as the Thread is paused.
     FramePtr GetFrame(int index);
     WasmValue GetReturnValue(int index = 0);
     TrapReason GetTrapReason();
+
+    uint32_t GetGlobalCount();
+    WasmValue GetGlobalValue(uint32_t index);
 
     // Returns true if the thread executed an instruction which may produce
     // nondeterministic results, e.g. float div, float sqrt, and float mul,
@@ -171,7 +173,6 @@ class V8_EXPORT_PRIVATE WasmInterpreter {
   WasmInterpreter(Isolate* isolate, const WasmModule* module,
                   const ModuleWireBytes& wire_bytes,
                   Handle<WasmInstanceObject> instance);
-
   ~WasmInterpreter();
 
   //==========================================================================
@@ -179,9 +180,6 @@ class V8_EXPORT_PRIVATE WasmInterpreter {
   //==========================================================================
   void Run();
   void Pause();
-
-  // Prepare {function} for stepping in from Javascript.
-  void PrepareStepIn(const WasmFunction* function);
 
   // Set a breakpoint at {pc} in {function} to be {enabled}. Returns the
   // previous state of the breakpoint at {pc}.
@@ -216,9 +214,7 @@ class V8_EXPORT_PRIVATE WasmInterpreter {
 
  private:
   Zone zone_;
-  std::unique_ptr<WasmInterpreterInternals> internals_;
-
-  DISALLOW_COPY_AND_ASSIGN(WasmInterpreter);
+  WasmInterpreterInternals* internals_;
 };
 
 }  // namespace wasm

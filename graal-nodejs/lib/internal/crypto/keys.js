@@ -6,8 +6,7 @@ const {
 } = primordials;
 
 const {
-  KeyObjectHandle,
-  createNativeKeyObjectClass,
+  KeyObject: KeyObjectHandle,
   kKeyTypeSecret,
   kKeyTypePublic,
   kKeyTypePrivate,
@@ -43,97 +42,80 @@ for (const m of [[kKeyEncodingPKCS1, 'pkcs1'], [kKeyEncodingPKCS8, 'pkcs8'],
                  [kKeyEncodingSPKI, 'spki'], [kKeyEncodingSEC1, 'sec1']])
   encodingNames[m[0]] = m[1];
 
-// Creating the KeyObject class is a little complicated due to inheritance
-// and that fact that KeyObjects should be transferrable between threads,
-// which requires the KeyObject base class to be implemented in C++.
-// The creation requires a callback to make sure that the NativeKeyObject
-// base class cannot exist without the other KeyObject implementations.
-const [
-  KeyObject,
-  SecretKeyObject,
-  PublicKeyObject,
-  PrivateKeyObject
-] = createNativeKeyObjectClass((NativeKeyObject) => {
-  // Publicly visible KeyObject class.
-  class KeyObject extends NativeKeyObject {
-    constructor(type, handle) {
-      if (type !== 'secret' && type !== 'public' && type !== 'private')
-        throw new ERR_INVALID_ARG_VALUE('type', type);
-      if (typeof handle !== 'object' || !(handle instanceof KeyObjectHandle))
-        throw new ERR_INVALID_ARG_TYPE('handle', 'object', handle);
+class KeyObject {
+  constructor(type, handle) {
+    if (type !== 'secret' && type !== 'public' && type !== 'private')
+      throw new ERR_INVALID_ARG_VALUE('type', type);
+    if (typeof handle !== 'object')
+      throw new ERR_INVALID_ARG_TYPE('handle', 'object', handle);
 
-      super(handle);
+    this[kKeyType] = type;
 
-      this[kKeyType] = type;
-
-      ObjectDefineProperty(this, kHandle, {
-        value: handle,
-        enumerable: false,
-        configurable: false,
-        writable: false
-      });
-    }
-
-    get type() {
-      return this[kKeyType];
-    }
+    ObjectDefineProperty(this, kHandle, {
+      value: handle,
+      enumerable: false,
+      configurable: false,
+      writable: false
+    });
   }
 
-  class SecretKeyObject extends KeyObject {
-    constructor(handle) {
-      super('secret', handle);
-    }
+  get type() {
+    return this[kKeyType];
+  }
+}
 
-    get symmetricKeySize() {
-      return this[kHandle].getSymmetricKeySize();
-    }
-
-    export() {
-      return this[kHandle].export();
-    }
+class SecretKeyObject extends KeyObject {
+  constructor(handle) {
+    super('secret', handle);
   }
 
-  const kAsymmetricKeyType = Symbol('kAsymmetricKeyType');
-
-  class AsymmetricKeyObject extends KeyObject {
-    get asymmetricKeyType() {
-      return this[kAsymmetricKeyType] ||
-             (this[kAsymmetricKeyType] = this[kHandle].getAsymmetricKeyType());
-    }
+  get symmetricKeySize() {
+    return this[kHandle].getSymmetricKeySize();
   }
 
-  class PublicKeyObject extends AsymmetricKeyObject {
-    constructor(handle) {
-      super('public', handle);
-    }
+  export() {
+    return this[kHandle].export();
+  }
+}
 
-    export(encoding) {
-      const {
-        format,
-        type
-      } = parsePublicKeyEncoding(encoding, this.asymmetricKeyType);
-      return this[kHandle].export(format, type);
-    }
+const kAsymmetricKeyType = Symbol('kAsymmetricKeyType');
+
+class AsymmetricKeyObject extends KeyObject {
+  get asymmetricKeyType() {
+    return this[kAsymmetricKeyType] ||
+           (this[kAsymmetricKeyType] = this[kHandle].getAsymmetricKeyType());
+  }
+}
+
+class PublicKeyObject extends AsymmetricKeyObject {
+  constructor(handle) {
+    super('public', handle);
   }
 
-  class PrivateKeyObject extends AsymmetricKeyObject {
-    constructor(handle) {
-      super('private', handle);
-    }
+  export(encoding) {
+    const {
+      format,
+      type
+    } = parsePublicKeyEncoding(encoding, this.asymmetricKeyType);
+    return this[kHandle].export(format, type);
+  }
+}
 
-    export(encoding) {
-      const {
-        format,
-        type,
-        cipher,
-        passphrase
-      } = parsePrivateKeyEncoding(encoding, this.asymmetricKeyType);
-      return this[kHandle].export(format, type, cipher, passphrase);
-    }
+class PrivateKeyObject extends AsymmetricKeyObject {
+  constructor(handle) {
+    super('private', handle);
   }
 
-  return [KeyObject, SecretKeyObject, PublicKeyObject, PrivateKeyObject];
-});
+  export(encoding) {
+    const {
+      format,
+      type,
+      cipher,
+      passphrase
+    } = parsePrivateKeyEncoding(encoding, this.asymmetricKeyType);
+    return this[kHandle].export(format, type, cipher, passphrase);
+  }
+}
 
 function parseKeyFormat(formatStr, defaultFormat, optionName) {
   if (formatStr === undefined && defaultFormat !== undefined)
@@ -332,23 +314,23 @@ function createSecretKey(key) {
   key = prepareSecretKey(key, true);
   if (key.byteLength === 0)
     throw new ERR_OUT_OF_RANGE('key.byteLength', '> 0', key.byteLength);
-  const handle = new KeyObjectHandle();
-  handle.init(kKeyTypeSecret, key);
+  const handle = new KeyObjectHandle(kKeyTypeSecret);
+  handle.init(key);
   return new SecretKeyObject(handle);
 }
 
 function createPublicKey(key) {
   const { format, type, data } = prepareAsymmetricKey(key, kCreatePublic);
-  const handle = new KeyObjectHandle();
-  handle.init(kKeyTypePublic, data, format, type);
+  const handle = new KeyObjectHandle(kKeyTypePublic);
+  handle.init(data, format, type);
   return new PublicKeyObject(handle);
 }
 
 function createPrivateKey(key) {
   const { format, type, data, passphrase } =
     prepareAsymmetricKey(key, kCreatePrivate);
-  const handle = new KeyObjectHandle();
-  handle.init(kKeyTypePrivate, data, format, type, passphrase);
+  const handle = new KeyObjectHandle(kKeyTypePrivate);
+  handle.init(data, format, type, passphrase);
   return new PrivateKeyObject(handle);
 }
 

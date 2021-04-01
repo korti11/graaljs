@@ -20,6 +20,9 @@ class Cell : public TorqueGeneratedCell<Cell, HeapObject> {
 
   inline Address ValueAddress() { return address() + kValueOffset; }
 
+  // Dispatched behavior.
+  DECL_PRINTER(Cell)
+
   using BodyDescriptor = FixedBodyDescriptor<kValueOffset, kSize, kSize>;
 
   TQ_OBJECT_CONSTRUCTORS(Cell)

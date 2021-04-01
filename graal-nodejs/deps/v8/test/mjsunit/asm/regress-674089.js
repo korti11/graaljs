@@ -7,7 +7,10 @@
 function outer() {
   "use asm";
   function inner() {
-    /f(/
+    switch (1) {
+      case 0:
+        break foo;
+    }
   }
 }
 outer();

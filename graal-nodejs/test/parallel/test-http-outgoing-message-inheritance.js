@@ -6,8 +6,8 @@ const { Writable } = require('stream');
 const assert = require('assert');
 
 // Check that OutgoingMessage can be used without a proper Socket
-// Refs: https://github.com/nodejs/node/issues/14386
-// Refs: https://github.com/nodejs/node/issues/14381
+// Fixes: https://github.com/nodejs/node/issues/14386
+// Fixes: https://github.com/nodejs/node/issues/14381
 
 class Response extends OutgoingMessage {
   _implicitHeader() {}

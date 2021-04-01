@@ -8,9 +8,7 @@ const { Interface } = require('readline');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-let debug = require('internal/util/debuglog').debuglog('repl', (fn) => {
-  debug = fn;
-});
+const debug = require('internal/util/debuglog').debuglog('repl');
 const { clearTimeout, setTimeout } = require('timers');
 
 // XXX(chrisdickinson): The 15ms debounce value is somewhat arbitrary.
@@ -99,7 +97,6 @@ function setupHistory(repl, historyPath, ready) {
     fs.ftruncate(hnd, 0, (err) => {
       repl._historyHandle = hnd;
       repl.on('line', online);
-      repl.once('exit', onexit);
 
       // Reading the file data out erases it
       repl.once('flushHistory', function() {
@@ -143,15 +140,6 @@ function setupHistory(repl, historyPath, ready) {
         repl.emit('flushHistory');
       }
     }
-  }
-
-  function onexit() {
-    if (repl._flushing) {
-      repl.once('flushHistory', onexit);
-      return;
-    }
-    repl.off('line', online);
-    fs.close(repl._historyHandle, () => {});
   }
 }
 

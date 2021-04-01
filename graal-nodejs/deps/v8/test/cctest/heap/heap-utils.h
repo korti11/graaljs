@@ -12,22 +12,6 @@ namespace v8 {
 namespace internal {
 namespace heap {
 
-class TemporaryEmbedderHeapTracerScope {
- public:
-  TemporaryEmbedderHeapTracerScope(v8::Isolate* isolate,
-                                   v8::EmbedderHeapTracer* tracer)
-      : isolate_(isolate) {
-    isolate_->SetEmbedderHeapTracer(tracer);
-  }
-
-  ~TemporaryEmbedderHeapTracerScope() {
-    isolate_->SetEmbedderHeapTracer(nullptr);
-  }
-
- private:
-  v8::Isolate* const isolate_;
-};
-
 void SealCurrentObjects(Heap* heap);
 
 int FixedArrayLenFromSize(int size);
@@ -42,14 +26,17 @@ std::vector<Handle<FixedArray>> CreatePadding(
     Heap* heap, int padding_size, AllocationType allocation,
     int object_size = kMaxRegularHeapObjectSize);
 
-bool FillCurrentPage(v8::internal::NewSpace* space,
-                     std::vector<Handle<FixedArray>>* out_handles = nullptr);
-
-bool FillCurrentPageButNBytes(
+void AllocateAllButNBytes(
     v8::internal::NewSpace* space, int extra_bytes,
     std::vector<Handle<FixedArray>>* out_handles = nullptr);
 
+void FillCurrentPage(v8::internal::NewSpace* space,
+                     std::vector<Handle<FixedArray>>* out_handles = nullptr);
+
 // Helper function that simulates a full new-space in the heap.
+bool FillUpOnePage(v8::internal::NewSpace* space,
+                   std::vector<Handle<FixedArray>>* out_handles = nullptr);
+
 void SimulateFullSpace(v8::internal::NewSpace* space,
                        std::vector<Handle<FixedArray>>* out_handles = nullptr);
 

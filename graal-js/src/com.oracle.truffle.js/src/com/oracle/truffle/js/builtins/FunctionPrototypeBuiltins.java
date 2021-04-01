@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -46,9 +46,6 @@ import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Cached.Shared;
 import com.oracle.truffle.api.dsl.Specialization;
-import com.oracle.truffle.api.interop.InteropLibrary;
-import com.oracle.truffle.api.interop.UnsupportedMessageException;
-import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.profiles.ConditionProfile;
@@ -76,7 +73,6 @@ import com.oracle.truffle.js.runtime.SuppressFBWarnings;
 import com.oracle.truffle.js.runtime.Symbol;
 import com.oracle.truffle.js.runtime.builtins.BuiltinEnum;
 import com.oracle.truffle.js.runtime.builtins.JSFunction;
-import com.oracle.truffle.js.runtime.builtins.JSFunctionObject;
 import com.oracle.truffle.js.runtime.builtins.JSProxy;
 import com.oracle.truffle.js.runtime.objects.JSObject;
 
@@ -222,11 +218,15 @@ public final class FunctionPrototypeBuiltins extends JSBuiltinsContainer.SwitchE
             }
 
             Object targetName = getFunctionNameNode.getValue(thisFnObj);
-            if (!JSRuntime.isString(targetName)) {
-                targetName = "";
+            if (!(targetName instanceof String)) {
+                if (JSRuntime.isLazyString(targetName)) {
+                    targetName = JSRuntime.toStringIsString(targetName);
+                } else {
+                    targetName = "";
+                }
             }
             if (setNameProfile.profile(targetName != JSFunction.getName(thisFnObj))) {
-                ((JSFunctionObject.Bound) boundFunction).setTargetName((CharSequence) targetName);
+                JSFunction.setBoundFunctionName(boundFunction, (String) targetName);
             }
 
             return boundFunction;
@@ -298,16 +298,22 @@ public final class FunctionPrototypeBuiltins extends JSBuiltinsContainer.SwitchE
             super(context, builtin);
         }
 
+        protected boolean isRootTarget(DynamicObject fnObj) {
+            return JSFunction.getCallTarget(fnObj) instanceof RootCallTarget;
+        }
+
         protected boolean isBoundTarget(DynamicObject fnObj) {
             return JSFunction.isBoundFunction(fnObj);
         }
 
-        @Specialization(guards = {"isJSFunction(fnObj)", "!isBoundTarget(fnObj)"})
+        @TruffleBoundary
+        @Specialization(guards = {"isJSFunction(fnObj)", "isRootTarget(fnObj)", "!isBoundTarget(fnObj)"})
         protected String toStringDefault(DynamicObject fnObj) {
-            return toStringDefaultTarget(fnObj);
+            RootCallTarget dct = (RootCallTarget) JSFunction.getCallTarget(fnObj);
+            return toStringDefaultTarget(dct, fnObj);
         }
 
-        @Specialization(guards = {"isJSFunction(fnObj)", "isBoundTarget(fnObj)"})
+        @Specialization(guards = {"isJSFunction(fnObj)", "isRootTarget(fnObj)", "isBoundTarget(fnObj)"})
         protected String toStringBound(DynamicObject fnObj) {
             if (getContext().isOptionV8CompatibilityMode()) {
                 return NATIVE_CODE_STR;
@@ -322,24 +328,17 @@ public final class FunctionPrototypeBuiltins extends JSBuiltinsContainer.SwitchE
             return "function " + name.substring(name.lastIndexOf(' ') + 1) + "() { [native code] }";
         }
 
+        @TruffleBoundary
+        @Specialization(guards = {"isJSFunction(fnObj)", "!isRootTarget(fnObj)"})
+        protected String toString(DynamicObject fnObj) {
+            CallTarget ct = JSFunction.getCallTarget(fnObj);
+            return ct.toString();
+        }
+
         @SuppressWarnings("unused")
         @Specialization(guards = {"isES2019OrLater()", "!isJSFunction(fnObj)", "isCallable.executeBoolean(fnObj)"}, limit = "1")
         protected String toStringCallable(Object fnObj,
-                        @Cached @Shared("isCallable") IsCallableNode isCallable,
-                        @CachedLibrary("fnObj") InteropLibrary interop) {
-            if (interop.hasExecutableName(fnObj)) {
-                try {
-                    Object name = interop.getExecutableName(fnObj);
-                    return getNameIntl(InteropLibrary.getFactory().getUncached().asString(name));
-                } catch (UnsupportedMessageException e) {
-                }
-            } else if (interop.isMetaObject(fnObj)) {
-                try {
-                    Object name = interop.getMetaSimpleName(fnObj);
-                    return getNameIntl(InteropLibrary.getFactory().getUncached().asString(name));
-                } catch (UnsupportedMessageException e) {
-                }
-            }
+                        @Cached @Shared("isCallable") IsCallableNode isCallable) {
             return NATIVE_CODE_STR;
         }
 
@@ -360,12 +359,7 @@ public final class FunctionPrototypeBuiltins extends JSBuiltinsContainer.SwitchE
         }
 
         @TruffleBoundary
-        private static String toStringDefaultTarget(DynamicObject fnObj) {
-            CallTarget ct = JSFunction.getCallTarget(fnObj);
-            if (!(ct instanceof RootCallTarget)) {
-                return ct.toString();
-            }
-            RootCallTarget dct = (RootCallTarget) ct;
+        private static String toStringDefaultTarget(RootCallTarget dct, DynamicObject fnObj) {
             RootNode rn = dct.getRootNode();
             SourceSection ssect = rn.getSourceSection();
             String result;

@@ -41,7 +41,6 @@
 package com.oracle.truffle.js.test.polyglot;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Collections;
@@ -114,9 +113,9 @@ public class JavaScriptLanguageTest {
             Value result = context.eval(JavaScriptLanguage.ID, "[array];");
             assertTrue(result.toString(), result.toString().contains("0, 1, 2, 3, 4"));
             result = context.eval(JavaScriptLanguage.ID, "String([array]);");
-            assertTrue(result.toString(), result.asString().contains("0,1,2,3,4"));
+            assertTrue(result.toString(), result.asString().contains("0, 1, 2, 3, 4"));
             result = context.eval(JavaScriptLanguage.ID, "'' + array;");
-            assertTrue(result.toString(), result.asString().contains("0,1,2,3,4"));
+            assertTrue(result.toString(), result.asString().contains("0, 1, 2, 3, 4"));
         }
     }
 
@@ -127,9 +126,9 @@ public class JavaScriptLanguageTest {
             Value result = context.eval(JavaScriptLanguage.ID, "[obj];");
             assertTrue(result.toString(), result.toString().contains("{answer: 42}"));
             result = context.eval(JavaScriptLanguage.ID, "String([obj]);");
-            assertTrue(result.toString(), result.asString().contains("[object Object]"));
+            assertTrue(result.toString(), result.asString().contains("{answer: 42}"));
             result = context.eval(JavaScriptLanguage.ID, "'' + obj;");
-            assertTrue(result.toString(), result.asString().contains("[object Object]"));
+            assertTrue(result.toString(), result.asString().contains("{answer: 42}"));
         }
     }
 
@@ -138,41 +137,6 @@ public class JavaScriptLanguageTest {
         try (Context context = JSTest.newContextBuilder().build()) {
             Value result = context.eval(JavaScriptLanguage.ID, "[1,[2,[3,[4,[5]]]]];");
             assertEquals("(2)[1, [2, [3, Array(2)]]]", result.toString());
-        }
-    }
-
-    @Test
-    public void testToPrimitiveHostObject() {
-        try (Context context = Context.newBuilder(JavaScriptLanguage.ID).allowAllAccess(true).build()) {
-            context.getBindings(JavaScriptLanguage.ID).putMember("obj", new TestHostObject());
-            Value res = context.eval(JavaScriptLanguage.ID, "obj + obj");
-            assertEquals(84, res.asInt());
-        }
-    }
-
-    public static final class TestHostObject {
-        @SuppressWarnings("static-method")
-        public int valueOf() {
-            return 42;
-        }
-
-        @Override
-        public String toString() {
-            return "string";
-        }
-    }
-
-    @Test
-    public void testRemoveBindings() {
-        try (Context context = JSTest.newContextBuilder().build()) {
-            Value bindings = context.getBindings("js");
-            assertTrue(bindings.removeMember("eval"));
-
-            assertFalse(bindings.hasMember("foo"));
-            context.eval(JavaScriptLanguage.ID, "foo=42;");
-            assertTrue(bindings.hasMember("foo"));
-            assertTrue(bindings.removeMember("foo"));
-            assertFalse(bindings.hasMember("foo"));
         }
     }
 }

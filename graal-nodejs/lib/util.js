@@ -239,7 +239,6 @@ module.exports = {
   _exceptionWithHostPort: exceptionWithHostPort,
   _extend,
   callbackify,
-  debug: debuglog,
   debuglog,
   deprecate,
   format,

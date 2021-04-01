@@ -10,10 +10,8 @@ function callNewWeak() {
 function main({ n }) {
   addon.count = 0;
   bench.start();
-  new Promise((resolve) => {
-    (function oneIteration() {
-      callNewWeak();
-      setImmediate(() => ((addon.count < n) ? oneIteration() : resolve()));
-    })();
-  }).then(() => bench.end(n));
+  while (addon.count < n) {
+    callNewWeak();
+  }
+  bench.end(n);
 }

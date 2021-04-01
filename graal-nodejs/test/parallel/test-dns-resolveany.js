@@ -45,7 +45,8 @@ server.bind(0, common.mustCall(async () => {
 
   validateResults(await dnsPromises.resolveAny('example.org'));
 
-  dns.resolveAny('example.org', common.mustSucceed((res) => {
+  dns.resolveAny('example.org', common.mustCall((err, res) => {
+    assert.ifError(err);
     validateResults(res);
     server.close();
   }));

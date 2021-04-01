@@ -5,8 +5,6 @@
 #ifndef V8_INTERPRETER_BYTECODE_ARRAY_ITERATOR_H_
 #define V8_INTERPRETER_BYTECODE_ARRAY_ITERATOR_H_
 
-#include <memory>
-
 #include "src/interpreter/bytecode-array-accessor.h"
 
 namespace v8 {

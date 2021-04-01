@@ -242,4 +242,3 @@ int setup_tests(void)
 #endif
     return 1;
 }
-

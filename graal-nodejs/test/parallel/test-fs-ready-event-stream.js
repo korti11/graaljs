@@ -17,5 +17,4 @@ const writeStream = fs.createWriteStream(writeFile, { autoClose: true });
 assert.strictEqual(writeStream.pending, true);
 writeStream.on('ready', common.mustCall(() => {
   assert.strictEqual(writeStream.pending, false);
-  writeStream.end();
 }));

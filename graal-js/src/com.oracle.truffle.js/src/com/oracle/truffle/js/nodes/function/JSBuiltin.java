@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -69,19 +69,16 @@ public final class JSBuiltin implements Builtin, JSFunctionData.CallTargetInitia
     private final BuiltinNodeFactory constructorNodeFactory;
     private final BuiltinNodeFactory newTargetConstructorNodeFactory;
 
-    private static final int GETTER_FLAG = 1 << 3;
-    private static final int SETTER_FLAG = 1 << 4;
-
-    public JSBuiltin(String containerName, String functionName, Object key, int length, int attributeFlags, int ecmaScriptVersion,
-                    boolean annexB, BuiltinNodeFactory functionNodeFactory, BuiltinNodeFactory constructorNodeFactory, BuiltinNodeFactory newTargetConstructorFactory) {
+    public JSBuiltin(String containerName, Object key, int length, int attributeFlags, int ecmaScriptVersion, boolean annexB,
+                    BuiltinNodeFactory functionNodeFactory, BuiltinNodeFactory constructorNodeFactory, BuiltinNodeFactory newTargetConstructorFactory) {
         assert isAllowedKey(key);
         assert (byte) ecmaScriptVersion == ecmaScriptVersion && (byte) attributeFlags == attributeFlags;
-        this.name = key instanceof Symbol ? ((Symbol) key).toFunctionNameString() : functionName;
+        this.name = key instanceof Symbol ? ((Symbol) key).toFunctionNameString() : (String) key;
         this.fullName = (containerName == null) ? name : (containerName + "." + name);
         this.key = key;
         this.length = length;
         this.ecmaScriptVersion = (byte) ecmaScriptVersion;
-        this.attributeFlags = (byte) (attributeFlags | detectAccessor(functionName));
+        this.attributeFlags = (byte) attributeFlags;
         this.annexB = annexB;
         this.functionNodeFactory = functionNodeFactory;
         this.constructorNodeFactory = constructorNodeFactory;
@@ -89,7 +86,7 @@ public final class JSBuiltin implements Builtin, JSFunctionData.CallTargetInitia
     }
 
     public JSBuiltin(String containerName, String name, int length, int flags, BuiltinNodeFactory functionNodeFactory) {
-        this(containerName, name, name, length, flags, 5, false, functionNodeFactory, null, null);
+        this(containerName, name, length, flags, 5, false, functionNodeFactory, null, null);
     }
 
     /**
@@ -147,7 +144,7 @@ public final class JSBuiltin implements Builtin, JSFunctionData.CallTargetInitia
 
     @Override
     public int getAttributeFlags() {
-        return (attributeFlags & JSAttributes.ATTRIBUTES_MASK);
+        return attributeFlags;
     }
 
     @Override
@@ -165,16 +162,6 @@ public final class JSBuiltin implements Builtin, JSFunctionData.CallTargetInitia
         return (attributeFlags & JSAttributes.NOT_ENUMERABLE) == 0;
     }
 
-    @Override
-    public boolean isGetter() {
-        return (attributeFlags & GETTER_FLAG) != 0;
-    }
-
-    @Override
-    public boolean isSetter() {
-        return (attributeFlags & SETTER_FLAG) != 0;
-    }
-
     public static SourceSection getSourceSection() {
         return createSourceSection();
     }
@@ -190,21 +177,12 @@ public final class JSBuiltin implements Builtin, JSFunctionData.CallTargetInitia
             return true;
         } else if (key instanceof String) {
             String name = (String) key;
-            // "$_" is needed for JSRegExp
-            if (!name.isEmpty() && (!name.endsWith("_") || name.equals("$_")) && !name.startsWith("_") || (name.startsWith("__") && name.endsWith("__"))) {
+            // "get $_" is needed for JSRegExp
+            if (!name.isEmpty() && (!name.endsWith("_") || name.equals("get $_")) && !name.startsWith("_") || (name.startsWith("__") && name.endsWith("__"))) {
                 return true;
             }
         }
         return false;
-    }
-
-    private static int detectAccessor(String functionName) {
-        if (functionName.startsWith("get ")) {
-            return GETTER_FLAG;
-        } else if (functionName.startsWith("set ")) {
-            return SETTER_FLAG;
-        }
-        return 0;
     }
 
     @Override

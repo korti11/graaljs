@@ -117,40 +117,14 @@ tmpdir.refresh();
 // https://github.com/joyent/node/issues/6690
 {
   let oldhandle;
-  assert.throws(
+  common.expectsInternalAssertion(
     () => {
       const w = fs.watch(__filename, common.mustNotCall());
       oldhandle = w._handle;
       w._handle = { close: w._handle.close };
       w.close();
     },
-    {
-      name: 'Error',
-      code: 'ERR_INTERNAL_ASSERTION',
-      message: /^handle must be a FSEvent/,
-    }
-  );
-  oldhandle.close(); // clean up
-}
-
-{
-  let oldhandle;
-  assert.throws(
-    () => {
-      const w = fs.watch(__filename, common.mustNotCall());
-      oldhandle = w._handle;
-      const protoSymbols =
-        Object.getOwnPropertySymbols(Object.getPrototypeOf(w));
-      const kFSWatchStart =
-        protoSymbols.find((val) => val.toString() === 'Symbol(kFSWatchStart)');
-      w._handle = {};
-      w[kFSWatchStart]();
-    },
-    {
-      name: 'Error',
-      code: 'ERR_INTERNAL_ASSERTION',
-      message: /^handle must be a FSEvent/,
-    }
+    'handle must be a FSEvent'
   );
   oldhandle.close(); // clean up
 }

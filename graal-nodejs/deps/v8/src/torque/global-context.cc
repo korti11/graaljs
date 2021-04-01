@@ -19,17 +19,12 @@ GlobalContext::GlobalContext(Ast ast)
   CurrentSourcePosition::Scope current_source_position(
       SourcePosition{CurrentSourceFile::Get(), {-1, -1}, {-1, -1}});
   default_namespace_ =
-      RegisterDeclarable(std::make_unique<Namespace>(kBaseNamespaceName));
+      RegisterDeclarable(base::make_unique<Namespace>(kBaseNamespaceName));
 }
 
 TargetArchitecture::TargetArchitecture(bool force_32bit)
     : tagged_size_(force_32bit ? sizeof(int32_t) : kTaggedSize),
-      raw_ptr_size_(force_32bit ? sizeof(int32_t) : kSystemPointerSize),
-      smi_tag_and_shift_size_(
-          kSmiTagSize + (force_32bit ? SmiTagging<kApiInt32Size>::kSmiShiftSize
-                                     : kSmiShiftSize)),
-      external_ptr_size_(force_32bit ? sizeof(int32_t) : kExternalPointerSize) {
-}
+      raw_ptr_size_(force_32bit ? sizeof(int32_t) : kSystemPointerSize) {}
 
 }  // namespace torque
 }  // namespace internal

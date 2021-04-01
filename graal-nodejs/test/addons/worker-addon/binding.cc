@@ -1,11 +1,13 @@
-#include <node.h>
-#include <v8.h>
-#include <uv.h>
 #include <assert.h>
+#include <node.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <v8.h>
+#include <uv.h>
 
 using v8::Context;
+using v8::HandleScope;
+using v8::Isolate;
 using v8::Local;
 using v8::Object;
 using v8::Value;

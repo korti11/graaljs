@@ -182,14 +182,6 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
              CRegister cr = cr7);
   void Cmpwi(Register src1, const Operand& src2, Register scratch,
              CRegister cr = cr7);
-  void CompareTagged(Register src1, Register src2, CRegister cr = cr7) {
-    if (COMPRESS_POINTERS_BOOL) {
-      cmpw(src1, src2, cr);
-    } else {
-      cmp(src1, src2, cr);
-    }
-  }
-
   // Set new rounding mode RN to FPSCR
   void SetRoundingMode(FPRoundingMode RN);
 
@@ -204,33 +196,33 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
 
   // Push two registers.  Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2) {
-    StorePU(src2, MemOperand(sp, -2 * kSystemPointerSize));
-    StoreP(src1, MemOperand(sp, kSystemPointerSize));
+    StorePU(src2, MemOperand(sp, -2 * kPointerSize));
+    StoreP(src1, MemOperand(sp, kPointerSize));
   }
 
   // Push three registers.  Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2, Register src3) {
-    StorePU(src3, MemOperand(sp, -3 * kSystemPointerSize));
-    StoreP(src2, MemOperand(sp, kSystemPointerSize));
-    StoreP(src1, MemOperand(sp, 2 * kSystemPointerSize));
+    StorePU(src3, MemOperand(sp, -3 * kPointerSize));
+    StoreP(src2, MemOperand(sp, kPointerSize));
+    StoreP(src1, MemOperand(sp, 2 * kPointerSize));
   }
 
   // Push four registers.  Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2, Register src3, Register src4) {
-    StorePU(src4, MemOperand(sp, -4 * kSystemPointerSize));
-    StoreP(src3, MemOperand(sp, kSystemPointerSize));
-    StoreP(src2, MemOperand(sp, 2 * kSystemPointerSize));
-    StoreP(src1, MemOperand(sp, 3 * kSystemPointerSize));
+    StorePU(src4, MemOperand(sp, -4 * kPointerSize));
+    StoreP(src3, MemOperand(sp, kPointerSize));
+    StoreP(src2, MemOperand(sp, 2 * kPointerSize));
+    StoreP(src1, MemOperand(sp, 3 * kPointerSize));
   }
 
   // Push five registers.  Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2, Register src3, Register src4,
             Register src5) {
-    StorePU(src5, MemOperand(sp, -5 * kSystemPointerSize));
-    StoreP(src4, MemOperand(sp, kSystemPointerSize));
-    StoreP(src3, MemOperand(sp, 2 * kSystemPointerSize));
-    StoreP(src2, MemOperand(sp, 3 * kSystemPointerSize));
-    StoreP(src1, MemOperand(sp, 4 * kSystemPointerSize));
+    StorePU(src5, MemOperand(sp, -5 * kPointerSize));
+    StoreP(src4, MemOperand(sp, kPointerSize));
+    StoreP(src3, MemOperand(sp, 2 * kPointerSize));
+    StoreP(src2, MemOperand(sp, 3 * kPointerSize));
+    StoreP(src1, MemOperand(sp, 4 * kPointerSize));
   }
 
   void Pop(Register dst) { pop(dst); }
@@ -238,36 +230,36 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   // Pop two registers. Pops rightmost register first (from lower address).
   void Pop(Register src1, Register src2) {
     LoadP(src2, MemOperand(sp, 0));
-    LoadP(src1, MemOperand(sp, kSystemPointerSize));
-    addi(sp, sp, Operand(2 * kSystemPointerSize));
+    LoadP(src1, MemOperand(sp, kPointerSize));
+    addi(sp, sp, Operand(2 * kPointerSize));
   }
 
   // Pop three registers.  Pops rightmost register first (from lower address).
   void Pop(Register src1, Register src2, Register src3) {
     LoadP(src3, MemOperand(sp, 0));
-    LoadP(src2, MemOperand(sp, kSystemPointerSize));
-    LoadP(src1, MemOperand(sp, 2 * kSystemPointerSize));
-    addi(sp, sp, Operand(3 * kSystemPointerSize));
+    LoadP(src2, MemOperand(sp, kPointerSize));
+    LoadP(src1, MemOperand(sp, 2 * kPointerSize));
+    addi(sp, sp, Operand(3 * kPointerSize));
   }
 
   // Pop four registers.  Pops rightmost register first (from lower address).
   void Pop(Register src1, Register src2, Register src3, Register src4) {
     LoadP(src4, MemOperand(sp, 0));
-    LoadP(src3, MemOperand(sp, kSystemPointerSize));
-    LoadP(src2, MemOperand(sp, 2 * kSystemPointerSize));
-    LoadP(src1, MemOperand(sp, 3 * kSystemPointerSize));
-    addi(sp, sp, Operand(4 * kSystemPointerSize));
+    LoadP(src3, MemOperand(sp, kPointerSize));
+    LoadP(src2, MemOperand(sp, 2 * kPointerSize));
+    LoadP(src1, MemOperand(sp, 3 * kPointerSize));
+    addi(sp, sp, Operand(4 * kPointerSize));
   }
 
   // Pop five registers.  Pops rightmost register first (from lower address).
   void Pop(Register src1, Register src2, Register src3, Register src4,
            Register src5) {
     LoadP(src5, MemOperand(sp, 0));
-    LoadP(src4, MemOperand(sp, kSystemPointerSize));
-    LoadP(src3, MemOperand(sp, 2 * kSystemPointerSize));
-    LoadP(src2, MemOperand(sp, 3 * kSystemPointerSize));
-    LoadP(src1, MemOperand(sp, 4 * kSystemPointerSize));
-    addi(sp, sp, Operand(5 * kSystemPointerSize));
+    LoadP(src4, MemOperand(sp, kPointerSize));
+    LoadP(src3, MemOperand(sp, 2 * kPointerSize));
+    LoadP(src2, MemOperand(sp, 3 * kPointerSize));
+    LoadP(src1, MemOperand(sp, 4 * kPointerSize));
+    addi(sp, sp, Operand(5 * kPointerSize));
   }
 
   void SaveRegisters(RegList registers);
@@ -341,8 +333,8 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
                             Register scratch);
   void PrepareCallCFunction(int num_reg_arguments, Register scratch);
 
-  void PrepareForTailCall(Register callee_args_count,
-                          Register caller_args_count, Register scratch0,
+  void PrepareForTailCall(const ParameterCount& callee_args_count,
+                          Register caller_args_count_reg, Register scratch0,
                           Register scratch1);
 
   // There are two ways of passing double arguments on ARM, depending on
@@ -359,21 +351,22 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   // return address (unless this is somehow accounted for by the called
   // function).
   void CallCFunction(ExternalReference function, int num_arguments,
-                     bool has_function_descriptor = true);
+                     bool has_function_descriptor = kHasFunctionDescriptor);
   void CallCFunction(Register function, int num_arguments,
-                     bool has_function_descriptor = true);
+                     bool has_function_descriptor = kHasFunctionDescriptor);
   void CallCFunction(ExternalReference function, int num_reg_arguments,
                      int num_double_arguments,
-                     bool has_function_descriptor = true);
+                     bool has_function_descriptor = kHasFunctionDescriptor);
   void CallCFunction(Register function, int num_reg_arguments,
                      int num_double_arguments,
-                     bool has_function_descriptor = true);
+                     bool has_function_descriptor = kHasFunctionDescriptor);
+
+  // Call a runtime routine. This expects {centry} to contain a fitting CEntry
+  // builtin for the target runtime function and uses an indirect call.
+  void CallRuntimeWithCEntry(Runtime::FunctionId fid, Register centry);
 
   void MovFromFloatParameter(DoubleRegister dst);
   void MovFromFloatResult(DoubleRegister dst);
-
-  void Trap() override;
-  void DebugBreak() override;
 
   // Calls Abort(msg) if the condition cond is not satisfied.
   // Use --debug_code to enable.
@@ -428,8 +421,7 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   void JumpCodeObject(Register code_object) override;
 
   void CallBuiltinByIndex(Register builtin_index) override;
-  void CallForDeoptimization(Address target, int deopt_id, Label* exit,
-                             DeoptimizeKind kind);
+  void CallForDeoptimization(Address target, int deopt_id);
 
   // Emit code to discard a non-negative number of pointer-sized elements
   // from the stack, clobbering only the sp register.
@@ -477,20 +469,22 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   void MovFloatToInt(Register dst, DoubleRegister src);
   // Register move. May do nothing if the registers are identical.
   void Move(Register dst, Smi smi) { LoadSmiLiteral(dst, smi); }
-  void Move(Register dst, Handle<HeapObject> value,
-            RelocInfo::Mode rmode = RelocInfo::FULL_EMBEDDED_OBJECT);
+  void Move(Register dst, Handle<HeapObject> value);
   void Move(Register dst, ExternalReference reference);
   void Move(Register dst, Register src, Condition cond = al);
   void Move(DoubleRegister dst, DoubleRegister src);
 
-  void SmiUntag(Register dst, const MemOperand& src, RCBit rc);
-  void SmiUntag(Register reg, RCBit rc = LeaveRC) { SmiUntag(reg, reg, rc); }
+  void SmiUntag(Register reg, RCBit rc = LeaveRC, int scale = 0) {
+    SmiUntag(reg, reg, rc, scale);
+  }
 
-  void SmiUntag(Register dst, Register src, RCBit rc = LeaveRC) {
-    if (COMPRESS_POINTERS_BOOL) {
-      srawi(dst, src, kSmiShift, rc);
+  void SmiUntag(Register dst, Register src, RCBit rc = LeaveRC, int scale = 0) {
+    if (scale > kSmiShift) {
+      ShiftLeftImm(dst, src, Operand(scale - kSmiShift), rc);
+    } else if (scale < kSmiShift) {
+      ShiftRightArithImm(dst, src, kSmiShift - scale, rc);
     } else {
-      ShiftRightArithImm(dst, src, kSmiShift, rc);
+      // do nothing
     }
   }
 
@@ -646,51 +640,6 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
 
   void ResetSpeculationPoisonRegister();
 
-  // Control-flow integrity:
-
-  // Define a function entrypoint. This doesn't emit any code for this
-  // architecture, as control-flow integrity is not supported for it.
-  void CodeEntry() {}
-  // Define an exception handler.
-  void ExceptionHandler() {}
-  // Define an exception handler and bind a label.
-  void BindExceptionHandler(Label* label) { bind(label); }
-
-  // ---------------------------------------------------------------------------
-  // Pointer compression Support
-
-  // Loads a field containing a HeapObject and decompresses it if pointer
-  // compression is enabled.
-  void LoadTaggedPointerField(const Register& destination,
-                              const MemOperand& field_operand,
-                              const Register& scratch = no_reg);
-
-  // Loads a field containing any tagged value and decompresses it if necessary.
-  void LoadAnyTaggedField(const Register& destination,
-                          const MemOperand& field_operand,
-                          const Register& scratch = no_reg);
-
-  // Loads a field containing smi value and untags it.
-  void SmiUntagField(Register dst, const MemOperand& src, RCBit rc = LeaveRC);
-
-  // Compresses and stores tagged value to given on-heap location.
-  void StoreTaggedField(const Register& value,
-                        const MemOperand& dst_field_operand,
-                        const Register& scratch = no_reg);
-  void StoreTaggedFieldX(const Register& value,
-                         const MemOperand& dst_field_operand,
-                         const Register& scratch = no_reg);
-
-  void DecompressTaggedSigned(Register destination, MemOperand field_operand);
-  void DecompressTaggedSigned(Register destination, Register src);
-  void DecompressTaggedPointer(Register destination, MemOperand field_operand);
-  void DecompressTaggedPointer(Register destination, Register source);
-  void DecompressAnyTagged(Register destination, MemOperand field_operand);
-  void DecompressAnyTagged(Register destination, Register source);
-
-  void LoadWord(Register dst, const MemOperand& mem, Register scratch);
-  void StoreWord(Register src, const MemOperand& mem, Register scratch);
-
  private:
   static const int kSmiShift = kSmiTagSize + kSmiShiftSize;
 
@@ -745,8 +694,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   void LeaveExitFrame(bool save_doubles, Register argument_count,
                       bool argument_count_is_length = false);
 
-  void LoadMap(Register destination, Register object);
-
   // Load the global proxy from the current context.
   void LoadGlobalProxy(Register dst) {
     LoadNativeContextSlot(Context::GLOBAL_PROXY_INDEX, dst);
@@ -759,6 +706,8 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   // than assembler-ppc and may generate variable length sequences
 
   // load a literal double value <value> to FPR <result>
+  void LoadWord(Register dst, const MemOperand& mem, Register scratch);
+  void StoreWord(Register src, const MemOperand& mem, Register scratch);
 
   void LoadHalfWord(Register dst, const MemOperand& mem,
                     Register scratch = no_reg);
@@ -792,28 +741,29 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
 
   // Removes current frame and its arguments from the stack preserving
   // the arguments and a return address pushed to the stack for the next call.
-  // Both |callee_args_count| and |caller_args_countg| do not include
-  // receiver. |callee_args_count| is not modified. |caller_args_count|
+  // Both |callee_args_count| and |caller_args_count_reg| do not include
+  // receiver. |callee_args_count| is not modified, |caller_args_count_reg|
   // is trashed.
 
   // Invoke the JavaScript function code by either calling or jumping.
   void InvokeFunctionCode(Register function, Register new_target,
-                          Register expected_parameter_count,
-                          Register actual_parameter_count, InvokeFlag flag);
+                          const ParameterCount& expected,
+                          const ParameterCount& actual, InvokeFlag flag);
 
   // On function call, call into the debugger if necessary.
   void CheckDebugHook(Register fun, Register new_target,
-                      Register expected_parameter_count,
-                      Register actual_parameter_count);
+                      const ParameterCount& expected,
+                      const ParameterCount& actual);
 
   // Invoke the JavaScript function in the given register. Changes the
   // current context to the context in the function before invoking.
-  void InvokeFunctionWithNewTarget(Register function, Register new_target,
-                                   Register actual_parameter_count,
-                                   InvokeFlag flag);
-  void InvokeFunction(Register function, Register expected_parameter_count,
-                      Register actual_parameter_count, InvokeFlag flag);
+  void InvokeFunction(Register function, Register new_target,
+                      const ParameterCount& actual, InvokeFlag flag);
 
+  void InvokeFunction(Register function, const ParameterCount& expected,
+                      const ParameterCount& actual, InvokeFlag flag);
+
+  void DebugBreak();
   // Frame restart support
   void MaybeDropFrames();
 
@@ -931,12 +881,12 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   }
 
   void SmiToPtrArrayOffset(Register dst, Register src) {
-#if defined(V8_COMPRESS_POINTERS) || defined(V8_31BIT_SMIS_ON_64BIT_ARCH)
-    STATIC_ASSERT(kSmiTag == 0 && kSmiShift < kSystemPointerSizeLog2);
-    ShiftLeftImm(dst, src, Operand(kSystemPointerSizeLog2 - kSmiShift));
+#if V8_TARGET_ARCH_PPC64
+    STATIC_ASSERT(kSmiTag == 0 && kSmiShift > kPointerSizeLog2);
+    ShiftRightArithImm(dst, src, kSmiShift - kPointerSizeLog2);
 #else
-    STATIC_ASSERT(kSmiTag == 0 && kSmiShift > kSystemPointerSizeLog2);
-    ShiftRightArithImm(dst, src, kSmiShift - kSystemPointerSizeLog2);
+    STATIC_ASSERT(kSmiTag == 0 && kSmiShift < kPointerSizeLog2);
+    ShiftLeftImm(dst, src, Operand(kPointerSizeLog2 - kSmiShift));
 #endif
   }
 
@@ -950,14 +900,14 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   void AssertNotSmi(Register object);
   void AssertSmi(Register object);
 
-#if !defined(V8_COMPRESS_POINTERS) && !defined(V8_31BIT_SMIS_ON_64BIT_ARCH)
+#if V8_TARGET_ARCH_PPC64
   // Ensure it is permissible to read/write int value directly from
   // upper half of the smi.
   STATIC_ASSERT(kSmiTag == 0);
   STATIC_ASSERT(kSmiTagSize + kSmiShiftSize == 32);
 #endif
 #if V8_TARGET_ARCH_PPC64 && V8_TARGET_LITTLE_ENDIAN
-#define SmiWordOffset(offset) (offset + kSystemPointerSize / 2)
+#define SmiWordOffset(offset) (offset + kPointerSize / 2)
 #else
 #define SmiWordOffset(offset) offset
 #endif
@@ -998,12 +948,30 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   static const int kSmiShift = kSmiTagSize + kSmiShiftSize;
 
   // Helper functions for generating invokes.
-  void InvokePrologue(Register expected_parameter_count,
-                      Register actual_parameter_count, Label* done,
-                      InvokeFlag flag);
+  void InvokePrologue(const ParameterCount& expected,
+                      const ParameterCount& actual, Label* done,
+                      bool* definitely_mismatches, InvokeFlag flag);
+
+  // Compute memory operands for safepoint stack slots.
+  static int SafepointRegisterStackIndex(int reg_code);
+
+  // Needs access to SafepointRegisterStackIndex for compiled frame
+  // traversal.
+  friend class StandardFrame;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(MacroAssembler);
 };
+
+// -----------------------------------------------------------------------------
+// Static helper functions.
+
+inline MemOperand ContextMemOperand(Register context, int index = 0) {
+  return MemOperand(context, Context::SlotOffset(index));
+}
+
+inline MemOperand NativeContextMemOperand() {
+  return ContextMemOperand(cp, Context::NATIVE_CONTEXT_INDEX);
+}
 
 #define ACCESS_MASM(masm) masm->
 

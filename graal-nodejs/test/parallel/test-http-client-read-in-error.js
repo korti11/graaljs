@@ -1,5 +1,5 @@
 'use strict';
-const common = require('../common');
+require('../common');
 const net = require('net');
 const http = require('http');
 
@@ -37,5 +37,4 @@ http.request({
   agent
 }).once('error', function() {
   console.log('ignore');
-  this.on('data', common.mustNotCall());
 });

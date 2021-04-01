@@ -21,9 +21,6 @@ namespace {
 
 Decision DecideCondition(JSHeapBroker* broker, Node* const cond) {
   switch (cond->opcode()) {
-    case IrOpcode::kFoldConstant: {
-      return DecideCondition(broker, cond->InputAt(1));
-    }
     case IrOpcode::kInt32Constant: {
       Int32Matcher mcond(cond);
       return mcond.Value() ? Decision::kTrue : Decision::kFalse;
@@ -307,7 +304,8 @@ Reduction CommonOperatorReducer::ReduceReturn(Node* node) {
     // hence checkpoints can be cut out of the effect chain flowing into it.
     effect = NodeProperties::GetEffectInput(effect);
     NodeProperties::ReplaceEffectInput(node, effect);
-    return Changed(node).FollowedBy(ReduceReturn(node));
+    Reduction const reduction = ReduceReturn(node);
+    return reduction.Changed() ? reduction : Changed(node);
   }
   // TODO(ahaas): Extend the reduction below to multiple return values.
   if (ValueInputCountOfReturn(node->op()) != 1) {

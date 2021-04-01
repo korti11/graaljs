@@ -59,7 +59,3 @@ module.exports = (context) => {
     Program: (node) => reportIfError(node, context.getSourceCode())
   };
 };
-
-module.exports.meta = {
-  fixable: 'code'
-};

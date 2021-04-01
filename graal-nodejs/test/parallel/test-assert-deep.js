@@ -524,7 +524,7 @@ assertNotDeepOrStrict(
     {
       code: 'ERR_ASSERTION',
       message: `${defaultMsgStartFull}\n\n` +
-               "  Map(1) {\n+   1 => 1\n-   1 => '1'\n  }"
+               "  Map {\n+   1 => 1\n-   1 => '1'\n  }"
     }
   );
 }
@@ -590,9 +590,10 @@ assertNotDeepOrStrict(
 }
 
 // Handle NaN
-assertDeepAndStrictEqual(NaN, NaN);
-assertDeepAndStrictEqual({ a: NaN }, { a: NaN });
-assertDeepAndStrictEqual([ 1, 2, NaN, 4 ], [ 1, 2, NaN, 4 ]);
+assert.notDeepEqual(NaN, NaN);
+assert.deepStrictEqual(NaN, NaN);
+assert.deepStrictEqual({ a: NaN }, { a: NaN });
+assert.deepStrictEqual([ 1, 2, NaN, 4 ], [ 1, 2, NaN, 4 ]);
 
 // Handle boxed primitives
 {

@@ -1,6 +1,5 @@
 #include <js_native_api.h>
 #include "../common.h"
-#include "test_null.h"
 
 static napi_value AsBool(napi_env env, napi_callback_info info) {
   size_t argc = 1;
@@ -149,8 +148,6 @@ napi_value Init(napi_env env, napi_value exports) {
 
   NAPI_CALL(env, napi_define_properties(
       env, exports, sizeof(descriptors) / sizeof(*descriptors), descriptors));
-
-  init_test_null(env, exports);
 
   return exports;
 }

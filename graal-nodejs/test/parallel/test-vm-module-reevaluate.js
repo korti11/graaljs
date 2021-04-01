@@ -12,16 +12,11 @@ const finished = common.mustCall();
 
 (async function main() {
   {
-    globalThis.count = 0;
-    const m = new SourceTextModule('count += 1;');
+    const m = new SourceTextModule('1');
     await m.link(common.mustNotCall());
-    assert.strictEqual(await m.evaluate(), undefined);
-    assert.strictEqual(globalThis.count, 1);
-    assert.strictEqual(await m.evaluate(), undefined);
-    assert.strictEqual(globalThis.count, 1);
-    assert.strictEqual(await m.evaluate(), undefined);
-    assert.strictEqual(globalThis.count, 1);
-    delete globalThis.count;
+    assert.strictEqual((await m.evaluate()).result, 1);
+    assert.strictEqual((await m.evaluate()).result, undefined);
+    assert.strictEqual((await m.evaluate()).result, undefined);
   }
 
   {

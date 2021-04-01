@@ -1,5 +1,5 @@
 'use strict';
-const { SafeMap } = primordials;
+const { Map } = primordials;
 const assert = require('internal/assert');
 const dgram = require('internal/dgram');
 const net = require('net');
@@ -8,7 +8,7 @@ module.exports = SharedHandle;
 
 function SharedHandle(key, address, { port, addressType, fd, flags }) {
   this.key = key;
-  this.workers = new SafeMap();
+  this.workers = new Map();
   this.handle = null;
   this.errno = 0;
 

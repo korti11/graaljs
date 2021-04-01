@@ -18,18 +18,18 @@ function genModule(memory) {
       // main body: while(i) { if(mem[i]) return -1; i -= 4; } return 0;
       // TODO(titzer): this manual bytecode has a copy of test-run-wasm.cc
       /**/ kExprLoop, kWasmStmt,           // --
-      /*  */ kExprLocalGet, 0,             // --
+      /*  */ kExprGetLocal, 0,             // --
       /*  */ kExprIf, kWasmStmt,           // --
-      /*    */ kExprLocalGet, 0,           // --
+      /*    */ kExprGetLocal, 0,           // --
       /*    */ kExprI32LoadMem, 0, 0,      // --
       /*    */ kExprIf, kWasmStmt,         // --
       /*      */ kExprI32Const, 127,       // --
       /*      */ kExprReturn,              // --
       /*      */ kExprEnd,                 // --
-      /*    */ kExprLocalGet, 0,           // --
+      /*    */ kExprGetLocal, 0,           // --
       /*    */ kExprI32Const, 4,           // --
       /*    */ kExprI32Sub,                // --
-      /*    */ kExprLocalSet, 0,           // --
+      /*    */ kExprSetLocal, 0,           // --
       /*    */ kExprBr, 1,                 // --
       /*    */ kExprEnd,                   // --
       /*  */ kExprEnd,                     // --
@@ -52,7 +52,9 @@ function testPokeMemory() {
   var array = new Int8Array(buffer);
   assertEquals(kMemSize, array.length);
 
-  assertTrue(array.every((e => e === 0)));
+  for (var i = 0; i < kMemSize; i++) {
+    assertEquals(0, array[i]);
+  }
 
   for (var i = 0; i < 10; i++) {
     assertEquals(0, main(kMemSize - 4));
@@ -97,7 +99,9 @@ function testPokeOuterMemory() {
   var array = new Int8Array(buffer.buffer);
   assertEquals(kMemSize, array.length);
 
-  assertTrue(array.every((e => e === 0)));
+  for (var i = 0; i < kMemSize; i++) {
+    assertEquals(0, array[i]);
+  }
 
   for (var i = 0; i < 10; i++) {
     assertEquals(0, main(kMemSize - 4));
@@ -135,30 +139,33 @@ function testOOBThrows() {
   builder.addMemory(1, 1, true);
   builder.addFunction("geti", kSig_i_ii)
     .addBody([
-      kExprLocalGet, 0,
-      kExprLocalGet, 1,
+      kExprGetLocal, 0,
+      kExprGetLocal, 1,
       kExprI32LoadMem, 0, 0,
       kExprI32StoreMem, 0, 0,
-      kExprLocalGet, 1,
+      kExprGetLocal, 1,
       kExprI32LoadMem, 0, 0,
     ])
     .exportFunc();
 
   var module = builder.instantiate();
+  var offset;
 
-  let read = offset => module.exports.geti(0, offset);
-  let write = offset =>  module.exports.geti(offset, 0);
+  function read() { return module.exports.geti(0, offset); }
+  function write() { return module.exports.geti(offset, 0); }
 
-  assertEquals(0, read(65532));
-  assertEquals(0, write(65532));
+  for (offset = 0; offset < 65533; offset++) {
+    assertEquals(0, read());
+    assertEquals(0, write());
+  }
 
   // Note that this test might be run concurrently in multiple Isolates, which
   // makes an exact comparison of the expected trap count unreliable. But is is
   // still possible to check the lower bound for the expected trap count.
-  for (let offset = 65534; offset < 66536; offset++) {
+  for (offset = 65534; offset < 66536; offset++) {
     const trap_count = %GetWasmRecoveredTrapCount();
-    assertTraps(kTrapMemOutOfBounds, () => read(offset));
-    assertTraps(kTrapMemOutOfBounds, () => write(offset));
+    assertTraps(kTrapMemOutOfBounds, read);
+    assertTraps(kTrapMemOutOfBounds, write);
     if (%IsWasmTrapHandlerEnabled()) {
       assertTrue(trap_count + 2 <= %GetWasmRecoveredTrapCount());
     }

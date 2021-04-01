@@ -27,10 +27,10 @@ static void AddCounter(v8::Isolate* isolate,
                        StatsCounter* counter,
                        const char* name) {
   if (counter->Enabled()) {
-    object
-        ->Set(isolate->GetCurrentContext(),
-              v8::String::NewFromUtf8(isolate, name).ToLocalChecked(),
-              v8::Number::New(isolate, *counter->GetInternalPointer()))
+    object->Set(isolate->GetCurrentContext(),
+                v8::String::NewFromUtf8(isolate, name, NewStringType::kNormal)
+                    .ToLocalChecked(),
+                v8::Number::New(isolate, *counter->GetInternalPointer()))
         .FromJust();
   }
 }
@@ -39,7 +39,8 @@ static void AddNumber(v8::Isolate* isolate, v8::Local<v8::Object> object,
                       double value, const char* name) {
   object
       ->Set(isolate->GetCurrentContext(),
-            v8::String::NewFromUtf8(isolate, name).ToLocalChecked(),
+            v8::String::NewFromUtf8(isolate, name, NewStringType::kNormal)
+                .ToLocalChecked(),
             v8::Number::New(isolate, value))
       .FromJust();
 }
@@ -49,11 +50,10 @@ static void AddNumber64(v8::Isolate* isolate,
                         v8::Local<v8::Object> object,
                         int64_t value,
                         const char* name) {
-  object
-      ->Set(isolate->GetCurrentContext(),
-            v8::String::NewFromUtf8(isolate, name).ToLocalChecked(),
-            v8::Number::New(isolate, static_cast<double>(value)))
-      .FromJust();
+  object->Set(isolate->GetCurrentContext(),
+              v8::String::NewFromUtf8(isolate, name, NewStringType::kNormal)
+                  .ToLocalChecked(),
+              v8::Number::New(isolate, static_cast<double>(value))).FromJust();
 }
 
 

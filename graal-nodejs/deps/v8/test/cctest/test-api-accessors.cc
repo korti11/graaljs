@@ -287,30 +287,21 @@ TEST(AccessorSetHasNoSideEffect) {
   v8::Local<v8::Object> obj = templ->NewInstance(env.local()).ToLocalChecked();
   CHECK(env->Global()->Set(env.local(), v8_str("obj"), obj).FromJust());
   obj->SetAccessor(context, v8_str("foo"), Getter).ToChecked();
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).IsEmpty());
 
   obj->SetAccessor(context, v8_str("foo"), Getter, nullptr,
                    v8::MaybeLocal<v8::Value>(), v8::AccessControl::DEFAULT,
                    v8::PropertyAttribute::None,
                    v8::SideEffectType::kHasNoSideEffect)
       .ToChecked();
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("obj.foo"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-      .ToLocalChecked();
+  v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).ToLocalChecked();
 
   // Check that setter is not whitelisted.
   v8::TryCatch try_catch(isolate);
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo = 1"), true)
             .IsEmpty());
   CHECK(try_catch.HasCaught());
-  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"),
-                                        v8::debug::EvaluateGlobalMode::kDefault)
+  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), false)
                   .ToLocalChecked()
                   ->Int32Value(env.local())
                   .FromJust());
@@ -332,16 +323,12 @@ TEST(SetAccessorSetSideEffectReceiverCheck1) {
                    v8::SideEffectType::kHasNoSideEffect,
                    v8::SideEffectType::kHasSideEffectToReceiver)
       .ToChecked();
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true)
             .ToLocalChecked()
             ->Equals(env.local(), v8_str("return value"))
             .FromJust());
   v8::TryCatch try_catch(isolate);
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo = 1"), true)
             .IsEmpty());
   CHECK(try_catch.HasCaught());
   CHECK_EQ(0, set_accessor_call_count);
@@ -370,15 +357,11 @@ TEST(SetAccessorSetSideEffectReceiverCheck2) {
             ->Set(env.local(), v8_str("f"),
                   templ->GetFunction(env.local()).ToLocalChecked())
             .FromJust());
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("new f().bar"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("new f().bar"), true)
             .ToLocalChecked()
             ->Equals(env.local(), v8_str("return value"))
             .FromJust());
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("new f().bar = 1"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  v8::debug::EvaluateGlobal(isolate, v8_str("new f().bar = 1"), true)
       .ToLocalChecked();
   CHECK_EQ(1, set_accessor_call_count);
 }
@@ -394,29 +377,20 @@ TEST(AccessorSetNativeDataPropertyHasNoSideEffect) {
   v8::Local<v8::Object> obj = templ->NewInstance(env.local()).ToLocalChecked();
   CHECK(env->Global()->Set(env.local(), v8_str("obj"), obj).FromJust());
   obj->SetNativeDataProperty(context, v8_str("foo"), Getter).ToChecked();
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).IsEmpty());
 
   obj->SetNativeDataProperty(
          context, v8_str("foo"), Getter, nullptr, v8::Local<v8::Value>(),
          v8::PropertyAttribute::None, v8::SideEffectType::kHasNoSideEffect)
       .ToChecked();
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("obj.foo"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-      .ToLocalChecked();
+  v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).ToLocalChecked();
 
   // Check that setter is not whitelisted.
   v8::TryCatch try_catch(isolate);
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo = 1"), true)
             .IsEmpty());
   CHECK(try_catch.HasCaught());
-  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"),
-                                        v8::debug::EvaluateGlobalMode::kDefault)
+  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), false)
                   .ToLocalChecked()
                   ->Int32Value(env.local())
                   .FromJust());
@@ -433,29 +407,20 @@ TEST(AccessorSetLazyDataPropertyHasNoSideEffect) {
   v8::Local<v8::Object> obj = templ->NewInstance(env.local()).ToLocalChecked();
   CHECK(env->Global()->Set(env.local(), v8_str("obj"), obj).FromJust());
   obj->SetLazyDataProperty(context, v8_str("foo"), Getter).ToChecked();
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).IsEmpty());
 
   obj->SetLazyDataProperty(context, v8_str("foo"), Getter,
                            v8::Local<v8::Value>(), v8::PropertyAttribute::None,
                            v8::SideEffectType::kHasNoSideEffect)
       .ToChecked();
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("obj.foo"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-      .ToLocalChecked();
+  v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).ToLocalChecked();
 
   // Check that setter is not whitelisted.
   v8::TryCatch try_catch(isolate);
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo = 1"), true)
             .IsEmpty());
   CHECK(try_catch.HasCaught());
-  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"),
-                                        v8::debug::EvaluateGlobalMode::kDefault)
+  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), false)
                   .ToLocalChecked()
                   ->Int32Value(env.local())
                   .FromJust());
@@ -475,24 +440,15 @@ TEST(ObjectTemplateSetAccessorHasNoSideEffect) {
   v8::Local<v8::Object> obj = templ->NewInstance(env.local()).ToLocalChecked();
   CHECK(env->Global()->Set(env.local(), v8_str("obj"), obj).FromJust());
 
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("obj.foo2"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-      .ToLocalChecked();
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).IsEmpty());
+  v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"), true).ToLocalChecked();
 
   // Check that setter is not whitelisted.
   v8::TryCatch try_catch(isolate);
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo2 = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2 = 1"), true)
             .IsEmpty());
   CHECK(try_catch.HasCaught());
-  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"),
-                                        v8::debug::EvaluateGlobalMode::kDefault)
+  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"), false)
                   .ToLocalChecked()
                   ->Int32Value(env.local())
                   .FromJust());
@@ -512,24 +468,15 @@ TEST(ObjectTemplateSetNativePropertyHasNoSideEffect) {
   v8::Local<v8::Object> obj = templ->NewInstance(env.local()).ToLocalChecked();
   CHECK(env->Global()->Set(env.local(), v8_str("obj"), obj).FromJust());
 
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("obj.foo2"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-      .ToLocalChecked();
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).IsEmpty());
+  v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"), true).ToLocalChecked();
 
   // Check that setter is not whitelisted.
   v8::TryCatch try_catch(isolate);
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo2 = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2 = 1"), true)
             .IsEmpty());
   CHECK(try_catch.HasCaught());
-  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"),
-                                        v8::debug::EvaluateGlobalMode::kDefault)
+  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"), false)
                   .ToLocalChecked()
                   ->Int32Value(env.local())
                   .FromJust());
@@ -548,24 +495,15 @@ TEST(ObjectTemplateSetLazyPropertyHasNoSideEffect) {
   v8::Local<v8::Object> obj = templ->NewInstance(env.local()).ToLocalChecked();
   CHECK(env->Global()->Set(env.local(), v8_str("obj"), obj).FromJust());
 
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("obj.foo2"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-      .ToLocalChecked();
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo"), true).IsEmpty());
+  v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"), true).ToLocalChecked();
 
   // Check that setter is not whitelisted.
   v8::TryCatch try_catch(isolate);
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.foo2 = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2 = 1"), true)
             .IsEmpty());
   CHECK(try_catch.HasCaught());
-  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"),
-                                        v8::debug::EvaluateGlobalMode::kDefault)
+  CHECK_NE(1, v8::debug::EvaluateGlobal(isolate, v8_str("obj.foo2"), false)
                   .ToLocalChecked()
                   ->Int32Value(env.local())
                   .FromJust());

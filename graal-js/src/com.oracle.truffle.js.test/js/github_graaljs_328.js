@@ -14,3 +14,5 @@ assertSame(0, (function(...[x]) {}).length);
 assertSame(0, (function(...{x}) {}).length);
 assertSame(1, (function(y, ...[x]) {}).length);
 assertSame(1, (function(y, ...{x}) {}).length);
+
+true;

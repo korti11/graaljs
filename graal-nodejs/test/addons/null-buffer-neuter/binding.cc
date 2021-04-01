@@ -11,10 +11,6 @@ static void FreeCallback(char* data, void* hint) {
   alive--;
 }
 
-void IsAlive(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  args.GetReturnValue().Set(alive);
-}
-
 void Run(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   alive++;
@@ -31,11 +27,15 @@ void Run(const v8::FunctionCallbackInfo<v8::Value>& args) {
     char* data = node::Buffer::Data(buf);
     assert(data == nullptr);
   }
+
+  isolate->RequestGarbageCollectionForTesting(
+      v8::Isolate::kFullGarbageCollection);
+
+  assert(alive == 0);
 }
 
 void init(v8::Local<v8::Object> exports) {
   NODE_SET_METHOD(exports, "run", Run);
-  NODE_SET_METHOD(exports, "isAlive", IsAlive);
 }
 
 NODE_MODULE(NODE_GYP_MODULE_NAME, init)

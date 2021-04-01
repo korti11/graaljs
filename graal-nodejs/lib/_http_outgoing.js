@@ -28,7 +28,6 @@ const {
   ObjectKeys,
   ObjectPrototypeHasOwnProperty,
   ObjectSetPrototypeOf,
-  MathFloor,
   Symbol,
 } = primordials;
 
@@ -53,17 +52,14 @@ const {
     ERR_HTTP_TRAILER_INVALID,
     ERR_INVALID_HTTP_TOKEN,
     ERR_INVALID_ARG_TYPE,
-    ERR_INVALID_ARG_VALUE,
     ERR_INVALID_CHAR,
     ERR_METHOD_NOT_IMPLEMENTED,
     ERR_STREAM_CANNOT_PIPE,
-    ERR_STREAM_ALREADY_FINISHED,
     ERR_STREAM_WRITE_AFTER_END
   },
   hideStackFrames
 } = require('internal/errors');
 const { validateString } = require('internal/validators');
-const { isUint8Array } = require('internal/util/types');
 
 const HIGH_WATER_MARK = getDefaultHighWaterMark();
 const { CRLF, debug } = common;
@@ -96,12 +92,10 @@ function OutgoingMessage() {
   this.outputSize = 0;
 
   this.writable = true;
-  this.destroyed = false;
 
   this._last = false;
   this.chunkedEncoding = false;
   this.shouldKeepAlive = true;
-  this._defaultKeepAlive = true;
   this.useChunkedEncodingByDefault = true;
   this.sendDate = false;
   this._removedConnection = false;
@@ -118,10 +112,9 @@ function OutgoingMessage() {
   this[kCorked] = 0;
 
   this.socket = null;
+  this.connection = null;
   this._header = null;
   this[kOutHeaders] = null;
-
-  this._keepAliveTimeout = 0;
 
   this._onPendingData = noopPendingOutput;
 }
@@ -181,15 +174,6 @@ ObjectDefineProperty(OutgoingMessage.prototype, '_headers', {
       }
     }
   }, 'OutgoingMessage.prototype._headers is deprecated', 'DEP0066')
-});
-
-ObjectDefineProperty(OutgoingMessage.prototype, 'connection', {
-  get: function() {
-    return this.socket;
-  },
-  set: function(val) {
-    this.socket = val;
-  }
 });
 
 ObjectDefineProperty(OutgoingMessage.prototype, '_headerNames', {
@@ -284,11 +268,6 @@ OutgoingMessage.prototype.setTimeout = function setTimeout(msecs, callback) {
 // any messages, before ever calling this.  In that case, just skip
 // it, since something else is destroying this connection anyway.
 OutgoingMessage.prototype.destroy = function destroy(error) {
-  if (this.destroyed) {
-    return this;
-  }
-  this.destroyed = true;
-
   if (this.socket) {
     this.socket.destroy(error);
   } else {
@@ -296,8 +275,6 @@ OutgoingMessage.prototype.destroy = function destroy(error) {
       socket.destroy(error);
     });
   }
-
-  return this;
 };
 
 
@@ -328,7 +305,7 @@ OutgoingMessage.prototype._send = function _send(data, encoding, callback) {
 
 OutgoingMessage.prototype._writeRaw = _writeRaw;
 function _writeRaw(data, encoding, callback) {
-  const conn = this.socket;
+  const conn = this.connection;
   if (conn && conn.destroyed) {
     // The socket was destroyed. If we're still trying to write to it,
     // then we haven't gotten the 'close' event yet.
@@ -377,18 +354,8 @@ function _storeHeader(firstLine, headers) {
         processHeader(this, state, entry[0], entry[1], false);
       }
     } else if (ArrayIsArray(headers)) {
-      if (headers.length && ArrayIsArray(headers[0])) {
-        for (const entry of headers) {
-          processHeader(this, state, entry[0], entry[1], true);
-        }
-      } else {
-        if (headers.length % 2 !== 0) {
-          throw new ERR_INVALID_ARG_VALUE('headers', headers);
-        }
-
-        for (let n = 0; n < headers.length; n += 2) {
-          processHeader(this, state, headers[n + 0], headers[n + 1], true);
-        }
+      for (const entry of headers) {
+        processHeader(this, state, entry[0], entry[1], true);
       }
     } else {
       for (const key in headers) {
@@ -434,10 +401,6 @@ function _storeHeader(firstLine, headers) {
         (state.contLen || this.useChunkedEncodingByDefault || this.agent);
     if (shouldSendKeepAlive) {
       header += 'Connection: keep-alive\r\n';
-      if (this._keepAliveTimeout && this._defaultKeepAlive) {
-        const timeoutSeconds = MathFloor(this._keepAliveTimeout / 1000);
-        header += `Keep-Alive: timeout=${timeoutSeconds}\r\n`;
-      }
     } else {
       this._last = true;
       header += 'Connection: close\r\n';
@@ -530,9 +493,6 @@ function matchHeader(self, state, field, value) {
     case 'expect':
     case 'trailer':
       state[field] = true;
-      break;
-    case 'keep-alive':
-      self._defaultKeepAlive = false;
       break;
   }
 }
@@ -642,7 +602,7 @@ OutgoingMessage.prototype.removeHeader = function removeHeader(name) {
 
 
 OutgoingMessage.prototype._implicitHeader = function _implicitHeader() {
-  throw new ERR_METHOD_NOT_IMPLEMENTED('_implicitHeader()');
+  this.emit('error', new ERR_METHOD_NOT_IMPLEMENTED('_implicitHeader()'));
 };
 
 ObjectDefineProperty(OutgoingMessage.prototype, 'headersSent', {
@@ -664,20 +624,17 @@ OutgoingMessage.prototype.write = function write(chunk, encoding, callback) {
   return ret;
 };
 
-function writeAfterEnd(msg, callback) {
-  const err = new ERR_STREAM_WRITE_AFTER_END();
-  const triggerAsyncId = msg.socket ? msg.socket[async_id_symbol] : undefined;
-  defaultTriggerAsyncIdScope(triggerAsyncId,
-                             process.nextTick,
-                             writeAfterEndNT,
-                             msg,
-                             err,
-                             callback);
-}
-
 function write_(msg, chunk, encoding, callback, fromEnd) {
   if (msg.finished) {
-    writeAfterEnd(msg, callback);
+    const err = new ERR_STREAM_WRITE_AFTER_END();
+    const triggerAsyncId = msg.socket ? msg.socket[async_id_symbol] : undefined;
+    defaultTriggerAsyncIdScope(triggerAsyncId,
+                               process.nextTick,
+                               writeAfterEndNT,
+                               msg,
+                               err,
+                               callback);
+
     return true;
   }
 
@@ -692,14 +649,14 @@ function write_(msg, chunk, encoding, callback, fromEnd) {
     return true;
   }
 
-  if (!fromEnd && typeof chunk !== 'string' && !(isUint8Array(chunk))) {
+  if (!fromEnd && typeof chunk !== 'string' && !(chunk instanceof Buffer)) {
     throw new ERR_INVALID_ARG_TYPE('first argument',
-                                   ['string', 'Buffer', 'Uint8Array'], chunk);
+                                   ['string', 'Buffer'], chunk);
   }
 
-  if (!fromEnd && msg.socket && !msg.socket.writableCorked) {
-    msg.socket.cork();
-    process.nextTick(connectionCorkNT, msg.socket);
+  if (!fromEnd && msg.connection && !msg.connection.writableCorked) {
+    msg.connection.cork();
+    process.nextTick(connectionCorkNT, msg, msg.connection);
   }
 
   let ret;
@@ -775,8 +732,11 @@ OutgoingMessage.prototype.end = function end(chunk, encoding, callback) {
     encoding = null;
   }
 
-  // Not finished, socket exists and data will be written (chunk or header)
-  if (this.socket && !this.finished && (chunk || !this._header)) {
+  if (this.finished) {
+    return this;
+  }
+
+  if (this.socket) {
     this.socket.cork();
   }
 
@@ -784,12 +744,6 @@ OutgoingMessage.prototype.end = function end(chunk, encoding, callback) {
     if (typeof chunk !== 'string' && !(chunk instanceof Buffer)) {
       throw new ERR_INVALID_ARG_TYPE('chunk', ['string', 'Buffer'], chunk);
     }
-
-    if (this.finished) {
-      writeAfterEnd(this, callback);
-      return this;
-    }
-
     if (!this._header) {
       if (typeof chunk === 'string')
         this._contentLength = Buffer.byteLength(chunk, encoding);
@@ -797,15 +751,6 @@ OutgoingMessage.prototype.end = function end(chunk, encoding, callback) {
         this._contentLength = chunk.length;
     }
     write_(this, chunk, encoding, null, true);
-  } else if (this.finished) {
-    if (typeof callback === 'function') {
-      if (!this.writableFinished) {
-        this.on('finish', callback);
-      } else {
-        callback(new ERR_STREAM_ALREADY_FINISHED('end'));
-      }
-    }
-    return this;
   } else if (!this._header) {
     this._contentLength = 0;
     this._implicitHeader();
@@ -836,8 +781,8 @@ OutgoingMessage.prototype.end = function end(chunk, encoding, callback) {
   // everything to the socket.
   debug('outgoing message end.');
   if (this.outputData.length === 0 &&
-      this.socket &&
-      this.socket._httpMessage === this) {
+      this.connection &&
+      this.connection._httpMessage === this) {
     this._finish();
   }
 
@@ -846,7 +791,7 @@ OutgoingMessage.prototype.end = function end(chunk, encoding, callback) {
 
 
 OutgoingMessage.prototype._finish = function _finish() {
-  assert(this.socket);
+  assert(this.connection);
   this.emit('prefinish');
 };
 
@@ -925,6 +870,10 @@ OutgoingMessage.prototype.flushHeaders = function flushHeaders() {
   this._send('');
 };
 
+OutgoingMessage.prototype.flush = internalUtil.deprecate(function() {
+  this.flushHeaders();
+}, 'OutgoingMessage.flush is deprecated. Use flushHeaders instead.', 'DEP0001');
+
 OutgoingMessage.prototype.pipe = function pipe() {
   // OutgoingMessage should be write-only. Piping from it is disabled.
   this.emit('error', new ERR_STREAM_CANNOT_PIPE());
@@ -936,7 +885,5 @@ function(err, event) {
 };
 
 module.exports = {
-  validateHeaderName,
-  validateHeaderValue,
   OutgoingMessage
 };

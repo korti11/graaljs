@@ -38,3 +38,5 @@ check(async function*() {});
 check(() => 42);
 check(async () => 42);
 check(class {});
+
+true;

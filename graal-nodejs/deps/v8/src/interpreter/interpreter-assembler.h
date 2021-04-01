@@ -25,65 +25,64 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
 
   // Returns the 32-bit unsigned count immediate for bytecode operand
   // |operand_index| in the current bytecode.
-  TNode<Uint32T> BytecodeOperandCount(int operand_index);
+  compiler::TNode<Uint32T> BytecodeOperandCount(int operand_index);
   // Returns the 32-bit unsigned flag for bytecode operand |operand_index|
   // in the current bytecode.
-  TNode<Uint32T> BytecodeOperandFlag(int operand_index);
+  compiler::Node* BytecodeOperandFlag(int operand_index);
   // Returns the 32-bit zero-extended index immediate for bytecode operand
   // |operand_index| in the current bytecode.
-  TNode<Uint32T> BytecodeOperandIdxInt32(int operand_index);
+  compiler::Node* BytecodeOperandIdxInt32(int operand_index);
   // Returns the word zero-extended index immediate for bytecode operand
   // |operand_index| in the current bytecode.
-  TNode<UintPtrT> BytecodeOperandIdx(int operand_index);
+  compiler::Node* BytecodeOperandIdx(int operand_index);
   // Returns the smi index immediate for bytecode operand |operand_index|
   // in the current bytecode.
-  TNode<Smi> BytecodeOperandIdxSmi(int operand_index);
-  // Returns the TaggedIndex immediate for bytecode operand |operand_index|
-  // in the current bytecode.
-  TNode<TaggedIndex> BytecodeOperandIdxTaggedIndex(int operand_index);
+  compiler::Node* BytecodeOperandIdxSmi(int operand_index);
   // Returns the 32-bit unsigned immediate for bytecode operand |operand_index|
   // in the current bytecode.
-  TNode<Uint32T> BytecodeOperandUImm(int operand_index);
+  compiler::TNode<Uint32T> BytecodeOperandUImm(int operand_index);
   // Returns the word-size unsigned immediate for bytecode operand
   // |operand_index| in the current bytecode.
-  TNode<UintPtrT> BytecodeOperandUImmWord(int operand_index);
+  compiler::Node* BytecodeOperandUImmWord(int operand_index);
   // Returns the unsigned smi immediate for bytecode operand |operand_index| in
   // the current bytecode.
-  TNode<Smi> BytecodeOperandUImmSmi(int operand_index);
+  compiler::Node* BytecodeOperandUImmSmi(int operand_index);
   // Returns the 32-bit signed immediate for bytecode operand |operand_index|
   // in the current bytecode.
-  TNode<Int32T> BytecodeOperandImm(int operand_index);
+  compiler::Node* BytecodeOperandImm(int operand_index);
   // Returns the word-size signed immediate for bytecode operand |operand_index|
   // in the current bytecode.
-  TNode<IntPtrT> BytecodeOperandImmIntPtr(int operand_index);
+  compiler::Node* BytecodeOperandImmIntPtr(int operand_index);
   // Returns the smi immediate for bytecode operand |operand_index| in the
   // current bytecode.
-  TNode<Smi> BytecodeOperandImmSmi(int operand_index);
+  compiler::Node* BytecodeOperandImmSmi(int operand_index);
   // Returns the 32-bit unsigned runtime id immediate for bytecode operand
   // |operand_index| in the current bytecode.
-  TNode<Uint32T> BytecodeOperandRuntimeId(int operand_index);
-  // Returns the word zero-extended native context index immediate for bytecode
+  compiler::Node* BytecodeOperandRuntimeId(int operand_index);
+  // Returns the 32-bit unsigned native context index immediate for bytecode
   // operand |operand_index| in the current bytecode.
-  TNode<UintPtrT> BytecodeOperandNativeContextIndex(int operand_index);
+  compiler::Node* BytecodeOperandNativeContextIndex(int operand_index);
   // Returns the 32-bit unsigned intrinsic id immediate for bytecode operand
   // |operand_index| in the current bytecode.
-  TNode<Uint32T> BytecodeOperandIntrinsicId(int operand_index);
+  compiler::Node* BytecodeOperandIntrinsicId(int operand_index);
+
   // Accumulator.
-  TNode<Object> GetAccumulator();
-  void SetAccumulator(TNode<Object> value);
+  compiler::TNode<Object> GetAccumulator();
+  void SetAccumulator(compiler::Node* value);
 
   // Context.
-  TNode<Context> GetContext();
-  void SetContext(TNode<Context> value);
+  compiler::TNode<Context> GetContext();
+  void SetContext(compiler::TNode<Context> value);
 
   // Context at |depth| in the context chain starting at |context|.
-  TNode<Context> GetContextAtDepth(TNode<Context> context,
-                                   TNode<Uint32T> depth);
+  compiler::Node* GetContextAtDepth(compiler::TNode<Context> context,
+                                    compiler::TNode<Uint32T> depth);
 
   // Goto the given |target| if the context chain starting at |context| has any
   // extensions up to the given |depth|.
-  void GotoIfHasContextExtensionUpToDepth(TNode<Context> context,
-                                          TNode<Uint32T> depth, Label* target);
+  void GotoIfHasContextExtensionUpToDepth(compiler::TNode<Context> context,
+                                          compiler::TNode<Uint32T> depth,
+                                          Label* target);
 
   // A RegListNodePair provides an abstraction over lists of registers.
   class RegListNodePair {
@@ -91,12 +90,14 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
     RegListNodePair(TNode<IntPtrT> base_reg_location, TNode<Word32T> reg_count)
         : base_reg_location_(base_reg_location), reg_count_(reg_count) {}
 
-    TNode<Word32T> reg_count() const { return reg_count_; }
-    TNode<IntPtrT> base_reg_location() const { return base_reg_location_; }
+    compiler::TNode<Word32T> reg_count() const { return reg_count_; }
+    compiler::TNode<IntPtrT> base_reg_location() const {
+      return base_reg_location_;
+    }
 
    private:
-    TNode<IntPtrT> base_reg_location_;
-    TNode<Word32T> reg_count_;
+    compiler::TNode<IntPtrT> base_reg_location_;
+    compiler::TNode<Word32T> reg_count_;
   };
 
   // Backup/restore register file to/from a fixed array of the correct length.
@@ -104,53 +105,72 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   // - Suspend copies arguments and registers to the generator.
   // - Resume copies only the registers from the generator, the arguments
   //   are copied by the ResumeGenerator trampoline.
-  TNode<FixedArray> ExportParametersAndRegisterFile(
+  compiler::Node* ExportParametersAndRegisterFile(
       TNode<FixedArray> array, const RegListNodePair& registers,
       TNode<Int32T> formal_parameter_count);
-  TNode<FixedArray> ImportRegisterFile(TNode<FixedArray> array,
-                                       const RegListNodePair& registers,
-                                       TNode<Int32T> formal_parameter_count);
+  compiler::Node* ImportRegisterFile(TNode<FixedArray> array,
+                                     const RegListNodePair& registers,
+                                     TNode<Int32T> formal_parameter_count);
 
   // Loads from and stores to the interpreter register file.
-  TNode<Object> LoadRegister(Register reg);
-  TNode<IntPtrT> LoadAndUntagRegister(Register reg);
-  TNode<Object> LoadRegisterAtOperandIndex(int operand_index);
-  std::pair<TNode<Object>, TNode<Object>> LoadRegisterPairAtOperandIndex(
-      int operand_index);
-  void StoreRegister(TNode<Object> value, Register reg);
-  void StoreRegisterAtOperandIndex(TNode<Object> value, int operand_index);
-  void StoreRegisterPairAtOperandIndex(TNode<Object> value1,
-                                       TNode<Object> value2, int operand_index);
-  void StoreRegisterTripleAtOperandIndex(TNode<Object> value1,
-                                         TNode<Object> value2,
-                                         TNode<Object> value3,
+  compiler::TNode<Object> LoadRegister(Register reg);
+  compiler::TNode<IntPtrT> LoadAndUntagRegister(Register reg);
+  compiler::TNode<Object> LoadRegisterAtOperandIndex(int operand_index);
+  std::pair<compiler::TNode<Object>, compiler::TNode<Object>>
+  LoadRegisterPairAtOperandIndex(int operand_index);
+  void StoreRegister(compiler::Node* value, Register reg);
+  void StoreRegisterAtOperandIndex(compiler::Node* value, int operand_index);
+  void StoreRegisterPairAtOperandIndex(compiler::Node* value1,
+                                       compiler::Node* value2,
+                                       int operand_index);
+  void StoreRegisterTripleAtOperandIndex(compiler::Node* value1,
+                                         compiler::Node* value2,
+                                         compiler::Node* value3,
                                          int operand_index);
 
   RegListNodePair GetRegisterListAtOperandIndex(int operand_index);
-  TNode<Object> LoadRegisterFromRegisterList(const RegListNodePair& reg_list,
-                                             int index);
+  Node* LoadRegisterFromRegisterList(const RegListNodePair& reg_list,
+                                     int index);
   TNode<IntPtrT> RegisterLocationInRegisterList(const RegListNodePair& reg_list,
                                                 int index);
 
   // Load constant at the index specified in operand |operand_index| from the
   // constant pool.
-  TNode<Object> LoadConstantPoolEntryAtOperandIndex(int operand_index);
+  compiler::Node* LoadConstantPoolEntryAtOperandIndex(int operand_index);
   // Load and untag constant at the index specified in operand |operand_index|
   // from the constant pool.
   TNode<IntPtrT> LoadAndUntagConstantPoolEntryAtOperandIndex(int operand_index);
   // Load constant at |index| in the constant pool.
-  TNode<Object> LoadConstantPoolEntry(TNode<WordT> index);
+  compiler::Node* LoadConstantPoolEntry(compiler::Node* index);
   // Load and untag constant at |index| in the constant pool.
-  TNode<IntPtrT> LoadAndUntagConstantPoolEntry(TNode<WordT> index);
+  TNode<IntPtrT> LoadAndUntagConstantPoolEntry(compiler::Node* index);
 
   // Load the FeedbackVector for the current function. The retuned node could be
   // undefined.
-  TNode<HeapObject> LoadFeedbackVector();
+  compiler::TNode<HeapObject> LoadFeedbackVector();
+
+  // Increment the call count for a CALL_IC or construct call.
+  // The call count is located at feedback_vector[slot_id + 1].
+  void IncrementCallCount(compiler::Node* feedback_vector,
+                          compiler::Node* slot_id);
+
+  // Collect the callable |target| feedback for either a CALL_IC or
+  // an INSTANCEOF_IC in the |feedback_vector| at |slot_id|.
+  void CollectCallableFeedback(compiler::Node* target, compiler::Node* context,
+                               compiler::Node* feedback_vector,
+                               compiler::Node* slot_id);
+
+  // Collect CALL_IC feedback for |target| function in the
+  // |feedback_vector| at |slot_id|, and the call counts in
+  // the |feedback_vector| at |slot_id+1|.
+  void CollectCallFeedback(compiler::Node* target, compiler::Node* context,
+                           compiler::Node* maybe_feedback_vector,
+                           compiler::Node* slot_id);
 
   // Call JSFunction or Callable |function| with |args| arguments, possibly
   // including the receiver depending on |receiver_mode|. After the call returns
   // directly dispatches to the next bytecode.
-  void CallJSAndDispatch(TNode<Object> function, TNode<Context> context,
+  void CallJSAndDispatch(compiler::Node* function, compiler::Node* context,
                          const RegListNodePair& args,
                          ConvertReceiverMode receiver_mode);
 
@@ -159,89 +179,93 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   // depending on |receiver_mode|. After the call returns directly dispatches to
   // the next bytecode.
   template <class... TArgs>
-  void CallJSAndDispatch(TNode<Object> function, TNode<Context> context,
-                         TNode<Word32T> arg_count,
+  void CallJSAndDispatch(Node* function, Node* context, Node* arg_count,
                          ConvertReceiverMode receiver_mode, TArgs... args);
 
   // Call JSFunction or Callable |function| with |args|
   // arguments (not including receiver), and the final argument being spread.
   // After the call returns directly dispatches to the next bytecode.
-  void CallJSWithSpreadAndDispatch(TNode<Object> function,
-                                   TNode<Context> context,
+  void CallJSWithSpreadAndDispatch(compiler::Node* function,
+                                   compiler::Node* context,
                                    const RegListNodePair& args,
-                                   TNode<UintPtrT> slot_id,
-                                   TNode<HeapObject> maybe_feedback_vector);
+                                   compiler::Node* slot_id,
+                                   compiler::Node* feedback_vector);
 
   // Call constructor |target| with |args| arguments (not including receiver).
   // The |new_target| is the same as the |target| for the new keyword, but
   // differs for the super keyword.
-  TNode<Object> Construct(TNode<Object> target, TNode<Context> context,
-                          TNode<Object> new_target, const RegListNodePair& args,
-                          TNode<UintPtrT> slot_id,
-                          TNode<HeapObject> maybe_feedback_vector);
+  compiler::Node* Construct(compiler::SloppyTNode<Object> target,
+                            compiler::Node* context,
+                            compiler::SloppyTNode<Object> new_target,
+                            const RegListNodePair& args,
+                            compiler::Node* slot_id,
+                            compiler::Node* feedback_vector);
 
   // Call constructor |target| with |args| arguments (not including
   // receiver). The last argument is always a spread. The |new_target| is the
   // same as the |target| for the new keyword, but differs for the super
   // keyword.
-  TNode<Object> ConstructWithSpread(TNode<Object> target,
-                                    TNode<Context> context,
-                                    TNode<Object> new_target,
-                                    const RegListNodePair& args,
-                                    TNode<UintPtrT> slot_id,
-                                    TNode<HeapObject> maybe_feedback_vector);
+  compiler::Node* ConstructWithSpread(compiler::Node* target,
+                                      compiler::Node* context,
+                                      compiler::Node* new_target,
+                                      const RegListNodePair& args,
+                                      compiler::Node* slot_id,
+                                      compiler::Node* feedback_vector);
 
   // Call runtime function with |args| arguments which will return |return_size|
   // number of values.
-  compiler::Node* CallRuntimeN(TNode<Uint32T> function_id,
-                               TNode<Context> context,
+  compiler::Node* CallRuntimeN(compiler::Node* function_id,
+                               compiler::Node* context,
                                const RegListNodePair& args,
                                int return_size = 1);
 
   // Jump forward relative to the current bytecode by the |jump_offset|.
-  void Jump(TNode<IntPtrT> jump_offset);
+  compiler::Node* Jump(compiler::Node* jump_offset);
 
   // Jump backward relative to the current bytecode by the |jump_offset|.
-  void JumpBackward(TNode<IntPtrT> jump_offset);
+  compiler::Node* JumpBackward(compiler::Node* jump_offset);
 
   // Jump forward relative to the current bytecode by |jump_offset| if the
   // word values |lhs| and |rhs| are equal.
-  void JumpIfTaggedEqual(TNode<Object> lhs, TNode<Object> rhs,
-                         TNode<IntPtrT> jump_offset);
+  void JumpIfTaggedEqual(compiler::TNode<Object> lhs,
+                         compiler::TNode<Object> rhs,
+                         compiler::Node* jump_offset);
 
   // Jump forward relative to the current bytecode by |jump_offset| if the
   // word values |lhs| and |rhs| are not equal.
-  void JumpIfTaggedNotEqual(TNode<Object> lhs, TNode<Object> rhs,
-                            TNode<IntPtrT> jump_offset);
+  void JumpIfTaggedNotEqual(compiler::TNode<Object> lhs,
+                            compiler::TNode<Object> rhs,
+                            compiler::Node* jump_offset);
 
   // Updates the profiler interrupt budget for a return.
   void UpdateInterruptBudgetOnReturn();
 
   // Returns the OSR nesting level from the bytecode header.
-  TNode<Int8T> LoadOsrNestingLevel();
+  compiler::Node* LoadOsrNestingLevel();
 
   // Dispatch to the bytecode.
-  void Dispatch();
+  compiler::Node* Dispatch();
 
   // Dispatch bytecode as wide operand variant.
   void DispatchWide(OperandScale operand_scale);
 
   // Dispatch to |target_bytecode| at |new_bytecode_offset|.
   // |target_bytecode| should be equivalent to loading from the offset.
-  void DispatchToBytecode(TNode<WordT> target_bytecode,
-                          TNode<IntPtrT> new_bytecode_offset);
+  compiler::Node* DispatchToBytecode(compiler::Node* target_bytecode,
+                                     compiler::Node* new_bytecode_offset);
 
   // Abort with the given abort reason.
   void Abort(AbortReason abort_reason);
-  void AbortIfWordNotEqual(TNode<WordT> lhs, TNode<WordT> rhs,
+  void AbortIfWordNotEqual(compiler::TNode<WordT> lhs,
+                           compiler::TNode<WordT> rhs,
                            AbortReason abort_reason);
   // Abort if |register_count| is invalid for given register file array.
-  void AbortIfRegisterCountInvalid(
-      TNode<FixedArrayBase> parameters_and_registers,
-      TNode<IntPtrT> formal_parameter_count, TNode<UintPtrT> register_count);
+  void AbortIfRegisterCountInvalid(compiler::Node* parameters_and_registers,
+                                   compiler::Node* formal_parameter_count,
+                                   compiler::Node* register_count);
 
   // Dispatch to frame dropper trampoline if necessary.
-  void MaybeDropFrames(TNode<Context> context);
+  void MaybeDropFrames(compiler::Node* context);
 
   // Returns the offset from the BytecodeArrayPointer of the current bytecode.
   TNode<IntPtrT> BytecodeOffset();
@@ -253,27 +277,27 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   void ToNumberOrNumeric(Object::Conversion mode);
 
  private:
-  // Returns a pointer to the current function's BytecodeArray object.
-  TNode<BytecodeArray> BytecodeArrayTaggedPointer();
+  // Returns a tagged pointer to the current function's BytecodeArray object.
+  compiler::Node* BytecodeArrayTaggedPointer();
 
-  // Returns a pointer to first entry in the interpreter dispatch table.
-  TNode<ExternalReference> DispatchTablePointer();
+  // Returns a raw pointer to first entry in the interpreter dispatch table.
+  compiler::Node* DispatchTableRawPointer();
 
   // Returns the accumulator value without checking whether bytecode
   // uses it. This is intended to be used only in dispatch and in
   // tracing as these need to bypass accumulator use validity checks.
-  TNode<Object> GetAccumulatorUnchecked();
+  compiler::Node* GetAccumulatorUnchecked();
 
   // Returns the frame pointer for the interpreted frame of the function being
   // interpreted.
   TNode<RawPtrT> GetInterpretedFramePointer();
 
   // Operations on registers.
-  TNode<IntPtrT> RegisterLocation(Register reg);
-  TNode<IntPtrT> RegisterLocation(TNode<IntPtrT> reg_index);
-  TNode<IntPtrT> NextRegister(TNode<IntPtrT> reg_index);
-  TNode<Object> LoadRegister(TNode<IntPtrT> reg_index);
-  void StoreRegister(TNode<Object> value, TNode<IntPtrT> reg_index);
+  compiler::TNode<IntPtrT> RegisterLocation(Register reg);
+  compiler::TNode<IntPtrT> RegisterLocation(compiler::Node* reg_index);
+  compiler::TNode<IntPtrT> NextRegister(compiler::Node* reg_index);
+  compiler::TNode<Object> LoadRegister(Node* reg_index);
+  void StoreRegister(compiler::Node* value, compiler::Node* reg_index);
 
   // Saves and restores interpreter bytecode offset to the interpreter stack
   // frame when performing a call.
@@ -281,7 +305,7 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   void CallEpilogue();
 
   // Increment the dispatch counter for the (current, next) bytecode pair.
-  void TraceBytecodeDispatch(TNode<WordT> target_bytecode);
+  void TraceBytecodeDispatch(compiler::Node* target_index);
 
   // Traces the current bytecode by calling |function_id|.
   void TraceBytecode(Runtime::FunctionId function_id);
@@ -289,74 +313,74 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   // Updates the bytecode array's interrupt budget by a 32-bit unsigned |weight|
   // and calls Runtime::kInterrupt if counter reaches zero. If |backward|, then
   // the interrupt budget is decremented, otherwise it is incremented.
-  void UpdateInterruptBudget(TNode<Int32T> weight, bool backward);
+  void UpdateInterruptBudget(compiler::Node* weight, bool backward);
 
   // Returns the offset of register |index| relative to RegisterFilePointer().
-  TNode<IntPtrT> RegisterFrameOffset(TNode<IntPtrT> index);
+  compiler::TNode<IntPtrT> RegisterFrameOffset(compiler::Node* index);
 
   // Returns the offset of an operand relative to the current bytecode offset.
-  TNode<IntPtrT> OperandOffset(int operand_index);
+  compiler::Node* OperandOffset(int operand_index);
 
   // Returns a value built from an sequence of bytes in the bytecode
   // array starting at |relative_offset| from the current bytecode.
   // The |result_type| determines the size and signedness.  of the
   // value read. This method should only be used on architectures that
   // do not support unaligned memory accesses.
-  TNode<Word32T> BytecodeOperandReadUnaligned(
+  compiler::TNode<Word32T> BytecodeOperandReadUnaligned(
       int relative_offset, MachineType result_type,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
 
   // Returns zero- or sign-extended to word32 value of the operand.
-  TNode<Uint8T> BytecodeOperandUnsignedByte(
+  compiler::TNode<Uint8T> BytecodeOperandUnsignedByte(
       int operand_index,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
-  TNode<Int8T> BytecodeOperandSignedByte(
+  compiler::TNode<Int8T> BytecodeOperandSignedByte(
       int operand_index,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
-  TNode<Uint16T> BytecodeOperandUnsignedShort(
+  compiler::TNode<Uint16T> BytecodeOperandUnsignedShort(
       int operand_index,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
-  TNode<Int16T> BytecodeOperandSignedShort(
+  compiler::TNode<Int16T> BytecodeOperandSignedShort(
       int operand_index,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
-  TNode<Uint32T> BytecodeOperandUnsignedQuad(
+  compiler::TNode<Uint32T> BytecodeOperandUnsignedQuad(
       int operand_index,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
-  TNode<Int32T> BytecodeOperandSignedQuad(
+  compiler::TNode<Int32T> BytecodeOperandSignedQuad(
       int operand_index,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
 
   // Returns zero- or sign-extended to word32 value of the operand of
   // given size.
-  TNode<Int32T> BytecodeSignedOperand(
+  compiler::TNode<Int32T> BytecodeSignedOperand(
       int operand_index, OperandSize operand_size,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
-  TNode<Uint32T> BytecodeUnsignedOperand(
+  compiler::TNode<Uint32T> BytecodeUnsignedOperand(
       int operand_index, OperandSize operand_size,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
 
   // Returns the word-size sign-extended register index for bytecode operand
   // |operand_index| in the current bytecode. Value is not poisoned on
   // speculation since the value loaded from the register is poisoned instead.
-  TNode<IntPtrT> BytecodeOperandReg(
+  compiler::Node* BytecodeOperandReg(
       int operand_index,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
 
   // Returns the word zero-extended index immediate for bytecode operand
   // |operand_index| in the current bytecode for use when loading a .
-  TNode<UintPtrT> BytecodeOperandConstantPoolIdx(
+  compiler::Node* BytecodeOperandConstantPoolIdx(
       int operand_index,
       LoadSensitivity needs_poisoning = LoadSensitivity::kCritical);
 
   // Jump relative to the current bytecode by the |jump_offset|. If |backward|,
   // then jump backward (subtract the offset), otherwise jump forward (add the
   // offset). Helper function for Jump and JumpBackward.
-  void Jump(TNode<IntPtrT> jump_offset, bool backward);
+  compiler::Node* Jump(compiler::Node* jump_offset, bool backward);
 
   // Jump forward relative to the current bytecode by |jump_offset| if the
   // |condition| is true. Helper function for JumpIfTaggedEqual and
   // JumpIfTaggedNotEqual.
-  void JumpConditional(TNode<BoolT> condition, TNode<IntPtrT> jump_offset);
+  void JumpConditional(compiler::Node* condition, compiler::Node* jump_offset);
 
   // Save the bytecode offset to the interpreter frame.
   void SaveBytecodeOffset();
@@ -370,22 +394,29 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   // Updates and returns BytecodeOffset() advanced by delta bytecodes.
   // Traces the exit of the current bytecode.
   TNode<IntPtrT> Advance(int delta);
-  TNode<IntPtrT> Advance(TNode<IntPtrT> delta, bool backward = false);
+  TNode<IntPtrT> Advance(SloppyTNode<IntPtrT> delta, bool backward = false);
 
   // Load the bytecode at |bytecode_offset|.
-  TNode<WordT> LoadBytecode(TNode<IntPtrT> bytecode_offset);
+  compiler::TNode<WordT> LoadBytecode(compiler::Node* bytecode_offset);
 
   // Look ahead for Star and inline it in a branch. Returns a new target
   // bytecode node for dispatch.
-  TNode<WordT> StarDispatchLookahead(TNode<WordT> target_bytecode);
+  compiler::TNode<WordT> StarDispatchLookahead(
+      compiler::TNode<WordT> target_bytecode);
 
   // Build code for Star at the current BytecodeOffset() and Advance() to the
   // next dispatch offset.
   void InlineStar();
 
+  // Dispatch to the bytecode handler with code offset |handler|.
+  compiler::Node* DispatchToBytecodeHandler(compiler::Node* handler,
+                                            compiler::Node* bytecode_offset,
+                                            compiler::Node* target_bytecode);
+
   // Dispatch to the bytecode handler with code entry point |handler_entry|.
-  void DispatchToBytecodeHandlerEntry(TNode<RawPtrT> handler_entry,
-                                      TNode<IntPtrT> bytecode_offset);
+  compiler::Node* DispatchToBytecodeHandlerEntry(
+      compiler::Node* handler_entry, compiler::Node* bytecode_offset,
+      compiler::Node* target_bytecode);
 
   int CurrentBytecodeSize() const;
 
@@ -393,11 +424,11 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
 
   Bytecode bytecode_;
   OperandScale operand_scale_;
-  CodeStubAssembler::TVariable<RawPtrT> interpreted_frame_pointer_;
-  CodeStubAssembler::TVariable<BytecodeArray> bytecode_array_;
-  CodeStubAssembler::TVariable<IntPtrT> bytecode_offset_;
-  CodeStubAssembler::TVariable<ExternalReference> dispatch_table_;
-  CodeStubAssembler::TVariable<Object> accumulator_;
+  TVariable<RawPtrT> interpreted_frame_pointer_;
+  CodeStubAssembler::Variable bytecode_array_;
+  TVariable<IntPtrT> bytecode_offset_;
+  CodeStubAssembler::Variable dispatch_table_;
+  CodeStubAssembler::Variable accumulator_;
   AccumulatorUse accumulator_use_;
   bool made_call_;
   bool reloaded_frame_ptr_;

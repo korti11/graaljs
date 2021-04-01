@@ -39,18 +39,6 @@ void SourceRangeAstVisitor::VisitFunctionLiteral(FunctionLiteral* expr) {
   MaybeRemoveLastContinuationRange(stmts);
 }
 
-void SourceRangeAstVisitor::VisitTryCatchStatement(TryCatchStatement* stmt) {
-  AstTraversalVisitor::VisitTryCatchStatement(stmt);
-  MaybeRemoveContinuationRange(stmt->try_block());
-  MaybeRemoveContinuationRangeOfAsyncReturn(stmt);
-}
-
-void SourceRangeAstVisitor::VisitTryFinallyStatement(
-    TryFinallyStatement* stmt) {
-  AstTraversalVisitor::VisitTryFinallyStatement(stmt);
-  MaybeRemoveContinuationRange(stmt->try_block());
-}
-
 bool SourceRangeAstVisitor::VisitNode(AstNode* node) {
   AstNodeSourceRanges* range = source_range_map_->Find(node);
 
@@ -71,8 +59,11 @@ bool SourceRangeAstVisitor::VisitNode(AstNode* node) {
   return true;
 }
 
-void SourceRangeAstVisitor::MaybeRemoveContinuationRange(
-    Statement* last_statement) {
+void SourceRangeAstVisitor::MaybeRemoveLastContinuationRange(
+    ZonePtrList<Statement>* statements) {
+  if (statements->is_empty()) return;
+
+  Statement* last_statement = statements->last();
   AstNodeSourceRanges* last_range = nullptr;
 
   if (last_statement->IsExpressionStatement() &&
@@ -89,41 +80,6 @@ void SourceRangeAstVisitor::MaybeRemoveContinuationRange(
 
   if (last_range->HasRange(SourceRangeKind::kContinuation)) {
     last_range->RemoveContinuationRange();
-  }
-}
-
-void SourceRangeAstVisitor::MaybeRemoveLastContinuationRange(
-    ZonePtrList<Statement>* statements) {
-  if (statements->is_empty()) return;
-  MaybeRemoveContinuationRange(statements->last());
-}
-
-namespace {
-Statement* FindLastNonSyntheticStatement(ZonePtrList<Statement>* statements) {
-  for (int i = statements->length() - 1; i >= 0; --i) {
-    Statement* stmt = statements->at(i);
-    if (stmt->IsReturnStatement() &&
-        stmt->AsReturnStatement()->is_synthetic_async_return()) {
-      continue;
-    }
-    return stmt;
-  }
-  return nullptr;
-}
-}  // namespace
-
-void SourceRangeAstVisitor::MaybeRemoveContinuationRangeOfAsyncReturn(
-    TryCatchStatement* try_catch_stmt) {
-  // Detect try-catch inserted by NewTryCatchStatementForAsyncAwait in the
-  // parser (issued for async functions, including async generators), and
-  // remove the continuation range of the last statement, such that the
-  // range of the enclosing function body is used.
-  if (try_catch_stmt->is_try_catch_for_async()) {
-    Statement* last_non_synthetic =
-      FindLastNonSyntheticStatement(try_catch_stmt->try_block()->statements());
-    if (last_non_synthetic) {
-      MaybeRemoveContinuationRange(last_non_synthetic);
-    }
   }
 }
 

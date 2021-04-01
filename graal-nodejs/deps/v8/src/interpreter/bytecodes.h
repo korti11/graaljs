@@ -333,6 +333,9 @@ namespace interpreter {
     OperandType::kRegPair, OperandType::kIdx)                                  \
   V(ForInStep, AccumulatorUse::kWrite, OperandType::kReg)                      \
                                                                                \
+  /* Perform a stack guard check */                                            \
+  V(StackCheck, AccumulatorUse::kNone)                                         \
+                                                                               \
   /* Update the pending message */                                             \
   V(SetPendingMessage, AccumulatorUse::kReadWrite)                             \
                                                                                \
@@ -353,8 +356,7 @@ namespace interpreter {
     OperandType::kRegOutList, OperandType::kRegCount)                          \
                                                                                \
   /* Iterator protocol operations */                                           \
-  V(GetIterator, AccumulatorUse::kWrite, OperandType::kReg, OperandType::kIdx, \
-    OperandType::kIdx)                                                         \
+  V(GetIterator, AccumulatorUse::kWrite, OperandType::kReg, OperandType::kIdx) \
                                                                                \
   /* Debugger */                                                               \
   V(Debugger, AccumulatorUse::kNone)                                           \
@@ -641,11 +643,10 @@ class V8_EXPORT_PRIVATE Bytecodes final : public AllStatic {
   }
 
   // Return true if |bytecode| is a jump without effects,
-  // e.g. any jump excluding those that include type coercion like
-  // JumpIfTrueToBoolean, and JumpLoop due to having an implicit StackCheck.
+  // e.g.  any jump excluding those that include type coercion like
+  // JumpIfTrueToBoolean.
   static constexpr bool IsJumpWithoutEffects(Bytecode bytecode) {
-    return IsJump(bytecode) && !IsJumpIfToBoolean(bytecode) &&
-           bytecode != Bytecode::kJumpLoop;
+    return IsJump(bytecode) && !IsJumpIfToBoolean(bytecode);
   }
 
   // Returns true if the bytecode is a switch.

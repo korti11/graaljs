@@ -171,10 +171,10 @@ class TestWriter extends EE {
   w[0].on('write', function() {
     if (--writes === 0) {
       r.unpipe();
-      assert.deepStrictEqual(r._readableState.pipes, []);
+      assert.strictEqual(r._readableState.pipes, null);
       w[0].end();
       r.pipe(w[1]);
-      assert.deepStrictEqual(r._readableState.pipes, [w[1]]);
+      assert.strictEqual(r._readableState.pipes, w[1]);
     }
   });
 

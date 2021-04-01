@@ -30,7 +30,6 @@ class JSSet : public TorqueGeneratedJSSet<JSSet, JSCollection> {
  public:
   static void Initialize(Handle<JSSet> set, Isolate* isolate);
   static void Clear(Isolate* isolate, Handle<JSSet> set);
-  void Rehash(Isolate* isolate);
 
   // Dispatched behavior.
   DECL_PRINTER(JSSet)
@@ -57,7 +56,6 @@ class JSMap : public TorqueGeneratedJSMap<JSMap, JSCollection> {
  public:
   static void Initialize(Handle<JSMap> map, Isolate* isolate);
   static void Clear(Isolate* isolate, Handle<JSMap> map);
-  void Rehash(Isolate* isolate);
 
   // Dispatched behavior.
   DECL_PRINTER(JSMap)
@@ -104,7 +102,7 @@ class JSWeakCollection
   // Visit the whole object.
   using BodyDescriptor = BodyDescriptorImpl;
 
-  static const int kHeaderSizeOfAllWeakCollections = kHeaderSize;
+  static const int kSizeOfAllWeakCollections = kHeaderSize;
 
   TQ_OBJECT_CONSTRUCTORS(JSWeakCollection)
 };
@@ -116,7 +114,7 @@ class JSWeakMap : public TorqueGeneratedJSWeakMap<JSWeakMap, JSWeakCollection> {
   DECL_PRINTER(JSWeakMap)
   DECL_VERIFIER(JSWeakMap)
 
-  STATIC_ASSERT(kHeaderSize == kHeaderSizeOfAllWeakCollections);
+  STATIC_ASSERT(kSize == kSizeOfAllWeakCollections);
   TQ_OBJECT_CONSTRUCTORS(JSWeakMap)
 };
 
@@ -127,7 +125,7 @@ class JSWeakSet : public TorqueGeneratedJSWeakSet<JSWeakSet, JSWeakCollection> {
   DECL_PRINTER(JSWeakSet)
   DECL_VERIFIER(JSWeakSet)
 
-  STATIC_ASSERT(kHeaderSize == kHeaderSizeOfAllWeakCollections);
+  STATIC_ASSERT(kSize == kSizeOfAllWeakCollections);
   TQ_OBJECT_CONSTRUCTORS(JSWeakSet)
 };
 

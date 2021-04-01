@@ -149,7 +149,8 @@ for (const options of good) {
   const { pass, salt, keylen, expected } = options;
   const actual = crypto.scryptSync(pass, salt, keylen, options);
   assert.strictEqual(actual.toString('hex'), expected);
-  crypto.scrypt(pass, salt, keylen, options, common.mustSucceed((actual) => {
+  crypto.scrypt(pass, salt, keylen, options, common.mustCall((err, actual) => {
+    assert.ifError(err);
     assert.strictEqual(actual.toString('hex'), expected);
   }));
 }
@@ -183,7 +184,8 @@ for (const options of toobig) {
   const expected = crypto.scryptSync('pass', 'salt', 1, defaults);
   const actual = crypto.scryptSync('pass', 'salt', 1);
   assert.deepStrictEqual(actual.toString('hex'), expected.toString('hex'));
-  crypto.scrypt('pass', 'salt', 1, common.mustSucceed((actual) => {
+  crypto.scrypt('pass', 'salt', 1, common.mustCall((err, actual) => {
+    assert.ifError(err);
     assert.deepStrictEqual(actual.toString('hex'), expected.toString('hex'));
   }));
 }
@@ -198,7 +200,8 @@ for (const options of toobig) {
   const actual = crypto.scryptSync('pass', 'salt', 1);
   assert.deepStrictEqual(actual, expected.toString(testEncoding));
 
-  crypto.scrypt('pass', 'salt', 1, common.mustSucceed((actual) => {
+  crypto.scrypt('pass', 'salt', 1, common.mustCall((err, actual) => {
+    assert.ifError(err);
     assert.deepStrictEqual(actual, expected.toString(testEncoding));
   }));
 
@@ -222,7 +225,8 @@ for (const { args, expected } of badargs) {
   // Values for maxmem that do not fit in 32 bits but that are still safe
   // integers should be allowed.
   crypto.scrypt('', '', 4, { maxmem: 2 ** 52 },
-                common.mustSucceed((actual) => {
+                common.mustCall((err, actual) => {
+                  assert.ifError(err);
                   assert.strictEqual(actual.toString('hex'), 'd72c87d0');
                 }));
 

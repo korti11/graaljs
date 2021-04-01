@@ -12,6 +12,8 @@ const privateMethods =
   require('internal/deps/acorn-plugins/acorn-private-methods/index');
 const classFields =
   require('internal/deps/acorn-plugins/acorn-class-fields/index');
+const numericSeparator =
+  require('internal/deps/acorn-plugins/acorn-numeric-separator/index');
 const staticClassFeatures =
   require('internal/deps/acorn-plugins/acorn-static-class-features/index');
 
@@ -38,17 +40,13 @@ const {
   inspect,
 } = require('internal/util/inspect');
 
-let debug = require('internal/util/debuglog').debuglog('repl', (fn) => {
-  debug = fn;
-});
+const debug = require('internal/util/debuglog').debuglog('repl');
 
 const previewOptions = {
   colors: false,
   depth: 1,
   showHidden: false
 };
-
-const REPL_MODE_STRICT = Symbol('repl-strict');
 
 // If the error is that we've unexpectedly ended the input,
 // then let the user try to recover by adding more input.
@@ -83,6 +81,7 @@ function isRecoverableError(e, code) {
     .extend(
       privateMethods,
       classFields,
+      numericSeparator,
       staticClassFeatures,
       (Parser) => {
         return class extends Parser {
@@ -114,7 +113,7 @@ function isRecoverableError(e, code) {
   // Try to parse the code with acorn.  If the parse fails, ignore the acorn
   // error and return the recoverable status.
   try {
-    RecoverableParser.parse(code, { ecmaVersion: 'latest' });
+    RecoverableParser.parse(code, { ecmaVersion: 11 });
 
     // Odd case: the underlying JS engine (V8, Chakra) rejected this input
     // but Acorn detected no issue.  Presume that additional text won't
@@ -137,11 +136,7 @@ function setupPreview(repl, contextSymbol, bufferSymbol, active) {
   let previewCompletionCounter = 0;
   let completionPreview = null;
 
-  let hasCompletions = false;
-
   let wrapped = false;
-
-  let escaped = null;
 
   function getPreviewPos() {
     const displayPos = repl._getDisplayPos(`${repl._prompt}${repl.line}`);
@@ -151,13 +146,7 @@ function setupPreview(repl, contextSymbol, bufferSymbol, active) {
     return { displayPos, cursorPos };
   }
 
-  function isCursorAtInputEnd() {
-    const { cursorPos, displayPos } = getPreviewPos();
-    return cursorPos.rows === displayPos.rows &&
-           cursorPos.cols === displayPos.cols;
-  }
-
-  const clearPreview = (key) => {
+  const clearPreview = () => {
     if (inputPreview !== null) {
       const { displayPos, cursorPos } = getPreviewPos();
       const rows = displayPos.rows - cursorPos.rows + 1;
@@ -190,22 +179,7 @@ function setupPreview(repl, contextSymbol, bufferSymbol, active) {
         cursorTo(repl.output, pos.cursorPos.cols);
         moveCursor(repl.output, 0, -rows);
       }
-      if (!key.ctrl && !key.shift) {
-        if (key.name === 'escape') {
-          if (escaped === null && key.meta) {
-            escaped = repl.line;
-          }
-        } else if ((key.name === 'return' || key.name === 'enter') &&
-                   !key.meta &&
-                   escaped !== repl.line &&
-                   isCursorAtInputEnd()) {
-          repl._insertString(completionPreview);
-        }
-      }
       completionPreview = null;
-    }
-    if (escaped !== repl.line) {
-      escaped = null;
     }
   };
 
@@ -231,8 +205,6 @@ function setupPreview(repl, contextSymbol, bufferSymbol, active) {
       if (!rawCompletions || rawCompletions.length === 0) {
         return;
       }
-
-      hasCompletions = true;
 
       // If there is a common prefix to all matches, then apply that portion.
       const completions = rawCompletions.filter((e) => e);
@@ -270,12 +242,6 @@ function setupPreview(repl, contextSymbol, bufferSymbol, active) {
     });
   }
 
-  function isInStrictMode(repl) {
-    return repl.replMode === REPL_MODE_STRICT || process.execArgv
-      .map((e) => e.toLowerCase().replace(/_/g, '-'))
-      .includes('--use-strict');
-  }
-
   // This returns a code preview for arbitrary input code.
   function getInputPreview(input, callback) {
     // For similar reasons as `defaultEval`, wrap expressions starting with a
@@ -303,11 +269,8 @@ function setupPreview(repl, contextSymbol, bufferSymbol, active) {
         // may be inspected.
         } else if (preview.exceptionDetails &&
                    (result.className === 'EvalError' ||
-                    result.className === 'SyntaxError' ||
-                    // Report ReferenceError in case the strict mode is active
-                    // for input that has no completions.
-                    (result.className === 'ReferenceError' &&
-                     (hasCompletions || !isInStrictMode(repl))))) {
+                     result.className === 'SyntaxError' ||
+                     result.className === 'ReferenceError')) {
           callback(null, null);
         } else if (result.objectId) {
           // The writer options might change and have influence on the inspect
@@ -353,9 +316,14 @@ function setupPreview(repl, contextSymbol, bufferSymbol, active) {
       return;
     }
 
-    hasCompletions = false;
-
     // Add the autocompletion preview.
+    // TODO(BridgeAR): Trigger the input preview after the completion preview.
+    // That way it's possible to trigger the input prefix including the
+    // potential completion suffix. To do so, we also have to change the
+    // behavior of `enter` and `escape`:
+    // Enter should automatically add the suffix to the current line as long as
+    // escape was not pressed. We might even remove the preview in case any
+    // cursor movement is triggered.
     const insertPreview = false;
     showCompletionPreview(repl.line, insertPreview);
 
@@ -429,17 +397,9 @@ function setupPreview(repl, contextSymbol, bufferSymbol, active) {
       moveCursor(repl.output, 0, -rows - 1);
     };
 
-    let previewLine = line;
-
-    if (completionPreview !== null &&
-        isCursorAtInputEnd() &&
-        escaped !== repl.line) {
-      previewLine += completionPreview;
-    }
-
-    getInputPreview(previewLine, inputPreviewCallback);
+    getInputPreview(line, inputPreviewCallback);
     if (wrapped) {
-      getInputPreview(previewLine, inputPreviewCallback);
+      getInputPreview(line, inputPreviewCallback);
     }
     wrapped = false;
   };
@@ -719,8 +679,6 @@ function setupReverseSearch(repl) {
 }
 
 module.exports = {
-  REPL_MODE_SLOPPY: Symbol('repl-sloppy'),
-  REPL_MODE_STRICT,
   isRecoverableError,
   kStandaloneREPL: Symbol('kStandaloneREPL'),
   setupPreview,

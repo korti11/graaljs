@@ -238,7 +238,6 @@ class Simulator : public SimulatorBase {
   void HandleRList(Instruction* instr, bool load);
   void HandleVList(Instruction* inst);
   void SoftwareInterrupt(Instruction* instr);
-  void DebugAtNextPC();
 
   // Stop helper functions.
   inline bool isStopInstruction(Instruction* instr);
@@ -344,7 +343,7 @@ class Simulator : public SimulatorBase {
 
   // Simulator support.
   char* stack_;
-  static const size_t stack_protection_size_ = 256 * kSystemPointerSize;
+  static const size_t stack_protection_size_ = 256 * kPointerSize;
   bool pc_modified_;
   int icount_;
 

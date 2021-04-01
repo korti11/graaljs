@@ -6,7 +6,6 @@
 #define V8_INSPECTOR_V8_DEBUGGER_AGENT_IMPL_H_
 
 #include <deque>
-#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -93,12 +92,10 @@ class V8DebuggerAgentImpl : public protocol::Debugger::Backend {
           newCallFrames,
       Maybe<protocol::Runtime::StackTrace>* asyncStackTrace,
       Maybe<protocol::Runtime::StackTraceId>* asyncStackTraceId) override;
-  Response getScriptSource(const String16& scriptId, String16* scriptSource,
-                           Maybe<protocol::Binary>* bytecode) override;
-  Response getWasmBytecode(const String16& scriptId,
-                           protocol::Binary* bytecode) override;
+  Response getScriptSource(const String16& scriptId,
+                           String16* scriptSource) override;
   Response pause() override;
-  Response resume(Maybe<bool> terminateOnResume) override;
+  Response resume() override;
   Response stepOver() override;
   Response stepInto(Maybe<bool> inBreakOnAsyncCall) override;
   Response stepOut() override;
@@ -113,11 +110,6 @@ class V8DebuggerAgentImpl : public protocol::Debugger::Backend {
       Maybe<double> timeout,
       std::unique_ptr<protocol::Runtime::RemoteObject>* result,
       Maybe<protocol::Runtime::ExceptionDetails>*) override;
-  Response executeWasmEvaluator(
-      const String16& callFrameId, const protocol::Binary& evaluator,
-      Maybe<double> timeout,
-      std::unique_ptr<protocol::Runtime::RemoteObject>* result,
-      Maybe<protocol::Runtime::ExceptionDetails>* exceptionDetails) override;
   Response setVariableValue(
       int scopeNumber, const String16& variableName,
       std::unique_ptr<protocol::Runtime::CallArgument> newValue,
@@ -173,6 +165,7 @@ class V8DebuggerAgentImpl : public protocol::Debugger::Backend {
       std::unique_ptr<protocol::Array<protocol::Debugger::CallFrame>>*);
   std::unique_ptr<protocol::Runtime::StackTrace> currentAsyncStackTrace();
   std::unique_ptr<protocol::Runtime::StackTraceId> currentExternalStackTrace();
+  std::unique_ptr<protocol::Runtime::StackTraceId> currentScheduledAsyncCall();
 
   void setPauseOnExceptionsImpl(int);
 
@@ -182,8 +175,7 @@ class V8DebuggerAgentImpl : public protocol::Debugger::Backend {
   void setBreakpointImpl(const String16& breakpointId,
                          v8::Local<v8::Function> function,
                          v8::Local<v8::String> condition);
-  void removeBreakpointImpl(const String16& breakpointId,
-                            const std::vector<V8DebuggerScript*>& scripts);
+  void removeBreakpointImpl(const String16& breakpointId);
   void clearBreakDetails();
 
   void internalSetAsyncCallStackDepth(int);

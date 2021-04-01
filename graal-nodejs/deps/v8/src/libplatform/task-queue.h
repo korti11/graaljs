@@ -5,7 +5,6 @@
 #ifndef V8_LIBPLATFORM_TASK_QUEUE_H_
 #define V8_LIBPLATFORM_TASK_QUEUE_H_
 
-#include <memory>
 #include <queue>
 
 #include "include/libplatform/libplatform-export.h"

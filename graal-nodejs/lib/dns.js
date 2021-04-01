@@ -49,7 +49,6 @@ const {
 const {
   validatePort,
   validateString,
-  validateOneOf,
 } = require('internal/validators');
 
 const {
@@ -115,7 +114,8 @@ function lookup(hostname, options, callback) {
     family = options >>> 0;
   }
 
-  validateOneOf(family, 'family', [0, 4, 6], true);
+  if (family !== 0 && family !== 4 && family !== 6)
+    throw new ERR_INVALID_OPT_VALUE('family', family);
 
   if (!hostname) {
     emitInvalidHostnameWarning(hostname);

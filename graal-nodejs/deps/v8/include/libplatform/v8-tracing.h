@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "libplatform/libplatform-export.h"
-#include "v8-platform.h"  // NOLINT(build/include_directory)
+#include "v8-platform.h"  // NOLINT(build/include)
 
 namespace perfetto {
 class TracingSession;
@@ -35,7 +35,7 @@ const int kTraceMaxNumArgs = 2;
 class V8_PLATFORM_EXPORT TraceObject {
  public:
   union ArgValue {
-    V8_DEPRECATED("use as_uint ? true : false") bool as_bool;
+    bool as_bool;
     uint64_t as_uint;
     int64_t as_int;
     double as_double;

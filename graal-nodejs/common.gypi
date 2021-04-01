@@ -26,19 +26,20 @@
     'uv_library%': 'static_library',
 
     'clang%': 0,
-    'error_on_warn%': 'false',
 
     'openssl_fips%': '',
-    'openssl_no_asm%': 0,
 
     # Don't use ICU data file (icudtl.dat) from V8, we use our own.
     'icu_use_data_file_flag%': 0,
 
     # Reset this number to 0 on major V8 upgrades.
     # Increment by one for each non-official patch applied to deps/v8.
-    'v8_embedder_string': '-node.18',
+    'v8_embedder_string': '-node.39',
 
     ##### V8 defaults for Node.js #####
+
+    # Old time default, now explicitly stated.
+    'v8_use_snapshot': 1,
 
     # Turn on SipHash for hash seed generation, addresses HashWick
     'v8_use_siphash': 'true',
@@ -54,17 +55,8 @@
     # Enable disassembler for `--print-code` v8 options
     'v8_enable_disassembler': 1,
 
-    # Sets -dOBJECT_PRINT.
-    'v8_enable_object_print%': 1,
-
     # https://github.com/nodejs/node/pull/22920/files#r222779926
     'v8_enable_handle_zapping': 0,
-
-    # Disable pointer compression. Can be enabled at build time via configure
-    # options but default values are required here as this file is also used by
-    # node-gyp to build addons.
-    'v8_enable_pointer_compression%': 0,
-    'v8_enable_31bit_smis_on_64bit_arch%': 0,
 
     # Disable V8 untrusted code mitigations.
     # See https://github.com/v8/v8/wiki/Untrusted-code-mitigations
@@ -82,21 +74,55 @@
     ##### end V8 defaults #####
 
     'conditions': [
+      ['target_arch=="arm64"', {
+        # Disabled pending https://github.com/nodejs/node/issues/23913.
+        'openssl_no_asm%': 1,
+      }, {
+        'openssl_no_asm%': 0,
+      }],
       ['OS == "win"', {
         'os_posix': 0,
         'v8_postmortem_support%': 0,
-        'obj_dir': '<(PRODUCT_DIR)/obj',
-        'v8_base': '<(PRODUCT_DIR)/lib/libv8_snapshot.a',
       }, {
         'os_posix': 1,
         'v8_postmortem_support%': 1,
       }],
-      ['GENERATOR == "ninja"', {
-        'obj_dir': '<(PRODUCT_DIR)/obj',
-        'v8_base': '<(PRODUCT_DIR)/obj/tools/v8_gypfiles/libv8_snapshot.a',
+      ['v8_use_snapshot==1', {
+        'conditions': [
+          ['GENERATOR == "ninja"', {
+            'obj_dir': '<(PRODUCT_DIR)/obj',
+            'v8_base': '<(PRODUCT_DIR)/obj/tools/v8_gypfiles/libv8_snapshot.a',
+           }, {
+            'obj_dir%': '<(PRODUCT_DIR)/obj.target',
+            'v8_base': '<(PRODUCT_DIR)/obj.target/tools/v8_gypfiles/libv8_snapshot.a',
+          }],
+          ['OS == "win"', {
+            'obj_dir': '<(PRODUCT_DIR)/obj',
+            'v8_base': '<(PRODUCT_DIR)/lib/libv8_snapshot.a',
+          }],
+          ['OS == "mac"', {
+            'obj_dir%': '<(PRODUCT_DIR)/obj.target',
+            'v8_base': '<(PRODUCT_DIR)/libv8_snapshot.a',
+          }],
+        ],
       }, {
-        'obj_dir%': '<(PRODUCT_DIR)/obj.target',
-        'v8_base': '<(PRODUCT_DIR)/obj.target/tools/v8_gypfiles/libv8_snapshot.a',
+        'conditions': [
+          ['GENERATOR == "ninja"', {
+            'obj_dir': '<(PRODUCT_DIR)/obj',
+            'v8_base': '<(PRODUCT_DIR)/obj/tools/v8_gypfiles/libv8_nosnapshot.a',
+           }, {
+            'obj_dir%': '<(PRODUCT_DIR)/obj.target',
+            'v8_base': '<(PRODUCT_DIR)/obj.target/tools/v8_gypfiles/libv8_nosnapshot.a',
+          }],
+          ['OS == "win"', {
+            'obj_dir': '<(PRODUCT_DIR)/obj',
+            'v8_base': '<(PRODUCT_DIR)/lib/libv8_nosnapshot.a',
+          }],
+          ['OS == "mac"', {
+            'obj_dir%': '<(PRODUCT_DIR)/obj.target',
+            'v8_base': '<(PRODUCT_DIR)/libv8_nosnapshot.a',
+          }],
+        ],
       }],
       ['openssl_fips != ""', {
         'openssl_product': '<(STATIC_LIB_PREFIX)crypto<(STATIC_LIB_SUFFIX)',
@@ -105,15 +131,10 @@
       }],
       ['OS=="mac"', {
         'clang%': 1,
-        'obj_dir%': '<(PRODUCT_DIR)/obj.target',
-        'v8_base': '<(PRODUCT_DIR)/libv8_snapshot.a',
       }],
       ['target_arch in "ppc64 s390x"', {
         'v8_enable_backtrace': 1,
       }],
-      ['OS=="linux"', {
-        'node_section_ordering_info%': ''
-      }]
     ],
   },
 
@@ -179,20 +200,6 @@
         },
         'cflags': [ '-O3' ],
         'conditions': [
-          ['OS=="linux"', {
-            'conditions': [
-              ['node_section_ordering_info!=""', {
-                'cflags': [
-                  '-fuse-ld=gold',
-                  '-ffunction-sections',
-                ],
-                'ldflags': [
-                  '-fuse-ld=gold',
-                  '-Wl,--section-ordering-file=<(node_section_ordering_info)',
-                ],
-              }],
-            ],
-          }],
           ['OS=="solaris"', {
             # pull in V8's postmortem metadata
             'ldflags': [ '-Wl,-z,allextract' ]
@@ -227,11 +234,6 @@
         ],
         'msvs_settings': {
           'VCCLCompilerTool': {
-            'conditions': [
-              ['target_arch=="arm64"', {
-                'FloatingPointModel': 1 # /fp:strict
-              }]
-            ],
             'EnableFunctionLevelLinking': 'true',
             'EnableIntrinsicFunctions': 'true',
             'FavorSizeOrSpeed': 1,          # /Ot, favor speed over size
@@ -258,14 +260,7 @@
     # Forcibly disable -Werror.  We support a wide range of compilers, it's
     # simply not feasible to squelch all warnings, never mind that the
     # libraries in deps/ are not under our control.
-    'conditions': [
-      [ 'error_on_warn=="false"', {
-        'cflags!': ['-Werror'],
-      }, '(_target_name!="<(node_lib_target_name)" or '
-          '_target_name!="<(node_core_target_name)")', {
-        'cflags!': ['-Werror'],
-      }],
-    ],
+    'cflags!': ['-Werror'],
     'msvs_settings': {
       'VCCLCompilerTool': {
         'BufferSecurityCheck': 'true',
@@ -354,12 +349,6 @@
             'xcode_settings': {'OTHER_LDFLAGS': ['-fsanitize=address']},
           }],
         ],
-      }],
-      ['v8_enable_pointer_compression == 1', {
-        'defines': ['V8_COMPRESS_POINTERS'],
-      }],
-      ['v8_enable_pointer_compression == 1 or v8_enable_31bit_smis_on_64bit_arch == 1', {
-        'defines': ['V8_31BIT_SMIS_ON_64BIT_ARCH'],
       }],
       ['OS == "win"', {
         'defines': [
@@ -487,7 +476,7 @@
           'GCC_ENABLE_CPP_RTTI': 'NO',              # -fno-rtti
           'GCC_ENABLE_PASCAL_STRINGS': 'NO',        # No -mpascal-strings
           'PREBINDING': 'NO',                       # No -Wl,-prebind
-          'MACOSX_DEPLOYMENT_TARGET': '10.13',      # -mmacosx-version-min=10.13
+          'MACOSX_DEPLOYMENT_TARGET': '10.10',      # -mmacosx-version-min=10.10
           'USE_HEADERMAP': 'NO',
           'OTHER_CFLAGS': [
             '-fno-strict-aliasing',
@@ -515,14 +504,6 @@
           }],
           ['target_arch=="x64"', {
             'xcode_settings': {'ARCHS': ['x86_64']},
-          }],
-          ['target_arch=="arm64"', {
-            'xcode_settings': {
-              'ARCHS': ['arm64'],
-              'OTHER_LDFLAGS!': [
-                '-Wl,-no_pie',
-              ],
-            },
           }],
           ['clang==1', {
             'xcode_settings': {

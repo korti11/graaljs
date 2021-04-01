@@ -163,7 +163,7 @@ expression: Promise.resolve(42)
                 name : [[PromiseStatus]]
                 value : {
                     type : string
-                    value : fulfilled
+                    value : resolved
                 }
             }
             [1] : {

@@ -5,23 +5,19 @@
 const common = require('../common');
 
 const assert = require('assert');
-const { Script, SourceTextModule } = require('vm');
+const { Script, SourceTextModule, createContext } = require('vm');
 
 async function testNoCallback() {
-  const m = new SourceTextModule(`
-    globalThis.importResult = import("foo");
-    globalThis.importResult.catch(() => {});
-  `);
+  const m = new SourceTextModule('import("foo")', { context: createContext() });
   await m.link(common.mustNotCall());
-  await m.evaluate();
+  const { result } = await m.evaluate();
   let threw = false;
   try {
-    await globalThis.importResult;
+    await result;
   } catch (err) {
     threw = true;
     assert.strictEqual(err.code, 'ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING');
   }
-  delete globalThis.importResult;
   assert(threw);
 }
 
@@ -44,7 +40,7 @@ async function test() {
   }
 
   {
-    const m = new SourceTextModule('globalThis.fooResult = import("foo")', {
+    const m = new SourceTextModule('import("foo")', {
       importModuleDynamically: common.mustCall((specifier, wrap) => {
         assert.strictEqual(specifier, 'foo');
         assert.strictEqual(wrap, m);
@@ -52,26 +48,24 @@ async function test() {
       }),
     });
     await m.link(common.mustNotCall());
-    await m.evaluate();
-    assert.strictEqual(foo.namespace, await globalThis.fooResult);
-    delete globalThis.fooResult;
+    const { result } = await m.evaluate();
+    assert.strictEqual(foo.namespace, await result);
   }
 }
 
 async function testInvalid() {
-  const m = new SourceTextModule('globalThis.fooResult = import("foo")', {
+  const m = new SourceTextModule('import("foo")', {
     importModuleDynamically: common.mustCall((specifier, wrap) => {
       return 5;
     }),
   });
   await m.link(common.mustNotCall());
-  await m.evaluate();
-  await globalThis.fooResult.catch(common.mustCall((e) => {
+  const { result } = await m.evaluate();
+  await result.catch(common.mustCall((e) => {
     assert.strictEqual(e.code, 'ERR_VM_MODULE_NOT_MODULE');
   }));
-  delete globalThis.fooResult;
 
-  const s = new Script('import("bar")', {
+  const s = new Script('import("foo")', {
     importModuleDynamically: common.mustCall((specifier, wrap) => {
       return undefined;
     }),

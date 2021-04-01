@@ -55,7 +55,8 @@ void CallViaFunction(const FunctionCallbackInfo<Value>& args) {
   auto r = static_cast<AsyncResource*>(args[0].As<External>()->Value());
 
   Local<String> name =
-      String::NewFromUtf8(isolate, "methöd").ToLocalChecked();
+      String::NewFromUtf8(isolate, "methöd", v8::NewStringType::kNormal)
+      .ToLocalChecked();
   Local<Value> fn =
       r->get_resource()->Get(isolate->GetCurrentContext(), name)
       .ToLocalChecked();
@@ -72,7 +73,8 @@ void CallViaString(const FunctionCallbackInfo<Value>& args) {
   auto r = static_cast<AsyncResource*>(args[0].As<External>()->Value());
 
   Local<String> name =
-      String::NewFromUtf8(isolate, "methöd").ToLocalChecked();
+      String::NewFromUtf8(isolate, "methöd", v8::NewStringType::kNormal)
+      .ToLocalChecked();
 
   Local<Value> arg = Integer::New(isolate, 42);
   MaybeLocal<Value> ret = r->MakeCallback(name, 1, &arg);

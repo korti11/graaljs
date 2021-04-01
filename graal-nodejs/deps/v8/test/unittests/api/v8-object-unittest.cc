@@ -20,7 +20,9 @@ TEST_F(ObjectTest, SetAccessorWhenUnconfigurablePropAlreadyDefined) {
   TryCatch try_catch(isolate());
 
   Local<Object> global = context()->Global();
-  Local<String> property_name = String::NewFromUtf8Literal(isolate(), "foo");
+  Local<String> property_name =
+      String::NewFromUtf8(isolate(), "foo", NewStringType::kNormal)
+          .ToLocalChecked();
 
   PropertyDescriptor prop_desc;
   prop_desc.set_configurable(false);
@@ -49,7 +51,8 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnPrototype) {
   Local<FunctionTemplate> function_template = FunctionTemplate::New(isolate());
   Local<Signature> signature = Signature::New(isolate(), function_template);
   Local<String> property_key =
-      String::NewFromUtf8Literal(isolate(), "property");
+      String::NewFromUtf8(isolate(), "property", NewStringType::kNormal)
+          .ToLocalChecked();
   Local<FunctionTemplate> get_or_set = FunctionTemplate::New(
       isolate(),
       [](const FunctionCallbackInfo<Value>& info) {
@@ -69,7 +72,8 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnPrototype) {
   Local<Function> interface_for_prototype =
       function_template->GetFunction(prototype_context).ToLocalChecked();
   Local<String> prototype_key =
-      String::NewFromUtf8Literal(isolate(), "prototype");
+      String::NewFromUtf8(isolate(), "prototype", NewStringType::kNormal)
+          .ToLocalChecked();
   Local<Object> prototype =
       interface_for_prototype->Get(caller_context, prototype_key)
           .ToLocalChecked()
@@ -87,7 +91,9 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnPrototype) {
   EXPECT_EQ(2, call_count);
 
   // Test with a compiled version.
-  Local<String> object_key = String::NewFromUtf8Literal(isolate(), "object");
+  Local<String> object_key =
+      String::NewFromUtf8(isolate(), "object", NewStringType::kNormal)
+          .ToLocalChecked();
   caller_context->Global()->Set(caller_context, object_key, object).ToChecked();
   const char script[] =
       "function f() { object.property; object.property = 0; } "
@@ -97,7 +103,10 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnPrototype) {
       "f();";
   Context::Scope scope(caller_context);
   internal::FLAG_allow_natives_syntax = true;
-  Script::Compile(caller_context, String::NewFromUtf8Literal(isolate(), script))
+  Script::Compile(
+      caller_context,
+      String::NewFromUtf8(isolate(), script, v8::NewStringType::kNormal)
+          .ToLocalChecked())
       .ToLocalChecked()
       ->Run(caller_context)
       .ToLocalChecked();
@@ -114,7 +123,8 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnPlatformObject) {
   Local<FunctionTemplate> function_template = FunctionTemplate::New(isolate());
   Local<Signature> signature = Signature::New(isolate(), function_template);
   Local<String> property_key =
-      String::NewFromUtf8Literal(isolate(), "property");
+      String::NewFromUtf8(isolate(), "property", NewStringType::kNormal)
+          .ToLocalChecked();
   Local<FunctionTemplate> get_or_set = FunctionTemplate::New(
       isolate(),
       [](const FunctionCallbackInfo<Value>& info) {
@@ -139,7 +149,9 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnPlatformObject) {
   EXPECT_EQ(2, call_count);
 
   // Test with a compiled version.
-  Local<String> object_key = String::NewFromUtf8Literal(isolate(), "object");
+  Local<String> object_key =
+      String::NewFromUtf8(isolate(), "object", NewStringType::kNormal)
+          .ToLocalChecked();
   caller_context->Global()->Set(caller_context, object_key, object).ToChecked();
   const char script[] =
       "function f() { object.property; object.property = 0; } "
@@ -149,7 +161,10 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnPlatformObject) {
       "f();";
   Context::Scope scope(caller_context);
   internal::FLAG_allow_natives_syntax = true;
-  Script::Compile(caller_context, String::NewFromUtf8Literal(isolate(), script))
+  Script::Compile(
+      caller_context,
+      String::NewFromUtf8(isolate(), script, v8::NewStringType::kNormal)
+          .ToLocalChecked())
       .ToLocalChecked()
       ->Run(caller_context)
       .ToLocalChecked();
@@ -165,7 +180,8 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnInterface) {
 
   Local<FunctionTemplate> function_template = FunctionTemplate::New(isolate());
   Local<String> property_key =
-      String::NewFromUtf8Literal(isolate(), "property");
+      String::NewFromUtf8(isolate(), "property", NewStringType::kNormal)
+          .ToLocalChecked();
   Local<FunctionTemplate> get_or_set = FunctionTemplate::New(
       isolate(),
       [](const FunctionCallbackInfo<Value>& info) {
@@ -188,7 +204,8 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnInterface) {
 
   // Test with a compiled version.
   Local<String> interface_key =
-      String::NewFromUtf8Literal(isolate(), "Interface");
+      String::NewFromUtf8(isolate(), "Interface", NewStringType::kNormal)
+          .ToLocalChecked();
   caller_context->Global()
       ->Set(caller_context, interface_key, interface)
       .ToChecked();
@@ -200,7 +217,10 @@ TEST_F(LapContextTest, CurrentContextInLazyAccessorOnInterface) {
       "f();";
   Context::Scope scope(caller_context);
   internal::FLAG_allow_natives_syntax = true;
-  Script::Compile(caller_context, String::NewFromUtf8Literal(isolate(), script))
+  Script::Compile(
+      caller_context,
+      String::NewFromUtf8(isolate(), script, v8::NewStringType::kNormal)
+          .ToLocalChecked())
       .ToLocalChecked()
       ->Run(caller_context)
       .ToLocalChecked();

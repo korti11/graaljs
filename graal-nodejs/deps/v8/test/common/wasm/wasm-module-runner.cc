@@ -29,7 +29,7 @@ uint32_t GetInitialMemSize(const WasmModule* module) {
 MaybeHandle<WasmModuleObject> CompileForTesting(Isolate* isolate,
                                                 ErrorThrower* thrower,
                                                 const ModuleWireBytes& bytes) {
-  auto enabled_features = WasmFeatures::FromIsolate(isolate);
+  auto enabled_features = WasmFeaturesFromIsolate(isolate);
   MaybeHandle<WasmModuleObject> module = isolate->wasm_engine()->SyncCompile(
       isolate, enabled_features, thrower, bytes);
   DCHECK_EQ(thrower->error(), module.is_null());
@@ -50,7 +50,7 @@ std::shared_ptr<WasmModule> DecodeWasmModuleForTesting(
     const byte* module_end, ModuleOrigin origin, bool verify_functions) {
   // Decode the module, but don't verify function bodies, since we'll
   // be compiling them anyway.
-  auto enabled_features = WasmFeatures::FromIsolate(isolate);
+  auto enabled_features = WasmFeaturesFromIsolate(isolate);
   ModuleResult decoding_result = DecodeWasmModule(
       enabled_features, module_start, module_end, verify_functions, origin,
       isolate->counters(), isolate->wasm_engine()->allocator());
@@ -77,8 +77,7 @@ bool InterpretWasmModuleForTesting(Isolate* isolate,
     return false;
   }
   int function_index = function->function_index();
-  const FunctionSig* signature =
-      instance->module()->functions[function_index].sig;
+  FunctionSig* signature = instance->module()->functions[function_index].sig;
   size_t param_count = signature->parameter_count();
   std::unique_ptr<WasmValue[]> arguments(new WasmValue[param_count]);
 
@@ -89,32 +88,26 @@ bool InterpretWasmModuleForTesting(Isolate* isolate,
 
   // Fill the parameters up with default values.
   for (size_t i = argc; i < param_count; ++i) {
-    switch (signature->GetParam(i).kind()) {
-      case ValueType::kI32:
+    switch (signature->GetParam(i)) {
+      case kWasmI32:
         arguments[i] = WasmValue(int32_t{0});
         break;
-      case ValueType::kI64:
+      case kWasmI64:
         arguments[i] = WasmValue(int64_t{0});
         break;
-      case ValueType::kF32:
+      case kWasmF32:
         arguments[i] = WasmValue(0.0f);
         break;
-      case ValueType::kF64:
+      case kWasmF64:
         arguments[i] = WasmValue(0.0);
         break;
-      case ValueType::kAnyRef:
-      case ValueType::kFuncRef:
-      case ValueType::kNullRef:
-      case ValueType::kExnRef:
-      case ValueType::kRef:
-      case ValueType::kOptRef:
-      case ValueType::kEqRef:
+      case kWasmAnyRef:
+      case kWasmFuncRef:
+      case kWasmExnRef:
         arguments[i] =
             WasmValue(Handle<Object>::cast(isolate->factory()->null_value()));
         break;
-      case ValueType::kStmt:
-      case ValueType::kBottom:
-      case ValueType::kS128:
+      default:
         UNREACHABLE();
     }
   }

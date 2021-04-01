@@ -40,24 +40,18 @@
  */
 package com.oracle.truffle.js.runtime;
 
+import com.oracle.truffle.api.TruffleException;
 import com.oracle.truffle.api.nodes.Node;
 
-@SuppressWarnings("deprecation")
-public final class JSCancelledExecutionException extends ThreadDeath implements com.oracle.truffle.api.TruffleException {
+public class JSCancelledExecutionException extends RuntimeException implements TruffleException {
 
-    private final String message;
     private final Node originatingNode;
 
     private static final long serialVersionUID = 5656896390677153564L;
 
     public JSCancelledExecutionException(String message, Node originatedBy) {
-        this.message = message;
+        super(message);
         this.originatingNode = originatedBy;
-    }
-
-    @Override
-    public String getMessage() {
-        return message;
     }
 
     @Override

@@ -16,7 +16,6 @@ enum ResourceLimits {
   kMaxYoungGenerationSizeMb,
   kMaxOldGenerationSizeMb,
   kCodeRangeSizeMb,
-  kStackSizeMb,
   kTotalResourceLimitCount
 };
 
@@ -35,11 +34,8 @@ class Worker : public AsyncWrap {
   void Run();
 
   // Forcibly exit the thread with a specified exit code. This may be called
-  // from any thread. `error_code` and `error_message` can be used to create
-  // a custom `'error'` event before emitting `'exit'`.
-  void Exit(int code,
-            const char* error_code = nullptr,
-            const char* error_message = nullptr);
+  // from any thread.
+  void Exit(int code);
 
   // Wait for the worker thread to stop (in a blocking manner).
   void JoinThread();
@@ -52,6 +48,7 @@ class Worker : public AsyncWrap {
   SET_SELF_SIZE(Worker)
 
   bool is_stopped() const;
+  std::shared_ptr<ArrayBufferAllocator> array_buffer_allocator();
 
   static void New(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void CloneParentEnvVars(
@@ -76,10 +73,14 @@ class Worker : public AsyncWrap {
   std::vector<std::string> argv_;
 
   MultiIsolatePlatform* platform_;
+  std::shared_ptr<ArrayBufferAllocator> array_buffer_allocator_;
   v8::Isolate* isolate_ = nullptr;
+  bool start_profiler_idle_notifier_;
   uv_thread_t tid_;
 
-  std::unique_ptr<InspectorParentHandle> inspector_parent_handle_;
+#if HAVE_INSPECTOR
+  std::unique_ptr<inspector::ParentInspectorHandle> inspector_parent_handle_;
+#endif
 
   // This mutex protects access to all variables listed below it.
   mutable Mutex mutex_;
@@ -88,7 +89,7 @@ class Worker : public AsyncWrap {
   const char* custom_error_ = nullptr;
   std::string custom_error_str_;
   int exit_code_ = 0;
-  ThreadId thread_id_;
+  uint64_t thread_id_ = -1;
   uintptr_t stack_base_ = 0;
 
   // Custom resource constraints:
@@ -96,7 +97,7 @@ class Worker : public AsyncWrap {
   void UpdateResourceConstraints(v8::ResourceConstraints* constraints);
 
   // Full size of the thread's stack.
-  size_t stack_size_ = 4 * 1024 * 1024;
+  static constexpr size_t kStackSize = 4 * 1024 * 1024;
   // Stack buffer size that is not available to the JS engine.
   static constexpr size_t kStackBufferSize = 192 * 1024;
 
@@ -114,7 +115,6 @@ class Worker : public AsyncWrap {
   bool stopped_ = true;
 
   bool has_ref_ = true;
-  uint64_t environment_flags_ = EnvironmentFlags::kNoFlags;
 
   // The real Environment of the worker object. It has a lesser
   // lifespan than the worker object itself - comes to life

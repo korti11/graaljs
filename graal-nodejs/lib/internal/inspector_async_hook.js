@@ -4,7 +4,7 @@ let hook;
 let config;
 
 const {
-  SafeSet,
+  Set,
 } = primordials;
 
 function lazyHookCreation() {
@@ -44,7 +44,7 @@ function lazyHookCreation() {
     },
   });
 
-  hook.promiseIds = new SafeSet();
+  hook.promiseIds = new Set();
 }
 
 function enable() {

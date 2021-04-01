@@ -58,7 +58,6 @@ import com.oracle.truffle.js.nodes.cast.JSToPropertyKeyNode;
 import com.oracle.truffle.js.nodes.cast.JSToStringNode;
 import com.oracle.truffle.js.nodes.interop.ForeignObjectPrototypeNode;
 import com.oracle.truffle.js.runtime.Errors;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.Symbol;
 import com.oracle.truffle.js.runtime.array.ScriptArray;
@@ -79,7 +78,7 @@ import com.oracle.truffle.js.runtime.util.JSClassProfile;
  *
  */
 @TypeSystemReference(IntToLongTypeSystem.class)
-@ImportStatic(value = {JSRuntime.class, JSInteropUtil.class, JSConfig.class})
+@ImportStatic(value = {JSRuntime.class, JSInteropUtil.class})
 public abstract class JSHasPropertyNode extends JavaScriptBaseNode {
 
     private final boolean hasOwnProperty;
@@ -170,7 +169,7 @@ public abstract class JSHasPropertyNode extends JavaScriptBaseNode {
         }
     }
 
-    @Specialization(guards = "isForeignObject(object)", limit = "InteropLibraryLimit")
+    @Specialization(guards = "isForeignObject(object)", limit = "3")
     public boolean foreignObject(Object object, Object propertyName,
                     @CachedLibrary("object") InteropLibrary interop,
                     @Cached("create()") JSToStringNode toStringNode,

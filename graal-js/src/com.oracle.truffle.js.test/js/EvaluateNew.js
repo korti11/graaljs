@@ -36,3 +36,5 @@ load('assert.js');
 
     assertSame(Object, constructor);
 })();
+
+true;

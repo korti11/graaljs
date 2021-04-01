@@ -23,6 +23,7 @@
 #include "src/objects/elements.h"
 #include "src/objects/objects-inl.h"
 #include "src/profiler/heap-profiler.h"
+#include "src/snapshot/natives.h"
 #include "src/snapshot/snapshot.h"
 #include "src/tracing/tracing-category-observer.h"
 #include "src/wasm/wasm-engine.h"
@@ -89,12 +90,6 @@ void V8::InitializeOncePerProcessImpl() {
     FLAG_expose_wasm = false;
   }
 
-  if (FLAG_regexp_interpret_all && FLAG_regexp_tier_up) {
-    // Turning off the tier-up strategy, because the --regexp-interpret-all and
-    // --regexp-tier-up flags are incompatible.
-    FLAG_regexp_tier_up = false;
-  }
-
   // The --jitless and --interpreted-frames-native-stack flags are incompatible
   // since the latter requires code generation while the former prohibits code
   // generation.
@@ -106,9 +101,6 @@ void V8::InitializeOncePerProcessImpl() {
 
   if (FLAG_random_seed) SetRandomMmapSeed(FLAG_random_seed);
 
-#if defined(V8_USE_PERFETTO)
-  TrackEvent::Register();
-#endif
   Isolate::InitializeOncePerProcess();
 
 #if defined(USE_SIMULATOR)
@@ -150,6 +142,14 @@ v8::Platform* V8::GetCurrentPlatform() {
 void V8::SetPlatformForTesting(v8::Platform* platform) {
   base::Relaxed_Store(reinterpret_cast<base::AtomicWord*>(&platform_),
                       reinterpret_cast<base::AtomicWord>(platform));
+}
+
+void V8::SetNativesBlob(StartupData* natives_blob) {
+#ifdef V8_USE_EXTERNAL_STARTUP_DATA
+  base::CallOnce(&init_natives_once, &SetNativesFromFile, natives_blob);
+#else
+  UNREACHABLE();
+#endif
 }
 
 void V8::SetSnapshotBlob(StartupData* snapshot_blob) {

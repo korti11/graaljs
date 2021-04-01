@@ -5,8 +5,6 @@
 #ifndef V8_PROFILER_TRACING_CPU_PROFILER_H_
 #define V8_PROFILER_TRACING_CPU_PROFILER_H_
 
-#include <memory>
-
 #include "include/v8-platform.h"
 #include "src/base/atomic-utils.h"
 #include "src/base/macros.h"

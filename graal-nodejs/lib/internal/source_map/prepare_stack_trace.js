@@ -4,9 +4,7 @@ const {
   Error,
 } = primordials;
 
-let debug = require('internal/util/debuglog').debuglog('source_map', (fn) => {
-  debug = fn;
-});
+const debug = require('internal/util/debuglog').debuglog('source_map');
 const { findSourceMap } = require('internal/source_map/source_map_cache');
 const {
   kNoOverride,

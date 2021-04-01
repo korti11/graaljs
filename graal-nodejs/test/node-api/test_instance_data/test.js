@@ -3,7 +3,7 @@
 
 const common = require('../../common');
 
-if (module !== require.main) {
+if (module.parent) {
   // When required as a module, run the tests.
   const test_instance_data =
     require(`./build/${common.buildType}/test_instance_data`);

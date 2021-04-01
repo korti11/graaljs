@@ -36,8 +36,10 @@ class PlatformEmbeddedFileWriterGeneric
   void DeclareLabel(const char* name) override;
 
   void SourceInfo(int fileid, const char* filename, int line) override;
-  void DeclareFunctionBegin(const char* name, uint32_t size) override;
+  void DeclareFunctionBegin(const char* name) override;
   void DeclareFunctionEnd(const char* name) override;
+
+  int HexLiteral(uint64_t value) override;
 
   void Comment(const char* string) override;
 
@@ -46,8 +48,6 @@ class PlatformEmbeddedFileWriterGeneric
   void FileEpilogue() override;
 
   int IndentedDataDirective(DataDirective directive) override;
-
-  DataDirective ByteChunkDataDirective() const override;
 
  private:
   void DeclareSymbolGlobal(const char* name);

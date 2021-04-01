@@ -1,6 +1,6 @@
 'use strict';
 
-const { getOptions, shouldNotRegisterESMLoader } = internalBinding('options');
+const { getOptions } = internalBinding('options');
 const { options, aliases } = getOptions();
 
 let warnOnAllowUnauthorized = true;
@@ -32,5 +32,4 @@ module.exports = {
   aliases,
   getOptionValue,
   getAllowUnauthorized,
-  shouldNotRegisterESMLoader
 };

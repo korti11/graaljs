@@ -34,3 +34,5 @@ Array.prototype.reverse.call(
 assertThrows(function() {
     Object.freeze(['foo', 'bar']).reverse();
 }, TypeError);
+
+true;

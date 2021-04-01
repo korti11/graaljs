@@ -23,6 +23,13 @@
 namespace v8 {
 namespace internal {
 
+JSSegmenter::Granularity JSSegmenter::GetGranularity(const char* str) {
+  if (strcmp(str, "grapheme") == 0) return JSSegmenter::Granularity::GRAPHEME;
+  if (strcmp(str, "word") == 0) return JSSegmenter::Granularity::WORD;
+  if (strcmp(str, "sentence") == 0) return JSSegmenter::Granularity::SENTENCE;
+  UNREACHABLE();
+}
+
 MaybeHandle<JSSegmenter> JSSegmenter::New(Isolate* isolate, Handle<Map> map,
                                           Handle<Object> locales,
                                           Handle<Object> input_options) {
@@ -57,15 +64,9 @@ MaybeHandle<JSSegmenter> JSSegmenter::New(Isolate* isolate, Handle<Map> map,
 
   // 9. Let r be ResolveLocale(%Segmenter%.[[AvailableLocales]],
   // requestedLocales, opt, %Segmenter%.[[RelevantExtensionKeys]]).
-  Maybe<Intl::ResolvedLocale> maybe_resolve_locale =
+  Intl::ResolvedLocale r =
       Intl::ResolveLocale(isolate, JSSegmenter::GetAvailableLocales(),
                           requested_locales, matcher, {});
-  if (maybe_resolve_locale.IsNothing()) {
-    THROW_NEW_ERROR(isolate, NewRangeError(MessageTemplate::kIcuError),
-                    JSSegmenter);
-  }
-  Intl::ResolvedLocale r = maybe_resolve_locale.FromJust();
-
   Handle<String> locale_str =
       isolate->factory()->NewStringFromAsciiChecked(r.locale.c_str());
 
@@ -163,7 +164,9 @@ Handle<String> JSSegmenter::GranularityAsString() const {
 }
 
 const std::set<std::string>& JSSegmenter::GetAvailableLocales() {
-  return Intl::GetAvailableLocales();
+  static base::LazyInstance<Intl::AvailableLocales<icu::BreakIterator>>::type
+      available_locales = LAZY_INSTANCE_INITIALIZER;
+  return available_locales.Pointer()->Get();
 }
 
 }  // namespace internal

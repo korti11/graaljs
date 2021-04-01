@@ -1,4 +1,3 @@
-#include "allocated_buffer-inl.h"
 #include "base_object-inl.h"
 #include "env-inl.h"
 #include "node_buffer.h"
@@ -350,8 +349,9 @@ MaybeLocal<Value> GetCert(Environment* env, const SSLPointer& ssl) {
   if (cert == nullptr)
     return Undefined(env->isolate());
 
+  Local<Value> ret;
   MaybeLocal<Object> maybe_cert = X509ToObject(env, cert);
-  return maybe_cert.FromMaybe<Value>(Local<Value>());
+  return maybe_cert.ToLocal(&ret) ? ret : MaybeLocal<Value>();
 }
 
 namespace {
@@ -385,27 +385,31 @@ Local<Value> ToV8Value(Environment* env, const BIOPointer& bio) {
   return ret.FromMaybe(Local<Value>());
 }
 
-MaybeLocal<Value> GetCipherValue(Environment* env,
-    const SSL_CIPHER* cipher,
-    const char* (*getstr)(const SSL_CIPHER* cipher)) {
+MaybeLocal<Value> GetCipherName(
+    Environment* env,
+    const SSL_CIPHER* cipher) {
   if (cipher == nullptr)
     return Undefined(env->isolate());
 
-  return OneByteString(env->isolate(), getstr(cipher));
-}
-
-MaybeLocal<Value> GetCipherName(Environment* env, const SSL_CIPHER* cipher) {
-  return GetCipherValue(env, cipher, SSL_CIPHER_get_name);
+  return OneByteString(env->isolate(), SSL_CIPHER_get_name(cipher));
 }
 
 MaybeLocal<Value> GetCipherStandardName(
     Environment* env,
     const SSL_CIPHER* cipher) {
-  return GetCipherValue(env, cipher, SSL_CIPHER_standard_name);
+  if (cipher == nullptr)
+    return Undefined(env->isolate());
+
+  return OneByteString(env->isolate(), SSL_CIPHER_standard_name(cipher));
 }
 
-MaybeLocal<Value> GetCipherVersion(Environment* env, const SSL_CIPHER* cipher) {
-  return GetCipherValue(env, cipher, SSL_CIPHER_get_version);
+MaybeLocal<Value> GetCipherVersion(
+    Environment* env,
+    const SSL_CIPHER* cipher) {
+  if (cipher == nullptr)
+    return Undefined(env->isolate());
+
+  return OneByteString(env->isolate(), SSL_CIPHER_get_version(cipher));
 }
 
 StackOfX509 CloneSSLCerts(X509Pointer&& cert,
@@ -488,7 +492,7 @@ MaybeLocal<Object> GetLastIssuedCert(
 MaybeLocal<Object> GetRawDERCertificate(Environment* env, X509* cert) {
   int size = i2d_X509(cert, nullptr);
 
-  AllocatedBuffer buffer = AllocatedBuffer::AllocateManaged(env, size);
+  AllocatedBuffer buffer = env->AllocateManaged(size);
   unsigned char* serialized =
       reinterpret_cast<unsigned char*>(buffer.data());
   i2d_X509(cert, &serialized);
@@ -665,7 +669,7 @@ MaybeLocal<Object> GetPubKey(Environment* env, const RSAPointer& rsa) {
   int size = i2d_RSA_PUBKEY(rsa.get(), nullptr);
   CHECK_GE(size, 0);
 
-  AllocatedBuffer buffer = AllocatedBuffer::AllocateManaged(env, size);
+  AllocatedBuffer buffer = env->AllocateManaged(size);
   unsigned char* serialized =
       reinterpret_cast<unsigned char*>(buffer.data());
   i2d_RSA_PUBKEY(rsa.get(), &serialized);
@@ -887,7 +891,7 @@ MaybeLocal<Object> ECPointToBuffer(Environment* env,
     if (error != nullptr) *error = "Failed to get public key length";
     return MaybeLocal<Object>();
   }
-  AllocatedBuffer buf = AllocatedBuffer::AllocateManaged(env, len);
+  AllocatedBuffer buf = env->AllocateManaged(len);
   len = EC_POINT_point2oct(group,
                            point,
                            form,

@@ -12,7 +12,6 @@
 #include <set>
 #include <string>
 
-#include "src/base/bit-field.h"
 #include "src/execution/isolate.h"
 #include "src/heap/factory.h"
 #include "src/objects/intl-objects.h"
@@ -32,8 +31,7 @@ class LocalizedNumberFormatter;
 namespace v8 {
 namespace internal {
 
-class JSPluralRules
-    : public TorqueGeneratedJSPluralRules<JSPluralRules, JSObject> {
+class JSPluralRules : public JSObject {
  public:
   V8_WARN_UNUSED_RESULT static MaybeHandle<JSPluralRules> New(
       Isolate* isolate, Handle<Map> map, Handle<Object> locales,
@@ -55,19 +53,30 @@ class JSPluralRules
 
   Handle<String> TypeAsString() const;
 
+  DECL_CAST(JSPluralRules)
   DECL_PRINTER(JSPluralRules)
+  DECL_VERIFIER(JSPluralRules)
 
-  // Bit positions in |flags|.
-  DEFINE_TORQUE_GENERATED_JS_PLURAL_RULES_FLAGS()
+// Bit positions in |flags|.
+#define FLAGS_BIT_FIELDS(V, _) V(TypeBits, Type, 1, _)
 
-  STATIC_ASSERT(Type::CARDINAL <= TypeBit::kMax);
-  STATIC_ASSERT(Type::ORDINAL <= TypeBit::kMax);
+  DEFINE_BIT_FIELDS(FLAGS_BIT_FIELDS)
+#undef FLAGS_BIT_FIELDS
 
+  STATIC_ASSERT(Type::CARDINAL <= TypeBits::kMax);
+  STATIC_ASSERT(Type::ORDINAL <= TypeBits::kMax);
+
+// Layout description.
+  DEFINE_FIELD_OFFSET_CONSTANTS(JSObject::kHeaderSize,
+                                TORQUE_GENERATED_JSPLURAL_RULES_FIELDS)
+
+  DECL_ACCESSORS(locale, String)
+  DECL_INT_ACCESSORS(flags)
   DECL_ACCESSORS(icu_plural_rules, Managed<icu::PluralRules>)
   DECL_ACCESSORS(icu_number_formatter,
                  Managed<icu::number::LocalizedNumberFormatter>)
 
-  TQ_OBJECT_CONSTRUCTORS(JSPluralRules)
+  OBJECT_CONSTRUCTORS(JSPluralRules, JSObject);
 };
 
 }  // namespace internal

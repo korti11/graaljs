@@ -338,7 +338,8 @@ void ICUErrorName(const FunctionCallbackInfo<Value>& args) {
   UErrorCode status = static_cast<UErrorCode>(args[0].As<Int32>()->Value());
   args.GetReturnValue().Set(
       String::NewFromUtf8(env->isolate(),
-                          u_errorName(status)).ToLocalChecked());
+                          u_errorName(status),
+                          NewStringType::kNormal).ToLocalChecked());
 }
 
 }  // anonymous namespace
@@ -810,7 +811,6 @@ void Initialize(Local<Object> target,
   // ConverterObject
   {
     Local<FunctionTemplate> t = FunctionTemplate::New(env->isolate());
-    t->Inherit(BaseObject::GetConstructorTemplate(env));
     t->InstanceTemplate()->SetInternalFieldCount(
         ConverterObject::kInternalFieldCount);
     Local<String> converter_string =

@@ -38,3 +38,5 @@ for (let thiz of [undefined, null, globalThis]) {
     check.call(thiz);
     checkStrict.call(thiz, thiz);
 }
+
+true;

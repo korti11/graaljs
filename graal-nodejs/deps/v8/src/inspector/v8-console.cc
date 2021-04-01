@@ -595,7 +595,7 @@ static void inspectImpl(const v8::FunctionCallbackInfo<v8::Value>& info,
   std::unique_ptr<protocol::Runtime::RemoteObject> wrappedObject;
   protocol::Response response = injectedScript->wrapObject(
       value, "", WrapMode::kNoPreview, &wrappedObject);
-  if (!response.IsSuccess()) return;
+  if (!response.isSuccess()) return;
 
   std::unique_ptr<protocol::DictionaryValue> hints =
       protocol::DictionaryValue::create();
@@ -691,7 +691,7 @@ v8::Local<v8::Object> V8Console::createCommandLineAPI(
 
   v8::Local<v8::ArrayBuffer> data =
       v8::ArrayBuffer::New(isolate, sizeof(CommandLineAPIData));
-  *static_cast<CommandLineAPIData*>(data->GetBackingStore()->Data()) =
+  *static_cast<CommandLineAPIData*>(data->GetContents().Data()) =
       CommandLineAPIData(this, sessionId);
   createBoundFunctionProperty(context, commandLineAPI, data, "dir",
                               &V8Console::call<&V8Console::Dir>,
@@ -783,11 +783,15 @@ static bool isCommandLineAPIGetter(const String16& name) {
 
 void V8Console::CommandLineAPIScope::accessorGetterCallback(
     v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info) {
-  CommandLineAPIScope* scope = *static_cast<CommandLineAPIScope**>(
-      info.Data().As<v8::ArrayBuffer>()->GetBackingStore()->Data());
+  CommandLineAPIScope* scope = static_cast<CommandLineAPIScope*>(
+      info.Data().As<v8::External>()->Value());
+  DCHECK(scope);
+
   v8::Local<v8::Context> context = info.GetIsolate()->GetCurrentContext();
-  if (scope == nullptr) {
-    USE(info.Holder()->Delete(context, name).FromMaybe(false));
+  if (scope->m_cleanup) {
+    bool removed = info.Holder()->Delete(context, name).FromMaybe(false);
+    DCHECK(removed);
+    USE(removed);
     return;
   }
   v8::Local<v8::Object> commandLineAPI = scope->m_commandLineAPI;
@@ -811,14 +815,16 @@ void V8Console::CommandLineAPIScope::accessorGetterCallback(
 void V8Console::CommandLineAPIScope::accessorSetterCallback(
     v8::Local<v8::Name> name, v8::Local<v8::Value> value,
     const v8::PropertyCallbackInfo<void>& info) {
-  CommandLineAPIScope* scope = *static_cast<CommandLineAPIScope**>(
-      info.Data().As<v8::ArrayBuffer>()->GetBackingStore()->Data());
-  if (scope == nullptr) return;
+  CommandLineAPIScope* scope = static_cast<CommandLineAPIScope*>(
+      info.Data().As<v8::External>()->Value());
   v8::Local<v8::Context> context = info.GetIsolate()->GetCurrentContext();
   if (!info.Holder()->Delete(context, name).FromMaybe(false)) return;
   if (!info.Holder()->CreateDataProperty(context, name, value).FromMaybe(false))
     return;
-  USE(scope->m_installedMethods->Delete(context, name).FromMaybe(false));
+  bool removed =
+      scope->m_installedMethods->Delete(context, name).FromMaybe(false);
+  DCHECK(removed);
+  USE(removed);
 }
 
 V8Console::CommandLineAPIScope::CommandLineAPIScope(
@@ -827,15 +833,14 @@ V8Console::CommandLineAPIScope::CommandLineAPIScope(
     : m_context(context),
       m_commandLineAPI(commandLineAPI),
       m_global(global),
-      m_installedMethods(v8::Set::New(context->GetIsolate())) {
+      m_installedMethods(v8::Set::New(context->GetIsolate())),
+      m_cleanup(false) {
   v8::MicrotasksScope microtasksScope(context->GetIsolate(),
                                       v8::MicrotasksScope::kDoNotRunMicrotasks);
   v8::Local<v8::Array> names;
   if (!m_commandLineAPI->GetOwnPropertyNames(context).ToLocal(&names)) return;
-  m_thisReference =
-      v8::ArrayBuffer::New(context->GetIsolate(), sizeof(CommandLineAPIScope*));
-  *static_cast<CommandLineAPIScope**>(
-      m_thisReference->GetBackingStore()->Data()) = this;
+  v8::Local<v8::External> externalThis =
+      v8::External::New(context->GetIsolate(), this);
   for (uint32_t i = 0; i < names->Length(); ++i) {
     v8::Local<v8::Value> name;
     if (!names->Get(context, i).ToLocal(&name) || !name->IsName()) continue;
@@ -846,7 +851,7 @@ V8Console::CommandLineAPIScope::CommandLineAPIScope(
              ->SetAccessor(context, v8::Local<v8::Name>::Cast(name),
                            CommandLineAPIScope::accessorGetterCallback,
                            CommandLineAPIScope::accessorSetterCallback,
-                           m_thisReference, v8::DEFAULT, v8::DontEnum,
+                           externalThis, v8::DEFAULT, v8::DontEnum,
                            v8::SideEffectType::kHasNoSideEffect)
              .FromMaybe(false)) {
       bool removed = m_installedMethods->Delete(context, name).FromMaybe(false);
@@ -860,8 +865,7 @@ V8Console::CommandLineAPIScope::CommandLineAPIScope(
 V8Console::CommandLineAPIScope::~CommandLineAPIScope() {
   v8::MicrotasksScope microtasksScope(m_context->GetIsolate(),
                                       v8::MicrotasksScope::kDoNotRunMicrotasks);
-  *static_cast<CommandLineAPIScope**>(
-      m_thisReference->GetBackingStore()->Data()) = nullptr;
+  m_cleanup = true;
   v8::Local<v8::Array> names = m_installedMethods->AsArray();
   for (uint32_t i = 0; i < names->Length(); ++i) {
     v8::Local<v8::Value> name;

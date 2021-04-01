@@ -17,7 +17,7 @@ const expectedModules = new Set([
   'Internal Binding credentials',
   'Internal Binding fs',
   'Internal Binding fs_dir',
-  'Internal Binding messaging',
+  'Internal Binding inspector',
   'Internal Binding module_wrap',
   'Internal Binding native_module',
   'Internal Binding options',
@@ -46,8 +46,6 @@ const expectedModules = new Set([
   'NativeModule internal/fixed_queue',
   'NativeModule internal/fs/dir',
   'NativeModule internal/fs/utils',
-  'NativeModule internal/fs/promises',
-  'NativeModule internal/fs/rimraf',
   'NativeModule internal/graal/buffer',
   'NativeModule internal/idna',
   'NativeModule internal/linkedlist',
@@ -84,7 +82,6 @@ const expectedModules = new Set([
   'NativeModule internal/util/types',
   'NativeModule internal/validators',
   'NativeModule internal/vm/module',
-  'NativeModule internal/worker/js_transferable',
   'NativeModule path',
   'NativeModule timers',
   'NativeModule url',
@@ -92,30 +89,26 @@ const expectedModules = new Set([
 ]);
 
 if (!common.isMainThread) {
-  [
-    'Internal Binding messaging',
-    'Internal Binding symbols',
-    'Internal Binding worker',
-    'NativeModule internal/streams/duplex',
-    'NativeModule internal/streams/passthrough',
-    'NativeModule internal/streams/readable',
-    'NativeModule internal/streams/transform',
-    'NativeModule internal/streams/writable',
-    'NativeModule internal/error_serdes',
-    'NativeModule internal/event_target',
-    'NativeModule internal/process/worker_thread_only',
-    'NativeModule internal/streams/buffer_list',
-    'NativeModule internal/streams/destroy',
-    'NativeModule internal/streams/end-of-stream',
-    'NativeModule internal/streams/legacy',
-    'NativeModule internal/streams/pipeline',
-    'NativeModule internal/streams/state',
-    'NativeModule internal/worker',
-    'NativeModule internal/worker/io',
-    'NativeModule stream',
-    'NativeModule util',
-    'NativeModule worker_threads',
-  ].forEach(expectedModules.add.bind(expectedModules));
+  expectedModules.add('Internal Binding messaging');
+  expectedModules.add('Internal Binding symbols');
+  expectedModules.add('Internal Binding worker');
+  expectedModules.add('NativeModule _stream_duplex');
+  expectedModules.add('NativeModule _stream_passthrough');
+  expectedModules.add('NativeModule _stream_readable');
+  expectedModules.add('NativeModule _stream_transform');
+  expectedModules.add('NativeModule _stream_writable');
+  expectedModules.add('NativeModule internal/error-serdes');
+  expectedModules.add('NativeModule internal/process/worker_thread_only');
+  expectedModules.add('NativeModule internal/streams/buffer_list');
+  expectedModules.add('NativeModule internal/streams/destroy');
+  expectedModules.add('NativeModule internal/streams/end-of-stream');
+  expectedModules.add('NativeModule internal/streams/legacy');
+  expectedModules.add('NativeModule internal/streams/pipeline');
+  expectedModules.add('NativeModule internal/streams/state');
+  expectedModules.add('NativeModule internal/worker');
+  expectedModules.add('NativeModule internal/worker/io');
+  expectedModules.add('NativeModule stream');
+  expectedModules.add('NativeModule worker_threads');
 }
 
 if (common.hasIntl) {
@@ -125,7 +118,6 @@ if (common.hasIntl) {
 }
 
 if (process.features.inspector) {
-  expectedModules.add('Internal Binding inspector');
   expectedModules.add('NativeModule internal/inspector_async_hook');
   expectedModules.add('NativeModule internal/util/inspector');
 }

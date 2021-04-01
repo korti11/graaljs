@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -56,7 +56,6 @@ import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.JavaScriptRootNode;
 import com.oracle.truffle.js.runtime.builtins.JSFunction;
 import com.oracle.truffle.js.runtime.builtins.JSFunctionData;
-import com.oracle.truffle.js.runtime.builtins.JSOrdinary;
 import com.oracle.truffle.js.runtime.objects.Undefined;
 
 public final class ConstructorRootNode extends JavaScriptRootNode {
@@ -69,34 +68,21 @@ public final class ConstructorRootNode extends JavaScriptRootNode {
     private final ConditionProfile isObject = ConditionProfile.createBinaryProfile();
     private final ConditionProfile isNotUndefined = ConditionProfile.createBinaryProfile();
     private final boolean newTarget;
-    private final JSOrdinary instanceLayout;
 
-    protected ConstructorRootNode(JSFunctionData functionData, CallTarget callTarget, boolean newTarget, JSOrdinary instanceLayout) {
+    protected ConstructorRootNode(JSFunctionData functionData, CallTarget callTarget, boolean newTarget) {
         super(functionData.getContext().getLanguage(), ((RootCallTarget) callTarget).getRootNode().getSourceSection(), null);
         this.functionData = functionData;
         this.callTarget = callTarget;
         this.newTarget = newTarget;
-        this.instanceLayout = instanceLayout;
-    }
-
-    public static ConstructorRootNode create(JSFunctionData functionData, CallTarget callTarget, boolean newTarget, JSOrdinary instanceLayout) {
-        return new ConstructorRootNode(functionData, callTarget, newTarget, instanceLayout);
     }
 
     public static ConstructorRootNode create(JSFunctionData functionData, CallTarget callTarget, boolean newTarget) {
-        return create(functionData, callTarget, newTarget, JSOrdinary.INSTANCE);
+        return new ConstructorRootNode(functionData, callTarget, newTarget);
     }
 
     private Object allocateThisObject(VirtualFrame frame, Object[] arguments) {
-        // Only base constructors allocate a new object. Derived constructors have to call the super
-        // constructor to get the `this` object (which is then returned).
-        Object thisObject;
-        if (!getFunctionData().isDerived()) {
-            Object functionObject = newTarget ? arguments[2] : arguments[1];
-            thisObject = newObjectNode.execute(frame, (DynamicObject) functionObject);
-        } else {
-            thisObject = JSFunction.CONSTRUCT; // Just a placeholder value; not actually used.
-        }
+        Object functionObject = newTarget ? arguments[2] : arguments[1];
+        Object thisObject = newObjectNode.execute(frame, (DynamicObject) functionObject);
         arguments[0] = thisObject;
         return thisObject;
     }
@@ -128,7 +114,7 @@ public final class ConstructorRootNode extends JavaScriptRootNode {
 
     private void initialize() {
         this.callNode = insert(Truffle.getRuntime().createDirectCallNode(callTarget));
-        this.newObjectNode = insert(SpecializedNewObjectNode.create(functionData, instanceLayout));
+        this.newObjectNode = insert(SpecializedNewObjectNode.create(functionData));
         this.isObjectNode = insert(IsObjectNode.create());
     }
 
@@ -153,7 +139,7 @@ public final class ConstructorRootNode extends JavaScriptRootNode {
 
     @Override
     protected JavaScriptRootNode cloneUninitialized() {
-        return new ConstructorRootNode(functionData, callTarget, newTarget, instanceLayout);
+        return new ConstructorRootNode(functionData, callTarget, newTarget);
     }
 
     @Override

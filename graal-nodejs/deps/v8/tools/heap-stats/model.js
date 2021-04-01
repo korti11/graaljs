@@ -4,7 +4,7 @@
 
 'use strict';
 
-export class Isolate {
+class Isolate {
   constructor(address) {
     this.address = address;
     this.start = null;

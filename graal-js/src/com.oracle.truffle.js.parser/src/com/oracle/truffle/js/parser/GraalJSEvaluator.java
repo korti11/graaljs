@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -42,6 +42,7 @@ package com.oracle.truffle.js.parser;
 
 import static com.oracle.truffle.js.lang.JavaScriptLanguage.MODULE_MIME_TYPE;
 import static com.oracle.truffle.js.lang.JavaScriptLanguage.MODULE_SOURCE_NAME_SUFFIX;
+import static com.oracle.truffle.js.runtime.JSConfig.ECMAScript2021;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
@@ -61,10 +62,13 @@ import com.oracle.js.parser.ir.Expression;
 import com.oracle.js.parser.ir.Module;
 import com.oracle.js.parser.ir.Module.ExportEntry;
 import com.oracle.truffle.api.CallTarget;
-import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.Truffle;
+import com.oracle.truffle.api.frame.Frame;
+import com.oracle.truffle.api.frame.FrameDescriptor;
+import com.oracle.truffle.api.frame.FrameSlot;
+import com.oracle.truffle.api.frame.FrameUtil;
 import com.oracle.truffle.api.frame.MaterializedFrame;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.DirectCallNode;
@@ -79,6 +83,7 @@ import com.oracle.truffle.js.nodes.JavaScriptNode;
 import com.oracle.truffle.js.nodes.NodeFactory;
 import com.oracle.truffle.js.nodes.ScriptNode;
 import com.oracle.truffle.js.nodes.access.PropertyGetNode;
+import com.oracle.truffle.js.nodes.access.ScopeFrameNode;
 import com.oracle.truffle.js.nodes.arguments.AccessIndexedArgumentNode;
 import com.oracle.truffle.js.nodes.control.TryCatchNode;
 import com.oracle.truffle.js.nodes.function.EvalNode;
@@ -129,14 +134,14 @@ public final class GraalJSEvaluator implements JSParser {
      * Evaluate indirect eval.
      */
     @Override
-    public ScriptNode parseEval(JSContext context, Node lastNode, Source source) {
-        return parseEval(context, lastNode, source, false, null);
+    public Object evaluate(JSRealm realm, Node lastNode, Source source) {
+        Object thisObj = realm.getGlobalObject();
+        return doEvaluate(realm, lastNode, thisObj, JSFrameUtil.NULL_MATERIALIZED_FRAME, source, false, null);
     }
 
     /**
      * Evaluate Function(parameterList, body).
      */
-    @TruffleBoundary(transferToInterpreterOnException = false)
     @Override
     public ScriptNode parseFunction(JSContext context, String parameterList, String body, boolean generatorFunction, boolean asyncFunction, String sourceName) {
         String wrappedBody = JSRuntime.LINE_SEPARATOR + body + JSRuntime.LINE_SEPARATOR;
@@ -177,9 +182,10 @@ public final class GraalJSEvaluator implements JSParser {
      */
     @TruffleBoundary(transferToInterpreterOnException = false)
     @Override
-    public ScriptNode parseDirectEval(JSContext context, Node lastNode, Source source, Object evalEnv) {
+    public Object evaluate(JSRealm realm, Node lastNode, Source source, MaterializedFrame frame, Object thisObj, Object evalEnv) {
+        assert frame != null;
         DirectEvalContext directEval = (DirectEvalContext) evalEnv;
-        return parseEval(context, lastNode, source, directEval.env.isStrictMode(), directEval);
+        return doEvaluate(realm, lastNode, thisObj, frame, source, directEval.env.isStrictMode(), directEval);
     }
 
     private static JavaScriptNode parseInlineScript(JSContext context, Source source, Environment env, boolean isStrict) {
@@ -197,7 +203,18 @@ public final class GraalJSEvaluator implements JSParser {
         };
     }
 
-    @TruffleBoundary(transferToInterpreterOnException = false)
+    @TruffleBoundary
+    private static Object doEvaluate(JSRealm realm, Node lastNode, Object thisObj, MaterializedFrame materializedFrame, Source source, boolean isStrict, DirectEvalContext directEval) {
+        JSContext context = realm.getContext();
+        ScriptNode scriptNode = parseEval(context, lastNode, source, isStrict, directEval);
+        return runParsed(scriptNode, realm, thisObj, materializedFrame);
+    }
+
+    private static Object runParsed(ScriptNode scriptNode, JSRealm realm, Object thisObj, MaterializedFrame materializedFrame) {
+        DynamicObject functionObj = JSFunction.create(realm, scriptNode.getFunctionData(), materializedFrame);
+        return scriptNode.run(JSArguments.createZeroArg(thisObj, functionObj));
+    }
+
     private static ScriptNode parseEval(JSContext context, Node lastNode, Source source, boolean isStrict, DirectEvalContext directEval) {
         context.checkEvalAllowed();
         NodeFactory nodeFactory = NodeFactory.getInstance(context);
@@ -208,8 +225,8 @@ public final class GraalJSEvaluator implements JSParser {
         }
     }
 
+    @TruffleBoundary
     private static JSException parserToJSError(Node lastNode, com.oracle.js.parser.ParserException e, JSContext context) {
-        CompilerAsserts.neverPartOfCompilation();
         String message = e.getMessage().replace("\r\n", "\n");
         if (e.getErrorType() == com.oracle.js.parser.JSErrorType.ReferenceError) {
             return Errors.createReferenceError(message, e, lastNode);
@@ -238,7 +255,6 @@ public final class GraalJSEvaluator implements JSParser {
 
     // JSParser methods below
 
-    @TruffleBoundary
     @Override
     public ScriptNode parseScript(JSContext context, Source source, String prolog, String epilog, String[] argumentNames) {
         String mimeType = source.getMimeType();
@@ -267,7 +283,7 @@ public final class GraalJSEvaluator implements JSParser {
                 JSModuleRecord moduleRecord = realm.getModuleLoader().loadModule(source);
                 moduleInstantiation(realm, moduleRecord);
                 Object promise = moduleEvaluation(realm, moduleRecord);
-                if (context.isOptionTopLevelAwait() && JSPromise.isJSPromise(promise)) {
+                if (context.getEcmaScriptVersion() >= ECMAScript2021 && JSPromise.isJSPromise(promise)) {
                     DynamicObject onRejected = createTopLevelAwaitReject(context);
                     DynamicObject onAccepted = createTopLevelAwaitResolve(context);
                     performPromiseThenNode.execute((DynamicObject) promise, onAccepted, onRejected, null);
@@ -581,8 +597,9 @@ public final class GraalJSEvaluator implements JSParser {
     public Object moduleEvaluation(JSRealm realm, JSModuleRecord moduleRecord) {
         // Evaluate ( ) Concrete Method
         JSModuleRecord module = moduleRecord;
+        int ecmaScriptVersion = realm.getContext().getEcmaScriptVersion();
         Deque<JSModuleRecord> stack = new ArrayDeque<>(4);
-        if (realm.getContext().isOptionTopLevelAwait()) {
+        if (ecmaScriptVersion >= ECMAScript2021) {
             assert module.getStatus() == Status.Linked || module.getStatus() == Status.Evaluated;
             if (module.getStatus() == Status.Evaluated) {
                 module = getAsyncCycleRoot(module);
@@ -884,9 +901,34 @@ public final class GraalJSEvaluator implements JSParser {
     }
 
     @Override
-    public JavaScriptNode parseInlineScript(JSContext context, Source source, MaterializedFrame lexicalContextFrame, boolean isStrict, Node locationNode) {
-        Environment env = new DebugEnvironment(null, NodeFactory.getInstance(context), context, locationNode, lexicalContextFrame);
+    public JavaScriptNode parseInlineScript(JSContext context, Source source, MaterializedFrame lexicalContextFrame, boolean isStrict) {
+        Environment env = assembleDebugEnvironment(context, lexicalContextFrame);
         return parseInlineScript(context, source, env, isStrict);
+    }
+
+    private static Environment assembleDebugEnvironment(JSContext context, MaterializedFrame lexicalContextFrame) {
+        Environment env = null;
+        ArrayList<FrameDescriptor> frameDescriptors = new ArrayList<>();
+        Frame frame = lexicalContextFrame;
+        while (frame != null && frame != JSFrameUtil.NULL_MATERIALIZED_FRAME) {
+            assert isJSArgumentsArray(frame.getArguments());
+            FrameSlot parentSlot;
+            while ((parentSlot = frame.getFrameDescriptor().findFrameSlot(ScopeFrameNode.PARENT_SCOPE_IDENTIFIER)) != null) {
+                frameDescriptors.add(frame.getFrameDescriptor());
+                frame = (Frame) FrameUtil.getObjectSafe(frame, parentSlot);
+            }
+            frameDescriptors.add(frame.getFrameDescriptor());
+            frame = JSArguments.getEnclosingFrame(frame.getArguments());
+        }
+
+        for (int i = frameDescriptors.size() - 1; i >= 0; i--) {
+            env = new DebugEnvironment(env, NodeFactory.getInstance(context), context, frameDescriptors.get(i));
+        }
+        return env;
+    }
+
+    private static boolean isJSArgumentsArray(Object[] arguments) {
+        return arguments != null && arguments.length >= JSArguments.RUNTIME_ARGUMENT_COUNT && JSFunction.isJSFunction(JSArguments.getFunctionObject(arguments));
     }
 
     @Override

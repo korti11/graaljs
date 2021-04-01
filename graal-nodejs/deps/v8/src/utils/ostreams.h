@@ -35,7 +35,7 @@ class V8_EXPORT_PRIVATE OFStreamBase : public std::streambuf {
 class V8_EXPORT_PRIVATE DbgStreamBuf : public std::streambuf {
  public:
   DbgStreamBuf();
-  ~DbgStreamBuf() override;
+  ~DbgStreamBuf();
 
  private:
   int sync() override;
@@ -47,7 +47,7 @@ class V8_EXPORT_PRIVATE DbgStreamBuf : public std::streambuf {
 class DbgStdoutStream : public std::ostream {
  public:
   DbgStdoutStream();
-  ~DbgStdoutStream() override = default;
+  ~DbgStdoutStream() = default;
 
  private:
   DbgStreamBuf streambuf_;

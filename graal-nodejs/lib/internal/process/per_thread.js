@@ -7,7 +7,6 @@
 const {
   ArrayIsArray,
   BigUint64Array,
-  Float64Array,
   NumberMAX_SAFE_INTEGER,
   ObjectDefineProperties,
   ObjectDefineProperty,
@@ -18,7 +17,6 @@ const {
   SetPrototype,
   SetPrototypeHas,
   StringPrototypeReplace,
-  Uint32Array,
 } = primordials;
 
 const {

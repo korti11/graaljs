@@ -67,7 +67,8 @@ fs.readdir(__filename, {
 // Check the readdir async version
 fs.readdir(readdirDir, {
   withFileTypes: true
-}, common.mustSucceed((dirents) => {
+}, common.mustCall((err, dirents) => {
+  assert.ifError(err);
   assertDirents(dirents);
 }));
 
@@ -81,7 +82,6 @@ fs.readdir(readdirDir, {
 // Check for correct types when the binding returns unknowns
 const UNKNOWN = constants.UV_DIRENT_UNKNOWN;
 const oldReaddir = binding.readdir;
-process.on('beforeExit', () => { binding.readdir = oldReaddir; });
 binding.readdir = common.mustCall((path, encoding, types, req, ctx) => {
   if (req) {
     const oldCb = req.oncomplete;
@@ -103,7 +103,8 @@ binding.readdir = common.mustCall((path, encoding, types, req, ctx) => {
 assertDirents(fs.readdirSync(readdirDir, { withFileTypes: true }));
 fs.readdir(readdirDir, {
   withFileTypes: true
-}, common.mustSucceed((dirents) => {
+}, common.mustCall((err, dirents) => {
+  assert.ifError(err);
   assertDirents(dirents);
 }));
 

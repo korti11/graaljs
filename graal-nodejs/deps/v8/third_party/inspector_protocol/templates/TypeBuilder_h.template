@@ -100,8 +100,14 @@ public:
     {% endfor %}
 
     std::unique_ptr<protocol::DictionaryValue> toValue() const;
-    void AppendSerialized(std::vector<uint8_t>* out) const override;
+    String serializeToJSON() override { return toValue()->serializeToJSON(); }
+    std::vector<uint8_t> serializeToBinary() override { return toValue()->serializeToBinary(); }
+    String toJSON() const { return toValue()->toJSONString(); }
     std::unique_ptr<{{type.id}}> clone() const;
+    {% if protocol.is_exported(domain.domain, type.id) %}
+    {{config.exported.string_out}} toJSONString() const override;
+    void writeBinary(std::vector<uint8_t>* out) const override;
+    {% endif %}
 
     template<int STATE>
     class {{type.id}}Builder {
@@ -239,7 +245,7 @@ public:
   {% if protocol.generate_disable(domain) %}
     virtual DispatchResponse {{"disable" | to_method_case}}()
     {
-        return DispatchResponse::Success();
+        return DispatchResponse::OK();
     }
   {% endif %}
 };
@@ -248,7 +254,7 @@ public:
 
 class {{config.protocol.export_macro}} Frontend {
 public:
-  explicit Frontend(FrontendChannel* frontend_channel) : frontend_channel_(frontend_channel) {}
+    explicit Frontend(FrontendChannel* frontendChannel) : m_frontendChannel(frontendChannel) { }
   {% for event in domain.events %}
     {% if not protocol.generate_event(domain.domain, event.name) %}{% continue %}{% endif %}
     void {{event.name | to_method_case}}(
@@ -262,10 +268,11 @@ public:
     );
   {% endfor %}
 
-  void flush();
-  void sendRawNotification(std::unique_ptr<Serializable>);
- private:
-  FrontendChannel* frontend_channel_;
+    void flush();
+    void sendRawJSONNotification(String);
+    void sendRawCBORNotification(std::vector<uint8_t>);
+private:
+    FrontendChannel* m_frontendChannel;
 };
 
 // ------------- Dispatcher.

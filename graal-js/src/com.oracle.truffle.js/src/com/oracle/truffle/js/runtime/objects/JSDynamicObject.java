@@ -45,19 +45,12 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.dsl.Fallback;
-import com.oracle.truffle.api.dsl.Specialization;
-import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.TruffleObject;
-import com.oracle.truffle.api.library.ExportLibrary;
-import com.oracle.truffle.api.library.ExportMessage;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.UnexpectedResultException;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.DynamicObjectLibrary;
 import com.oracle.truffle.api.object.Property;
 import com.oracle.truffle.api.object.Shape;
-import com.oracle.truffle.api.utilities.TriState;
 import com.oracle.truffle.js.runtime.Boundaries;
 import com.oracle.truffle.js.runtime.Errors;
 import com.oracle.truffle.js.runtime.JSContext;
@@ -68,31 +61,10 @@ import com.oracle.truffle.js.runtime.builtins.JSClass;
 /**
  * The common base class for all JavaScript objects as well as {@code null} and {@code undefined}.
  */
-@ExportLibrary(InteropLibrary.class)
 public abstract class JSDynamicObject extends DynamicObject implements TruffleObject {
 
     protected JSDynamicObject(Shape shape) {
         super(shape);
-    }
-
-    @ExportMessage
-    public static final class IsIdenticalOrUndefined {
-        @Specialization
-        public static TriState doHostObject(JSDynamicObject receiver, JSDynamicObject other) {
-            return TriState.valueOf(receiver == other);
-        }
-
-        @SuppressWarnings("unused")
-        @Fallback
-        public static TriState doOther(JSDynamicObject receiver, Object other) {
-            return TriState.UNDEFINED;
-        }
-    }
-
-    @ExportMessage
-    @TruffleBoundary
-    public final int identityHashCode() {
-        return super.hashCode();
     }
 
     public final JSContext getJSContext() {
@@ -100,7 +72,7 @@ public abstract class JSDynamicObject extends DynamicObject implements TruffleOb
     }
 
     public JSClass getJSClass() {
-        return (JSClass) getDynamicType(this);
+        return (JSClass) getObjectType(this);
     }
 
     /**
@@ -161,36 +133,36 @@ public abstract class JSDynamicObject extends DynamicObject implements TruffleOb
      */
     @SuppressWarnings("javadoc")
     public Object getValue(Object key) {
-        return JSRuntime.nullToUndefined(getHelper(this, key, null));
+        return JSRuntime.nullToUndefined(getHelper(this, key));
     }
 
     public Object getValue(long index) {
-        return JSRuntime.nullToUndefined(getHelper(this, index, null));
+        return JSRuntime.nullToUndefined(getHelper(this, index));
     }
 
     @TruffleBoundary
-    public abstract Object getHelper(Object receiver, Object key, Node encapsulatingNode);
+    public abstract Object getHelper(Object receiver, Object key);
 
     @TruffleBoundary
-    public abstract Object getHelper(Object receiver, long index, Node encapsulatingNode);
+    public abstract Object getHelper(Object receiver, long index);
 
     @TruffleBoundary
-    public abstract Object getOwnHelper(Object receiver, Object key, Node encapsulatingNode);
+    public abstract Object getOwnHelper(Object receiver, Object key);
 
     @TruffleBoundary
-    public abstract Object getOwnHelper(Object receiver, long index, Node encapsulatingNode);
+    public abstract Object getOwnHelper(Object receiver, long index);
 
     @TruffleBoundary
-    public abstract Object getMethodHelper(Object receiver, Object key, Node encapsulatingNode);
+    public abstract Object getMethodHelper(Object receiver, Object key);
 
     /**
      * 9.1.9 [[Set]] (P, V, Receiver).
      */
     @TruffleBoundary
-    public abstract boolean set(Object key, Object value, Object receiver, boolean isStrict, Node encapsulatingNode);
+    public abstract boolean set(Object key, Object value, Object receiver, boolean isStrict);
 
     @TruffleBoundary
-    public abstract boolean set(long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode);
+    public abstract boolean set(long index, Object value, Object receiver, boolean isStrict);
 
     /**
      * 9.1.10 [[Delete]] (P).
@@ -372,15 +344,15 @@ public abstract class JSDynamicObject extends DynamicObject implements TruffleOb
     }
 
     public static JSClass getJSClass(DynamicObject obj) {
-        return (JSClass) getDynamicType(obj);
+        return (JSClass) getObjectType(obj);
     }
 
     public static void setJSClass(DynamicObject obj, JSClass jsclass) {
         DynamicObjectLibrary.getUncached().setDynamicType(obj, jsclass);
     }
 
-    public static Object getDynamicType(DynamicObject obj) {
-        return obj.getShape().getDynamicType();
+    public static Object getObjectType(DynamicObject obj) {
+        return DynamicObjectLibrary.getUncached().getDynamicType(obj);
     }
 
     public static boolean hasProperty(DynamicObject obj, Object key) {
@@ -416,7 +388,7 @@ public abstract class JSDynamicObject extends DynamicObject implements TruffleOb
     }
 
     public static int getObjectFlags(DynamicObject obj) {
-        return obj.getShape().getFlags();
+        return DynamicObjectLibrary.getUncached().getShapeFlags(obj);
     }
 
     public static void setObjectFlags(DynamicObject obj, int flags) {

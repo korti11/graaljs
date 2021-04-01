@@ -294,14 +294,6 @@ exports.createSecureContext = function createSecureContext(options) {
                                    options.clientCertEngine);
   }
 
-  if (options.ticketKeys) {
-    c.context.setTicketKeys(options.ticketKeys);
-  }
-
-  if (options.sessionTimeout) {
-    c.context.setSessionTimeout(options.sessionTimeout);
-  }
-
   return c;
 };
 

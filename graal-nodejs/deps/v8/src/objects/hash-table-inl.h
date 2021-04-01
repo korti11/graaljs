@@ -7,7 +7,6 @@
 
 #include "src/objects/hash-table.h"
 
-#include "src/execution/isolate-utils-inl.h"
 #include "src/heap/heap.h"
 #include "src/objects/fixed-array-inl.h"
 #include "src/objects/heap-object-inl.h"
@@ -86,10 +85,6 @@ int HashTableBase::Capacity() const {
   return TaggedField<Smi>::load(*this, offset).value();
 }
 
-InternalIndex::Range HashTableBase::IterateEntries() const {
-  return InternalIndex::Range(Capacity());
-}
-
 void HashTableBase::ElementAdded() {
   SetNumberOfElements(NumberOfElements() + 1);
 }
@@ -123,31 +118,25 @@ void HashTableBase::SetNumberOfDeletedElements(int nod) {
 }
 
 template <typename Key>
-Handle<Map> BaseShape<Key>::GetMap(ReadOnlyRoots roots) {
-  return roots.hash_table_map_handle();
+RootIndex BaseShape<Key>::GetMapRootIndex() {
+  return RootIndex::kHashTableMap;
 }
 
-Handle<Map> EphemeronHashTableShape::GetMap(ReadOnlyRoots roots) {
-  return roots.ephemeron_hash_table_map_handle();
-}
-
-template <typename Derived, typename Shape>
-InternalIndex HashTable<Derived, Shape>::FindEntry(Isolate* isolate, Key key) {
-  return FindEntry(ReadOnlyRoots(isolate), key);
+RootIndex EphemeronHashTableShape::GetMapRootIndex() {
+  return RootIndex::kEphemeronHashTableMap;
 }
 
 template <typename Derived, typename Shape>
-InternalIndex HashTable<Derived, Shape>::FindEntry(ReadOnlyRoots roots,
-                                                   Key key) {
-  return FindEntry(roots, key, Shape::Hash(roots, key));
+int HashTable<Derived, Shape>::FindEntry(Isolate* isolate, Key key) {
+  return FindEntry(ReadOnlyRoots(isolate), key, Shape::Hash(isolate, key));
 }
 
 // Find entry for key otherwise return kNotFound.
 template <typename Derived, typename Shape>
-InternalIndex HashTable<Derived, Shape>::FindEntry(ReadOnlyRoots roots, Key key,
-                                                   int32_t hash) {
+int HashTable<Derived, Shape>::FindEntry(ReadOnlyRoots roots, Key key,
+                                         int32_t hash) {
   uint32_t capacity = Capacity();
-  InternalIndex entry = FirstProbe(hash, capacity);
+  uint32_t entry = FirstProbe(hash, capacity);
   uint32_t count = 1;
   // EnsureCapacity will guarantee the hash table is never full.
   Object undefined = roots.undefined_value();
@@ -163,11 +152,16 @@ InternalIndex HashTable<Derived, Shape>::FindEntry(ReadOnlyRoots roots, Key key,
     }
     entry = NextProbe(entry, count++, capacity);
   }
-  return InternalIndex::NotFound();
+  return kNotFound;
 }
 
 template <typename Derived, typename Shape>
-bool HashTable<Derived, Shape>::ToKey(ReadOnlyRoots roots, InternalIndex entry,
+bool HashTable<Derived, Shape>::IsKey(ReadOnlyRoots roots, Object k) {
+  return Shape::IsKey(roots, k);
+}
+
+template <typename Derived, typename Shape>
+bool HashTable<Derived, Shape>::ToKey(ReadOnlyRoots roots, int entry,
                                       Object* out_k) {
   Object k = KeyAt(entry);
   if (!IsKey(roots, k)) return false;
@@ -176,24 +170,12 @@ bool HashTable<Derived, Shape>::ToKey(ReadOnlyRoots roots, InternalIndex entry,
 }
 
 template <typename Derived, typename Shape>
-bool HashTable<Derived, Shape>::ToKey(Isolate* isolate, InternalIndex entry,
+bool HashTable<Derived, Shape>::ToKey(Isolate* isolate, int entry,
                                       Object* out_k) {
   Object k = KeyAt(isolate, entry);
   if (!IsKey(GetReadOnlyRoots(isolate), k)) return false;
   *out_k = Shape::Unwrap(k);
   return true;
-}
-
-template <typename Derived, typename Shape>
-Object HashTable<Derived, Shape>::KeyAt(InternalIndex entry) {
-  const Isolate* isolate = GetIsolateForPtrCompr(*this);
-  return KeyAt(isolate, entry);
-}
-
-template <typename Derived, typename Shape>
-Object HashTable<Derived, Shape>::KeyAt(const Isolate* isolate,
-                                        InternalIndex entry) {
-  return get(isolate, EntryToIndex(entry) + kEntryKeyIndex);
 }
 
 template <typename Derived, typename Shape>
@@ -209,16 +191,6 @@ void HashTable<Derived, Shape>::set_key(int index, Object value,
   FixedArray::set(index, value, mode);
 }
 
-template <typename Derived, typename Shape>
-void HashTable<Derived, Shape>::SetCapacity(int capacity) {
-  // To scale a computed hash code to fit within the hash table, we
-  // use bit-wise AND with a mask, so the capacity must be positive
-  // and non-zero.
-  DCHECK_GT(capacity, 0);
-  DCHECK_LE(capacity, kMaxCapacity);
-  set(kCapacityIndex, Smi::FromInt(capacity));
-}
-
 template <typename KeyT>
 bool BaseShape<KeyT>::IsKey(ReadOnlyRoots roots, Object key) {
   return IsLive(roots, key);
@@ -230,20 +202,20 @@ bool BaseShape<KeyT>::IsLive(ReadOnlyRoots roots, Object k) {
 }
 
 bool ObjectHashSet::Has(Isolate* isolate, Handle<Object> key, int32_t hash) {
-  return FindEntry(ReadOnlyRoots(isolate), key, hash).is_found();
+  return FindEntry(ReadOnlyRoots(isolate), key, hash) != kNotFound;
 }
 
 bool ObjectHashSet::Has(Isolate* isolate, Handle<Object> key) {
   Object hash = key->GetHash();
   if (!hash.IsSmi()) return false;
-  return FindEntry(ReadOnlyRoots(isolate), key, Smi::ToInt(hash)).is_found();
+  return FindEntry(ReadOnlyRoots(isolate), key, Smi::ToInt(hash)) != kNotFound;
 }
 
 bool ObjectHashTableShape::IsMatch(Handle<Object> key, Object other) {
   return key->SameValue(other);
 }
 
-uint32_t ObjectHashTableShape::Hash(ReadOnlyRoots roots, Handle<Object> key) {
+uint32_t ObjectHashTableShape::Hash(Isolate* isolate, Handle<Object> key) {
   return Smi::ToInt(key->GetHash());
 }
 

@@ -44,16 +44,11 @@ const { getOptionValue } = require('internal/options');
 const pendingDeprecation = getOptionValue('--pending-deprecation');
 const { fipsMode } = internalBinding('config');
 const fipsForced = getOptionValue('--force-fips');
-const {
-  getFipsCrypto,
-  setFipsCrypto,
-  timingSafeEqual,
-} = internalBinding('crypto');
+const { getFipsCrypto, setFipsCrypto } = internalBinding('crypto');
 const {
   randomBytes,
   randomFill,
-  randomFillSync,
-  randomInt
+  randomFillSync
 } = require('internal/crypto/random');
 const {
   pbkdf2,
@@ -106,6 +101,7 @@ const {
   getHashes,
   setDefaultEncoding,
   setEngine,
+  timingSafeEqual
 } = require('internal/crypto/util');
 const Certificate = require('internal/crypto/certificate');
 
@@ -185,7 +181,6 @@ module.exports = {
   randomBytes,
   randomFill,
   randomFillSync,
-  randomInt,
   scrypt,
   scryptSync,
   sign: signOneShot,

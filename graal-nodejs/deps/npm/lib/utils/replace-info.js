@@ -1,4 +1,4 @@
-const URL = require('url').URL
+const URL = require('url')
 
 // replaces auth info in an array
 //  of arguments or in a strings

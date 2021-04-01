@@ -2,7 +2,6 @@
 
 const {
   Array,
-  Int8Array,
 } = primordials;
 
 const { ERR_INVALID_URI } = require('internal/errors').codes;
@@ -11,7 +10,7 @@ const hexTable = new Array(256);
 for (let i = 0; i < 256; ++i)
   hexTable[i] = '%' + ((i < 16 ? '0' : '') + i.toString(16)).toUpperCase();
 
-const isHexTable = new Int8Array([
+const isHexTable = [
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0 - 15
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 16 - 31
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 32 - 47
@@ -28,7 +27,7 @@ const isHexTable = new Int8Array([
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  // ... 256
-]);
+];
 
 function encodeStr(str, noEscapeTable, hexTable) {
   const len = str.length;

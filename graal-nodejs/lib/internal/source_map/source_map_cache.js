@@ -22,9 +22,7 @@ function ObjectGetValueSafe(obj, key) {
 
 // See https://sourcemaps.info/spec.html for SourceMap V3 specification.
 const { Buffer } = require('buffer');
-let debug = require('internal/util/debuglog').debuglog('source_map', (fn) => {
-  debug = fn;
-});
+const debug = require('internal/util/debuglog').debuglog('source_map');
 const { dirname, resolve } = require('path');
 const fs = require('fs');
 const { getOptionValue } = require('internal/options');

@@ -22,7 +22,7 @@
 // Inspiration for this code comes from Salvatore Sanfilippo's linenoise.
 // https://github.com/antirez/linenoise
 // Reference:
-// * https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+// * http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
 // * http://www.3waylabs.com/nw/WWW/products/wizcon/vt220.html
 
 'use strict';
@@ -45,10 +45,7 @@ const {
   ERR_INVALID_CURSOR_POS,
   ERR_INVALID_OPT_VALUE
 } = require('internal/errors').codes;
-const {
-  validateString,
-  validateUint32,
-} = require('internal/validators');
+const { validateString } = require('internal/validators');
 const {
   inspect,
   getStringWidth,
@@ -108,7 +105,6 @@ function Interface(input, output, completer, terminal) {
   this._sawKeyPress = false;
   this._previousKey = null;
   this.escapeCodeTimeout = ESCAPE_CODE_TIMEOUT;
-  this.tabSize = 8;
 
   EventEmitter.call(this);
   let historySize;
@@ -122,10 +118,6 @@ function Interface(input, output, completer, terminal) {
     completer = input.completer;
     terminal = input.terminal;
     historySize = input.historySize;
-    if (input.tabSize !== undefined) {
-      validateUint32(input.tabSize, 'tabSize', true);
-      this.tabSize = input.tabSize;
-    }
     removeHistoryDuplicates = input.removeHistoryDuplicates;
     if (input.prompt !== undefined) {
       prompt = input.prompt;
@@ -144,7 +136,7 @@ function Interface(input, output, completer, terminal) {
     input = input.input;
   }
 
-  if (completer !== undefined && typeof completer !== 'function') {
+  if (completer && typeof completer !== 'function') {
     throw new ERR_INVALID_OPT_VALUE('completer', completer);
   }
 
@@ -726,9 +718,10 @@ Interface.prototype._getDisplayPos = function(str) {
       offset = 0;
       continue;
     }
-    // Tabs must be aligned by an offset of the tab size.
+    // Tabs must be aligned by an offset of 8.
+    // TODO(BridgeAR): Make the tab size configurable.
     if (char === '\t') {
-      offset += this.tabSize - (offset % this.tabSize);
+      offset += 8 - (offset % 8);
       continue;
     }
     const width = getStringWidth(char);

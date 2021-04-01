@@ -31,9 +31,9 @@ bool CanInlinePropertyAccess(Handle<Map> map) {
   // We can inline property access to prototypes of all primitives, except
   // the special Oddball ones that have no wrapper counterparts (i.e. Null,
   // Undefined and TheHole).
-  STATIC_ASSERT(ODDBALL_TYPE == LAST_PRIMITIVE_HEAP_OBJECT_TYPE);
+  STATIC_ASSERT(ODDBALL_TYPE == LAST_PRIMITIVE_TYPE);
   if (map->IsBooleanMap()) return true;
-  if (map->instance_type() < LAST_PRIMITIVE_HEAP_OBJECT_TYPE) return true;
+  if (map->instance_type() < LAST_PRIMITIVE_TYPE) return true;
   return map->IsJSObjectMap() && !map->is_dictionary_map() &&
          !map->has_named_interceptor() &&
          // TODO(verwaest): Whitelist contexts to which we have access.
@@ -323,8 +323,8 @@ bool AccessInfoFactory::ComputeElementAccessInfos(
 
 PropertyAccessInfo AccessInfoFactory::ComputeDataFieldAccessInfo(
     Handle<Map> receiver_map, Handle<Map> map, MaybeHandle<JSObject> holder,
-    InternalIndex descriptor, AccessMode access_mode) const {
-  DCHECK(descriptor.is_found());
+    int descriptor, AccessMode access_mode) const {
+  DCHECK_NE(descriptor, DescriptorArray::kNotFound);
   Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate());
   PropertyDetails const details = descriptors->GetDetails(descriptor);
   int index = descriptors->GetFieldIndex(descriptor);
@@ -351,11 +351,6 @@ PropertyAccessInfo AccessInfoFactory::ComputeDataFieldAccessInfo(
                                                                   descriptor));
   } else if (details_representation.IsDouble()) {
     field_type = type_cache_->kFloat64;
-    if (!FLAG_unbox_double_fields) {
-      unrecorded_dependencies.push_back(
-          dependencies()->FieldRepresentationDependencyOffTheRecord(
-              map_ref, descriptor));
-    }
   } else if (details_representation.IsHeapObject()) {
     // Extract the field type from the property details (make sure its
     // representation is TaggedPointer to reflect the heap object case).
@@ -390,10 +385,6 @@ PropertyAccessInfo AccessInfoFactory::ComputeDataFieldAccessInfo(
   PropertyConstness constness;
   if (details.IsReadOnly() && !details.IsConfigurable()) {
     constness = PropertyConstness::kConst;
-  } else if (FLAG_turboprop && !map->is_prototype_map()) {
-    // The constness feedback is too unstable for the aggresive compilation
-    // of turboprop.
-    constness = PropertyConstness::kMutable;
   } else {
     map_ref.SerializeOwnDescriptor(descriptor);
     constness = dependencies()->DependOnFieldConstness(map_ref, descriptor);
@@ -417,9 +408,9 @@ PropertyAccessInfo AccessInfoFactory::ComputeDataFieldAccessInfo(
 
 PropertyAccessInfo AccessInfoFactory::ComputeAccessorDescriptorAccessInfo(
     Handle<Map> receiver_map, Handle<Name> name, Handle<Map> map,
-    MaybeHandle<JSObject> holder, InternalIndex descriptor,
+    MaybeHandle<JSObject> holder, int descriptor,
     AccessMode access_mode) const {
-  DCHECK(descriptor.is_found());
+  DCHECK_NE(descriptor, DescriptorArray::kNotFound);
   Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate());
   SLOW_DCHECK(descriptor == descriptors->Search(*name, *map));
   if (map->instance_type() == JS_MODULE_NAMESPACE_TYPE) {
@@ -506,8 +497,8 @@ PropertyAccessInfo AccessInfoFactory::ComputePropertyAccessInfo(
   while (true) {
     // Lookup the named property on the {map}.
     Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate());
-    InternalIndex const number = descriptors->Search(*name, *map);
-    if (number.is_found()) {
+    int const number = descriptors->Search(*name, *map);
+    if (number != DescriptorArray::kNotFound) {
       PropertyDetails const details = descriptors->GetDetails(number);
       if (access_mode == AccessMode::kStore ||
           access_mode == AccessMode::kStoreInLiteral) {
@@ -587,7 +578,11 @@ PropertyAccessInfo AccessInfoFactory::ComputePropertyAccessInfo(
       }
     }
     Handle<JSObject> map_prototype(JSObject::cast(map->prototype()), isolate());
-    CHECK(!map_prototype->map().is_deprecated());
+    if (map_prototype->map().is_deprecated()) {
+      // Try to migrate the prototype object so we don't embed the deprecated
+      // map into the optimized code.
+      JSObject::TryMigrateInstance(isolate(), map_prototype);
+    }
     map = handle(map_prototype->map(), isolate());
     holder = map_prototype;
 
@@ -767,7 +762,7 @@ PropertyAccessInfo AccessInfoFactory::LookupTransition(
   }
 
   Handle<Map> transition_map(transition, isolate());
-  InternalIndex const number = transition_map->LastAdded();
+  int const number = transition_map->LastAdded();
   PropertyDetails const details =
       transition_map->instance_descriptors().GetDetails(number);
   // Don't bother optimizing stores to read-only properties.
@@ -794,12 +789,6 @@ PropertyAccessInfo AccessInfoFactory::LookupTransition(
             transition_map_ref, number));
   } else if (details_representation.IsDouble()) {
     field_type = type_cache_->kFloat64;
-    if (!FLAG_unbox_double_fields) {
-      transition_map_ref.SerializeOwnDescriptor(number);
-      unrecorded_dependencies.push_back(
-          dependencies()->FieldRepresentationDependencyOffTheRecord(
-              transition_map_ref, number));
-    }
   } else if (details_representation.IsHeapObject()) {
     // Extract the field type from the property details (make sure its
     // representation is TaggedPointer to reflect the heap object case).

@@ -46,7 +46,8 @@ class V8_EXPORT_PRIVATE JSNativeContextSpecialization final
   // Flags that control the mode of operation.
   enum Flag {
     kNoFlags = 0u,
-    kBailoutOnUninitialized = 1u << 0,
+    kAccessorInliningEnabled = 1u << 0,
+    kBailoutOnUninitialized = 1u << 1
   };
   using Flags = base::Flags<Flag>;
 
@@ -78,6 +79,7 @@ class V8_EXPORT_PRIVATE JSNativeContextSpecialization final
   Reduction ReduceJSOrdinaryHasInstance(Node* node);
   Reduction ReduceJSPromiseResolve(Node* node);
   Reduction ReduceJSResolvePromise(Node* node);
+  Reduction ReduceJSLoadContext(Node* node);
   Reduction ReduceJSLoadGlobal(Node* node);
   Reduction ReduceJSStoreGlobal(Node* node);
   Reduction ReduceJSLoadNamed(Node* node);
@@ -99,6 +101,10 @@ class V8_EXPORT_PRIVATE JSNativeContextSpecialization final
                                  base::Optional<NameRef> static_name,
                                  Node* value, FeedbackSource const& source,
                                  AccessMode access_mode);
+  Reduction ReduceNamedAccessFromNexus(Node* node, Node* value,
+                                       FeedbackSource const& source,
+                                       NameRef const& name,
+                                       AccessMode access_mode);
   Reduction ReduceNamedAccess(Node* node, Node* value,
                               NamedAccessFeedback const& processed,
                               AccessMode access_mode, Node* key = nullptr);
@@ -213,6 +219,11 @@ class V8_EXPORT_PRIVATE JSNativeContextSpecialization final
       ElementAccessFeedback const& feedback, Node* receiver,
       Node* effect) const;
 
+  void FilterMapsAndGetPropertyAccessInfos(
+      NamedAccessFeedback const& feedback, AccessMode access_mode,
+      Node* receiver, Node* effect,
+      ZoneVector<PropertyAccessInfo>* access_infos);
+
   // Try to infer maps for the given {receiver} at the current {effect}.
   bool InferReceiverMaps(Node* receiver, Node* effect,
                          ZoneVector<Handle<Map>>* receiver_maps) const;
@@ -250,7 +261,6 @@ class V8_EXPORT_PRIVATE JSNativeContextSpecialization final
   CompilationDependencies* dependencies() const { return dependencies_; }
   Zone* zone() const { return zone_; }
   Zone* shared_zone() const { return shared_zone_; }
-  bool should_disallow_heap_access() const;
 
   JSGraph* const jsgraph_;
   JSHeapBroker* const broker_;

@@ -32,10 +32,6 @@ Local<Set> ToJsSet(Local<Context> context, const std::set<std::string>& in) {
   return out;
 }
 
-bool NativeModuleEnv::Add(const char* id, const UnionBytes& source) {
-  return NativeModuleLoader::GetInstance()->Add(id, source);
-}
-
 bool NativeModuleEnv::Exists(const char* id) {
   return NativeModuleLoader::GetInstance()->Exists(id);
 }
@@ -190,7 +186,7 @@ void NativeModuleEnv::Initialize(Local<Object> target,
                     FIXED_ONE_BYTE_STRING(env->isolate(), "moduleCategories"),
                     GetModuleCategories,
                     nullptr,
-                    Local<Value>(),
+                    env->as_callback_data(),
                     DEFAULT,
                     None,
                     SideEffectType::kHasNoSideEffect)

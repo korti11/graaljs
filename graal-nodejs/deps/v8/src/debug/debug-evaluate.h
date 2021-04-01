@@ -24,8 +24,7 @@ class FrameInspector;
 class DebugEvaluate : public AllStatic {
  public:
   static MaybeHandle<Object> Global(Isolate* isolate, Handle<String> source,
-                                    debug::EvaluateGlobalMode mode,
-                                    REPLMode repl_mode = REPLMode::kNo);
+                                    bool throw_on_side_effect);
 
   // Evaluate a piece of JavaScript in the context of a stack frame for
   // debugging.  Things that need special attention are:
@@ -84,7 +83,7 @@ class DebugEvaluate : public AllStatic {
     struct ContextChainElement {
       Handle<Context> wrapped_context;
       Handle<JSObject> materialized_object;
-      Handle<StringSet> blacklist;
+      Handle<StringSet> whitelist;
     };
 
     Handle<Context> evaluation_context_;

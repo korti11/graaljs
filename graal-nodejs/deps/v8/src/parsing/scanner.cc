@@ -13,7 +13,6 @@
 #include "src/ast/ast-value-factory.h"
 #include "src/numbers/conversions-inl.h"
 #include "src/objects/bigint.h"
-#include "src/parsing/parse-info.h"
 #include "src/parsing/scanner-inl.h"
 #include "src/zone/zone.h"
 
@@ -90,10 +89,12 @@ bool Scanner::BookmarkScope::HasBeenApplied() const {
 // ----------------------------------------------------------------------------
 // Scanner
 
-Scanner::Scanner(Utf16CharacterStream* source, UnoptimizedCompileFlags flags)
-    : flags_(flags),
-      source_(source),
+Scanner::Scanner(Utf16CharacterStream* source, bool is_module)
+    : source_(source),
       found_html_comment_(false),
+      allow_harmony_optional_chaining_(false),
+      allow_harmony_nullish_(false),
+      is_module_(is_module),
       octal_pos_(Location::invalid()),
       octal_message_(MessageTemplate::kNone) {
   DCHECK_NOT_NULL(source);
@@ -189,7 +190,7 @@ Token::Value Scanner::PeekAhead() {
 }
 
 Token::Value Scanner::SkipSingleHTMLComment() {
-  if (flags_.is_module()) {
+  if (is_module_) {
     ReportScannerError(source_pos(), MessageTemplate::kHtmlCommentInModule);
     return Token::ILLEGAL;
   }
@@ -232,9 +233,9 @@ void Scanner::TryToParseSourceURLComment() {
   if (!name.is_one_byte()) return;
   Vector<const uint8_t> name_literal = name.one_byte_literal();
   LiteralBuffer* value;
-  if (name_literal == StaticOneByteVector("sourceURL")) {
+  if (name_literal == StaticCharVector("sourceURL")) {
     value = &source_url_;
-  } else if (name_literal == StaticOneByteVector("sourceMappingURL")) {
+  } else if (name_literal == StaticCharVector("sourceMappingURL")) {
     value = &source_mapping_url_;
   } else {
     return;
@@ -575,8 +576,7 @@ Token::Value Scanner::ScanTemplateSpan() {
   return result;
 }
 
-template <typename LocalIsolate>
-Handle<String> Scanner::SourceUrl(LocalIsolate* isolate) const {
+Handle<String> Scanner::SourceUrl(Isolate* isolate) const {
   Handle<String> tmp;
   if (source_url_.length() > 0) {
     tmp = source_url_.Internalize(isolate);
@@ -584,21 +584,13 @@ Handle<String> Scanner::SourceUrl(LocalIsolate* isolate) const {
   return tmp;
 }
 
-template Handle<String> Scanner::SourceUrl(Isolate* isolate) const;
-template Handle<String> Scanner::SourceUrl(OffThreadIsolate* isolate) const;
-
-template <typename LocalIsolate>
-Handle<String> Scanner::SourceMappingUrl(LocalIsolate* isolate) const {
+Handle<String> Scanner::SourceMappingUrl(Isolate* isolate) const {
   Handle<String> tmp;
   if (source_mapping_url_.length() > 0) {
     tmp = source_mapping_url_.Internalize(isolate);
   }
   return tmp;
 }
-
-template Handle<String> Scanner::SourceMappingUrl(Isolate* isolate) const;
-template Handle<String> Scanner::SourceMappingUrl(
-    OffThreadIsolate* isolate) const;
 
 bool Scanner::ScanDigitsWithNumericSeparators(bool (*predicate)(uc32 ch),
                                               bool is_check_first_digit) {
@@ -914,7 +906,7 @@ Token::Value Scanner::ScanIdentifierOrKeywordInnerSlow(bool escaped,
     Vector<const uint8_t> chars = next().literal_chars.one_byte_literal();
     Token::Value token =
         KeywordOrIdentifierToken(chars.begin(), chars.length());
-    if (base::IsInRange(token, Token::IDENTIFIER, Token::YIELD)) return token;
+    if (IsInRange(token, Token::IDENTIFIER, Token::YIELD)) return token;
 
     if (token == Token::FUTURE_STRICT_RESERVED_WORD) {
       if (escaped) return Token::ESCAPED_STRICT_RESERVED_WORD;
@@ -924,7 +916,7 @@ Token::Value Scanner::ScanIdentifierOrKeywordInnerSlow(bool escaped,
     if (!escaped) return token;
 
     STATIC_ASSERT(Token::LET + 1 == Token::STATIC);
-    if (base::IsInRange(token, Token::LET, Token::STATIC)) {
+    if (IsInRange(token, Token::LET, Token::STATIC)) {
       return Token::ESCAPED_STRICT_RESERVED_WORD;
     }
     return Token::ESCAPED_KEYWORD;

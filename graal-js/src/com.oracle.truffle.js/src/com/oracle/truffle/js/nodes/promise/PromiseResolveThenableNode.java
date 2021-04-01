@@ -41,13 +41,12 @@
 package com.oracle.truffle.js.nodes.promise;
 
 import com.oracle.truffle.api.CompilerDirectives;
-import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.object.DynamicObject;
+import com.oracle.truffle.api.profiles.ValueProfile;
 import com.oracle.truffle.js.nodes.JavaScriptBaseNode;
 import com.oracle.truffle.js.nodes.control.TryCatchNode;
 import com.oracle.truffle.js.nodes.function.JSFunctionCallNode;
 import com.oracle.truffle.js.runtime.JSArguments;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.objects.Undefined;
 import com.oracle.truffle.js.runtime.util.Pair;
@@ -58,7 +57,7 @@ public class PromiseResolveThenableNode extends JavaScriptBaseNode {
     @Child private JSFunctionCallNode callResolveNode;
     @Child private JSFunctionCallNode callRejectNode;
     @Child private TryCatchNode.GetErrorObjectNode getErrorObjectNode;
-    @Child private InteropLibrary exceptions;
+    private final ValueProfile typeProfile = ValueProfile.createClassProfile();
 
     protected PromiseResolveThenableNode(JSContext context) {
         this.context = context;
@@ -86,12 +85,11 @@ public class PromiseResolveThenableNode extends JavaScriptBaseNode {
     }
 
     private boolean shouldCatch(Throwable exception) {
-        if (getErrorObjectNode == null || exceptions == null) {
+        if (getErrorObjectNode == null) {
             CompilerDirectives.transferToInterpreterAndInvalidate();
             getErrorObjectNode = insert(TryCatchNode.GetErrorObjectNode.create(context));
-            exceptions = insert(InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit));
         }
-        return TryCatchNode.shouldCatch(exception, exceptions);
+        return TryCatchNode.shouldCatch(exception, typeProfile);
     }
 
     private JSFunctionCallNode callReject() {

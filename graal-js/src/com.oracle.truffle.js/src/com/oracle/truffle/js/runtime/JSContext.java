@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -58,12 +58,18 @@ import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.Truffle;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.TruffleLanguage.ContextReference;
+import com.oracle.truffle.api.TruffleLanguage.Env;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.AllocationReporter;
+import com.oracle.truffle.api.interop.ArityException;
+import com.oracle.truffle.api.interop.InteropLibrary;
+import com.oracle.truffle.api.interop.UnsupportedMessageException;
+import com.oracle.truffle.api.interop.UnsupportedTypeException;
 import com.oracle.truffle.api.nodes.InvalidAssumptionException;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.Shape;
+import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.js.lang.JavaScriptLanguage;
 import com.oracle.truffle.js.nodes.access.GetPrototypeNode;
 import com.oracle.truffle.js.nodes.cast.JSToObjectNode;
@@ -113,13 +119,9 @@ import com.oracle.truffle.js.runtime.builtins.intl.JSNumberFormat;
 import com.oracle.truffle.js.runtime.builtins.intl.JSPluralRules;
 import com.oracle.truffle.js.runtime.builtins.intl.JSRelativeTimeFormat;
 import com.oracle.truffle.js.runtime.builtins.intl.JSSegmenter;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyGlobal;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyInstance;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyMemory;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyModule;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyTable;
 import com.oracle.truffle.js.runtime.java.JavaImporter;
 import com.oracle.truffle.js.runtime.java.JavaPackage;
+import com.oracle.truffle.js.runtime.java.adapter.JavaAdapterFactory;
 import com.oracle.truffle.js.runtime.objects.JSDynamicObject;
 import com.oracle.truffle.js.runtime.objects.JSModuleRecord;
 import com.oracle.truffle.js.runtime.objects.JSObject;
@@ -185,10 +187,9 @@ public class JSContext {
 
     private final JSObjectFactory.BoundProto moduleNamespaceFactory;
 
+    /** The TRegex engine, as obtained from RegexLanguage. */
+    @CompilationFinal private Object regexEngine;
     @CompilationFinal private Object tRegexEmptyResult;
-
-    private final String regexOptions;
-    private final String regexValidateOptions;
 
     private final Shape regExpGroupsEmptyShape;
 
@@ -246,6 +247,10 @@ public class JSContext {
         RegExpLastParen,
         RegExpLeftContext,
         RegExpRightContext,
+        RegExp$And,
+        RegExp$Plus,
+        RegExp$Apostrophe,
+        RegExp$Quote,
         RegExp$1,
         RegExp$2,
         RegExp$3,
@@ -258,6 +263,7 @@ public class JSContext {
         SymbolGetDescription,
         MapGetSize,
         SetGetSize,
+        ArrayBufferByteLength,
         ArrayBufferViewLength,
         ArrayBufferViewBuffer,
         ArrayBufferViewByteLength,
@@ -281,18 +287,13 @@ public class JSContext {
         LocaleLanguage,
         LocaleScript,
         LocaleRegion,
+        SharedArrayBufferGetByteLength,
         FunctionAsyncIterator,
         IsGraalRuntime,
         AsyncModuleExecutionFulfilled,
         AsyncModuleExecutionRejected,
         TopLevelAwaitResolve,
         TopLevelAwaitReject,
-        WebAssemblyInstanceGetExports,
-        WebAssemblyMemoryGetBuffer,
-        WebAssemblyTableGetLength,
-        WebAssemblyGlobalGetValue,
-        WebAssemblyGlobalSetValue,
-        WebAssemblySourceInstantiation,
     }
 
     @CompilationFinal(dimensions = 1) private final JSFunctionData[] builtinFunctionData;
@@ -324,6 +325,8 @@ public class JSContext {
 
     private final JSPrototypeData nullPrototypeData = new JSPrototypeData();
     private final JSPrototypeData inObjectPrototypeData = new JSPrototypeData();
+
+    private volatile ClassValue<Class<?>> javaAdapterClasses;
 
     private final JSFunctionFactory functionFactory;
     private final JSFunctionFactory constructorFactory;
@@ -368,7 +371,6 @@ public class JSContext {
     private final JSObjectFactory arrayBufferFactory;
     private final JSObjectFactory directArrayBufferFactory;
     private final JSObjectFactory sharedArrayBufferFactory;
-    private final JSObjectFactory interopArrayBufferFactory;
     private final JSObjectFactory finalizationRegistryFactory;
     @CompilationFinal(dimensions = 1) private final JSObjectFactory[] typedArrayFactories;
 
@@ -395,12 +397,6 @@ public class JSContext {
     private final JSObjectFactory dictionaryObjectFactory;
 
     private final JSObjectFactory globalObjectFactory;
-
-    private final JSObjectFactory webAssemblyModuleFactory;
-    private final JSObjectFactory webAssemblyInstanceFactory;
-    private final JSObjectFactory webAssemblyMemoryFactory;
-    private final JSObjectFactory webAssemblyTableFactory;
-    private final JSObjectFactory webAssemblyGlobalFactory;
 
     private final int factoryCount;
 
@@ -510,7 +506,6 @@ public class JSContext {
         this.arrayBufferFactory = builder.create(JSArrayBuffer.HEAP_INSTANCE);
         this.directArrayBufferFactory = builder.create(JSArrayBuffer.DIRECT_INSTANCE);
         this.sharedArrayBufferFactory = isOptionSharedArrayBuffer() ? builder.create(JSSharedArrayBuffer.INSTANCE) : null;
-        this.interopArrayBufferFactory = builder.create(JSArrayBuffer.INTEROP_INSTANCE);
         this.finalizationRegistryFactory = builder.create(JSFinalizationRegistry.INSTANCE);
         this.typedArrayFactories = new JSObjectFactory[TypedArray.factories(this).length];
         for (TypedArrayFactory factory : TypedArray.factories(this)) {
@@ -552,21 +547,12 @@ public class JSContext {
 
         this.globalObjectFactory = builder.create(objectPrototypeSupplier, JSGlobal::makeGlobalObjectShape);
 
-        this.webAssemblyModuleFactory = builder.create(JSWebAssemblyModule.INSTANCE);
-        this.webAssemblyInstanceFactory = builder.create(JSWebAssemblyInstance.INSTANCE);
-        this.webAssemblyMemoryFactory = builder.create(JSWebAssemblyMemory.INSTANCE);
-        this.webAssemblyTableFactory = builder.create(JSWebAssemblyTable.INSTANCE);
-        this.webAssemblyGlobalFactory = builder.create(JSWebAssemblyGlobal.INSTANCE);
-
         this.factoryCount = builder.finish();
 
         this.argumentsPropertyProxy = new JSFunction.ArgumentsProxyProperty(this);
         this.callerPropertyProxy = new JSFunction.CallerProxyProperty(this);
 
         this.regExpGroupsEmptyShape = JSRegExp.makeInitialGroupsObjectShape(this);
-
-        this.regexOptions = createRegexOptions(contextOptions);
-        this.regexValidateOptions = regexOptions.isEmpty() ? REGEX_OPTION_VALIDATE : REGEX_OPTION_VALIDATE + ',' + regexOptions;
     }
 
     @SuppressWarnings("deprecation")
@@ -707,10 +693,6 @@ public class JSContext {
     public final void promiseEnqueueJob(JSRealm realm, DynamicObject job) {
         invalidatePromiseQueueNotUsedAssumption();
         realm.getAgent().enqueuePromiseJob(job);
-    }
-
-    public final void signalAsyncWaiterRecordUsage() {
-        invalidatePromiseQueueNotUsedAssumption();
     }
 
     private void invalidatePromiseQueueNotUsedAssumption() {
@@ -868,10 +850,6 @@ public class JSContext {
         return sharedArrayBufferFactory;
     }
 
-    public JSObjectFactory getInteropArrayBufferFactory() {
-        return interopArrayBufferFactory;
-    }
-
     public final JSObjectFactory getNonStrictArgumentsFactory() {
         return nonStrictArgumentsFactory;
     }
@@ -968,35 +946,16 @@ public class JSContext {
         return globalObjectFactory;
     }
 
-    public JSObjectFactory getWebAssemblyModuleFactory() {
-        return webAssemblyModuleFactory;
-    }
-
-    public JSObjectFactory getWebAssemblyInstanceFactory() {
-        return webAssemblyInstanceFactory;
-    }
-
-    public JSObjectFactory getWebAssemblyMemoryFactory() {
-        return webAssemblyMemoryFactory;
-    }
-
-    public JSObjectFactory getWebAssemblyTableFactory() {
-        return webAssemblyTableFactory;
-    }
-
-    public JSObjectFactory getWebAssemblyGlobalFactory() {
-        return webAssemblyGlobalFactory;
-    }
-
+    private static final String REGEX_LANGUAGE_ID = "regex";
     private static final String REGEX_OPTION_U180E_WHITESPACE = "U180EWhitespace";
     private static final String REGEX_OPTION_REGRESSION_TEST_MODE = "RegressionTestMode";
     private static final String REGEX_OPTION_DUMP_AUTOMATA = "DumpAutomata";
     private static final String REGEX_OPTION_STEP_EXECUTION = "StepExecution";
     private static final String REGEX_OPTION_ALWAYS_EAGER = "AlwaysEager";
-    private static final String REGEX_OPTION_VALIDATE = "Validate=true";
+    private static final String REGEX_OPTION_FEATURE_SET_TREGEX_JONI = "FeatureSet=TRegexJoni";
 
-    private static String createRegexOptions(JSContextOptions contextOptions) {
-        StringBuilder options = new StringBuilder();
+    private static String createRegexEngineOptions(JSContextOptions contextOptions) {
+        StringBuilder options = new StringBuilder(30);
         if (JSConfig.U180EWhitespace) {
             options.append(REGEX_OPTION_U180E_WHITESPACE + "=true,");
         }
@@ -1012,24 +971,37 @@ public class JSContext {
         if (contextOptions.isRegexAlwaysEager()) {
             options.append(REGEX_OPTION_ALWAYS_EAGER + "=true,");
         }
+        options.append(REGEX_OPTION_FEATURE_SET_TREGEX_JONI + ",");
         return options.toString();
     }
 
-    public String getRegexOptions() {
-        return regexOptions;
-    }
-
-    public String getRegexValidateOptions() {
-        return regexValidateOptions;
+    public Object getRegexEngine() {
+        if (regexEngine == null) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            regexEngine = createTRegexEngine(getRealm().getEnv(), getContextOptions());
+        }
+        return regexEngine;
     }
 
     public Object getTRegexEmptyResult() {
         if (tRegexEmptyResult == null) {
             CompilerDirectives.transferToInterpreterAndInvalidate();
-            tRegexEmptyResult = TRegexUtil.InvokeExecMethodNode.getUncached().execute(RegexCompilerInterface.compile("[]", "", this), "", 0);
+            tRegexEmptyResult = TRegexUtil.InvokeExecMethodNode.getUncached().execute(TRegexUtil.CompileRegexNode.getUncached().execute(getRegexEngine(), "[]", ""), "", 0);
             assert !TRegexUtil.TRegexResultAccessor.getUncached().isMatch(tRegexEmptyResult);
         }
         return tRegexEmptyResult;
+    }
+
+    @TruffleBoundary
+    public static Object createTRegexEngine(Env env, JSContextOptions options) {
+        Source engineBuilderRequest = Source.newBuilder(REGEX_LANGUAGE_ID, "", "TRegex Engine Builder Request").internal(true).build();
+        Object regexEngineBuilder = env.parseInternal(engineBuilderRequest).call();
+        String regexOptions = createRegexEngineOptions(options);
+        try {
+            return InteropLibrary.getFactory().getUncached().execute(regexEngineBuilder, regexOptions);
+        } catch (UnsupportedMessageException | UnsupportedTypeException | ArityException e) {
+            throw Errors.shouldNotReachHere(e);
+        }
     }
 
     public Shape getRegExpGroupsEmptyShape() {
@@ -1252,6 +1224,11 @@ public class JSContext {
 
     public boolean isOptionRegexpStaticResultInContextInit() {
         return contextOptions.isRegexpStaticResult();
+    }
+
+    public boolean isOptionArraySortInherited() {
+        assert !(getEnv() != null && getEnv().isPreInitialization()) : "Patchable option array-sort-inherited accessed during context pre-initialization.";
+        return contextOptions.isArraySortInherited();
     }
 
     public boolean isOptionSharedArrayBuffer() {
@@ -1525,6 +1502,25 @@ public class JSContext {
         return contextOptions;
     }
 
+    public Class<?> getJavaAdapterClassFor(Class<?> clazz) {
+        if (JSConfig.SubstrateVM) {
+            throw Errors.unsupported("JavaAdapter");
+        }
+        if (javaAdapterClasses == null) {
+            synchronized (this) {
+                if (javaAdapterClasses == null) {
+                    javaAdapterClasses = new ClassValue<Class<?>>() {
+                        @Override
+                        protected Class<?> computeValue(Class<?> type) {
+                            return JavaAdapterFactory.getAdapterClassFor(type);
+                        }
+                    };
+                }
+            }
+        }
+        return javaAdapterClasses.get(clazz);
+    }
+
     public final boolean isMultiContext() {
         return isMultiContext;
     }
@@ -1684,13 +1680,5 @@ public class JSContext {
             CompilerAsserts.neverPartOfCompilation();
             super.insert(node);
         }
-    }
-
-    public boolean isOptionTopLevelAwait() {
-        return getContextOptions().isTopLevelAwait();
-    }
-
-    public boolean isWaitAsyncEnabled() {
-        return getEcmaScriptVersion() >= JSConfig.ECMAScript2022;
     }
 }

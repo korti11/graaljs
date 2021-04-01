@@ -5,8 +5,6 @@
 #ifndef V8_STRINGS_STRING_STREAM_H_
 #define V8_STRINGS_STRING_STREAM_H_
 
-#include <memory>
-
 #include "src/base/small-vector.h"
 #include "src/handles/handles.h"
 #include "src/objects/heap-object.h"

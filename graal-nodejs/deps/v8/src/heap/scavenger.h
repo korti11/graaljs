@@ -15,8 +15,6 @@ namespace v8 {
 namespace internal {
 
 class OneshotBarrier;
-class RootScavengeVisitor;
-class Scavenger;
 
 enum class CopyAndForwardResult {
   SUCCESS_YOUNG_GENERATION,
@@ -53,11 +51,6 @@ class ScavengerCollector {
   void ClearOldEphemerons();
   void HandleSurvivingNewLargeObjects();
 
-  void SweepArrayBufferExtensions();
-
-  void IterateStackAndScavenge(RootScavengeVisitor* root_scavenge_visitor,
-                               Scavenger** scavengers, int num_scavenge_tasks,
-                               int main_thread_id);
   Isolate* const isolate_;
   Heap* const heap_;
   base::Semaphore parallel_scavenge_semaphore_;
@@ -124,8 +117,7 @@ class Scavenger {
 
   using CopiedList = Worklist<ObjectAndSize, kCopiedListSegmentSize>;
   Scavenger(ScavengerCollector* collector, Heap* heap, bool is_logging,
-            Worklist<MemoryChunk*, 64>* empty_chunks, CopiedList* copied_list,
-            PromotionList* promotion_list,
+            CopiedList* copied_list, PromotionList* promotion_list,
             EphemeronTableList* ephemeron_table_list, int task_id);
 
   // Entry point for scavenging an old generation page. For scavenging single
@@ -214,14 +206,13 @@ class Scavenger {
 
   ScavengerCollector* const collector_;
   Heap* const heap_;
-  Worklist<MemoryChunk*, 64>::View empty_chunks_;
   PromotionList::View promotion_list_;
   CopiedList::View copied_list_;
   EphemeronTableList::View ephemeron_table_list_;
   Heap::PretenuringFeedbackMap local_pretenuring_feedback_;
   size_t copied_size_;
   size_t promoted_size_;
-  EvacuationAllocator allocator_;
+  LocalAllocator allocator_;
   SurvivingNewLargeObjectsMap surviving_new_large_objects_;
 
   EphemeronRememberedSet ephemeron_remembered_set_;
@@ -264,7 +255,6 @@ class ScavengeVisitor final : public NewSpaceVisitor<ScavengeVisitor> {
   V8_INLINE void VisitCodeTarget(Code host, RelocInfo* rinfo) final;
   V8_INLINE void VisitEmbeddedPointer(Code host, RelocInfo* rinfo) final;
   V8_INLINE int VisitEphemeronHashTable(Map map, EphemeronHashTable object);
-  V8_INLINE int VisitJSArrayBuffer(Map map, JSArrayBuffer object);
 
  private:
   template <typename TSlot>

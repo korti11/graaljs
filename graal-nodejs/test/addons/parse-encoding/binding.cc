@@ -23,7 +23,8 @@ void ParseEncoding(const v8::FunctionCallbackInfo<v8::Value>& args) {
   ENCODING_MAP(V)
 #undef V
   auto encoding_string =
-      v8::String::NewFromUtf8(args.GetIsolate(), encoding_name)
+      v8::String::NewFromUtf8(args.GetIsolate(), encoding_name,
+                              v8::NewStringType::kNormal)
       .ToLocalChecked();
   args.GetReturnValue().Set(encoding_string);
 }

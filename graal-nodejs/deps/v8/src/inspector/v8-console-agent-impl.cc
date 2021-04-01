@@ -27,23 +27,23 @@ V8ConsoleAgentImpl::V8ConsoleAgentImpl(
 V8ConsoleAgentImpl::~V8ConsoleAgentImpl() = default;
 
 Response V8ConsoleAgentImpl::enable() {
-  if (m_enabled) return Response::Success();
+  if (m_enabled) return Response::OK();
   m_state->setBoolean(ConsoleAgentState::consoleEnabled, true);
   m_enabled = true;
   m_session->inspector()->enableStackCapturingIfNeeded();
   reportAllMessages();
-  return Response::Success();
+  return Response::OK();
 }
 
 Response V8ConsoleAgentImpl::disable() {
-  if (!m_enabled) return Response::Success();
+  if (!m_enabled) return Response::OK();
   m_session->inspector()->disableStackCapturingIfNeeded();
   m_state->setBoolean(ConsoleAgentState::consoleEnabled, false);
   m_enabled = false;
-  return Response::Success();
+  return Response::OK();
 }
 
-Response V8ConsoleAgentImpl::clearMessages() { return Response::Success(); }
+Response V8ConsoleAgentImpl::clearMessages() { return Response::OK(); }
 
 void V8ConsoleAgentImpl::restore() {
   if (!m_state->booleanProperty(ConsoleAgentState::consoleEnabled, false))

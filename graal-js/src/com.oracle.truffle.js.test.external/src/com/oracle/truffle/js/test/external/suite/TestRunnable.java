@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -190,16 +190,15 @@ public abstract class TestRunnable implements Runnable {
     }
 
     protected static Stream<String> getStrings(List<String> scriptCode, String prefix, Pattern findPattern, Pattern splitPattern) {
-        Stream<String> stream = Stream.empty();
         for (String line : scriptCode) {
             if (line.contains(prefix)) {
                 Matcher matcher = findPattern.matcher(line);
                 if (matcher.find()) {
-                    stream = Stream.concat(stream, splitPattern.splitAsStream(matcher.group(1)));
+                    return splitPattern.splitAsStream(matcher.group(1));
                 }
             }
         }
-        return stream;
+        return Stream.empty();
     }
 
     // ~ Inner classes

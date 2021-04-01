@@ -18,8 +18,7 @@ namespace internal {
 HeapProfiler::HeapProfiler(Heap* heap)
     : ids_(new HeapObjectsMap(heap)),
       names_(new StringsStorage()),
-      is_tracking_object_moves_(false),
-      is_taking_snapshot_(false) {}
+      is_tracking_object_moves_(false) {}
 
 HeapProfiler::~HeapProfiler() = default;
 
@@ -29,8 +28,7 @@ void HeapProfiler::DeleteAllSnapshots() {
 }
 
 void HeapProfiler::MaybeClearStringsStorage() {
-  if (snapshots_.empty() && !sampling_heap_profiler_ && !allocation_tracker_ &&
-      !is_taking_snapshot_) {
+  if (snapshots_.empty() && !sampling_heap_profiler_ && !allocation_tracker_) {
     names_.reset(new StringsStorage());
   }
 }
@@ -66,10 +64,8 @@ void HeapProfiler::BuildEmbedderGraph(Isolate* isolate,
 
 HeapSnapshot* HeapProfiler::TakeSnapshot(
     v8::ActivityControl* control,
-    v8::HeapProfiler::ObjectNameResolver* resolver,
-    bool treat_global_objects_as_roots) {
-  is_taking_snapshot_ = true;
-  HeapSnapshot* result = new HeapSnapshot(this, treat_global_objects_as_roots);
+    v8::HeapProfiler::ObjectNameResolver* resolver) {
+  HeapSnapshot* result = new HeapSnapshot(this);
   {
     HeapSnapshotGenerator generator(result, control, resolver, heap());
     if (!generator.GenerateSnapshot()) {
@@ -81,7 +77,6 @@ HeapSnapshot* HeapProfiler::TakeSnapshot(
   }
   ids_->RemoveDeadEntries();
   is_tracking_object_moves_ = true;
-  is_taking_snapshot_ = false;
 
   heap()->isolate()->debug()->feature_tracker()->Track(
       DebugFeatureTracker::kHeapSnapshot);
@@ -142,11 +137,9 @@ void HeapProfiler::StopHeapObjectsTracking() {
   }
 }
 
-int HeapProfiler::GetSnapshotsCount() const {
+int HeapProfiler::GetSnapshotsCount() {
   return static_cast<int>(snapshots_.size());
 }
-
-bool HeapProfiler::IsTakingSnapshot() const { return is_taking_snapshot_; }
 
 HeapSnapshot* HeapProfiler::GetSnapshot(int index) {
   return snapshots_.at(index).get();
@@ -156,17 +149,6 @@ SnapshotObjectId HeapProfiler::GetSnapshotObjectId(Handle<Object> obj) {
   if (!obj->IsHeapObject())
     return v8::HeapProfiler::kUnknownObjectId;
   return ids_->FindEntry(HeapObject::cast(*obj).address());
-}
-
-SnapshotObjectId HeapProfiler::GetSnapshotObjectId(NativeObject obj) {
-  // Try to find id of regular native node first.
-  SnapshotObjectId id = ids_->FindEntry(reinterpret_cast<Address>(obj));
-  // In case no id has been found, check whether there exists an entry where the
-  // native objects has been merged into a V8 entry.
-  if (id == v8::HeapProfiler::kUnknownObjectId) {
-    id = ids_->FindMergedNativeEntry(obj);
-  }
-  return id;
 }
 
 void HeapProfiler::ObjectMoveEvent(Address from, Address to, int size) {
@@ -222,26 +204,13 @@ void HeapProfiler::QueryObjects(Handle<Context> context,
                                 debug::QueryObjectPredicate* predicate,
                                 PersistentValueVector<v8::Object>* objects) {
   {
-    HandleScope handle_scope(isolate());
-    std::vector<Handle<JSTypedArray>> on_heap_typed_arrays;
-    CombinedHeapObjectIterator heap_iterator(
+    CombinedHeapObjectIterator function_heap_iterator(
         heap(), HeapObjectIterator::kFilterUnreachable);
-    for (HeapObject heap_obj = heap_iterator.Next(); !heap_obj.is_null();
-         heap_obj = heap_iterator.Next()) {
+    for (HeapObject heap_obj = function_heap_iterator.Next();
+         !heap_obj.is_null(); heap_obj = function_heap_iterator.Next()) {
       if (heap_obj.IsFeedbackVector()) {
         FeedbackVector::cast(heap_obj).ClearSlots(isolate());
-      } else if (heap_obj.IsJSTypedArray() &&
-                 JSTypedArray::cast(heap_obj).is_on_heap()) {
-        // Cannot call typed_array->GetBuffer() here directly because it may
-        // trigger GC. Defer that call by collecting the object in a vector.
-        on_heap_typed_arrays.push_back(
-            handle(JSTypedArray::cast(heap_obj), isolate()));
       }
-    }
-    for (auto& typed_array : on_heap_typed_arrays) {
-      // Convert the on-heap typed array into off-heap typed array, so that
-      // its ArrayBuffer becomes valid and can be returned in the result.
-      typed_array->GetBuffer();
     }
   }
   // We should return accurate information about live objects, so we need to

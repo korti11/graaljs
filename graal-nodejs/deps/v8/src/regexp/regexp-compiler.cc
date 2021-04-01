@@ -8,9 +8,7 @@
 #include "src/execution/isolate.h"
 #include "src/objects/objects-inl.h"
 #include "src/regexp/regexp-macro-assembler-arch.h"
-#ifdef V8_INTL_SUPPORT
-#include "src/regexp/special-case.h"
-#endif  // V8_INTL_SUPPORT
+#include "src/regexp/regexp-macro-assembler-tracer.h"
 #include "src/strings/unicode-inl.h"
 #include "src/zone/zone-list-inl.h"
 
@@ -223,7 +221,7 @@ class RecursionCheck {
 // a fixed array or a null handle depending on whether it succeeded.
 RegExpCompiler::RegExpCompiler(Isolate* isolate, Zone* zone, int capture_count,
                                bool one_byte)
-    : next_register_(JSRegExp::RegistersForCaptureCount(capture_count)),
+    : next_register_(2 * (capture_count + 1)),
       unicode_lookaround_stack_register_(kNoRegister),
       unicode_lookaround_position_register_(kNoRegister),
       work_list_(nullptr),
@@ -244,15 +242,20 @@ RegExpCompiler::RegExpCompiler(Isolate* isolate, Zone* zone, int capture_count,
 RegExpCompiler::CompilationResult RegExpCompiler::Assemble(
     Isolate* isolate, RegExpMacroAssembler* macro_assembler, RegExpNode* start,
     int capture_count, Handle<String> pattern) {
-  macro_assembler_ = macro_assembler;
+#ifdef DEBUG
+  if (FLAG_trace_regexp_assembler)
+    macro_assembler_ = new RegExpMacroAssemblerTracer(isolate, macro_assembler);
+  else
+#endif
+    macro_assembler_ = macro_assembler;
 
-  ZoneVector<RegExpNode*> work_list(zone());
+  std::vector<RegExpNode*> work_list;
   work_list_ = &work_list;
   Label fail;
   macro_assembler_->PushBacktrack(&fail);
   Trace new_trace;
   start->Emit(this, &new_trace);
-  macro_assembler_->BindJumpTarget(&fail);
+  macro_assembler_->Bind(&fail);
   macro_assembler_->Fail();
   while (!work_list.empty()) {
     RegExpNode* node = work_list.back();
@@ -266,10 +269,15 @@ RegExpCompiler::CompilationResult RegExpCompiler::Assemble(
   }
 
   Handle<HeapObject> code = macro_assembler_->GetCode(pattern);
-  isolate->IncreaseTotalRegexpCodeGenerated(code);
+  isolate->IncreaseTotalRegexpCodeGenerated(code->Size());
   work_list_ = nullptr;
 
-  return {code, next_register_};
+#ifdef DEBUG
+  if (FLAG_trace_regexp_assembler) {
+    delete macro_assembler_;
+  }
+#endif
+  return {*code, next_register_};
 }
 
 bool Trace::DeferredAction::Mentions(int that) {
@@ -554,7 +562,7 @@ void Trace::Flush(RegExpCompiler* compiler, RegExpNode* successor) {
   }
 
   // On backtrack we need to restore state.
-  assembler->BindJumpTarget(&undo);
+  assembler->Bind(&undo);
   RestoreAffectedRegisters(assembler, max_register, registers_to_pop,
                            registers_to_clear);
   if (backtrack() == nullptr) {
@@ -717,34 +725,19 @@ static int GetCaseIndependentLetters(Isolate* isolate, uc16 character,
                                      unibrow::uchar* letters,
                                      int letter_length) {
 #ifdef V8_INTL_SUPPORT
-  if (RegExpCaseFolding::IgnoreSet().contains(character)) {
-    letters[0] = character;
-    return 1;
-  }
-  bool in_special_add_set =
-      RegExpCaseFolding::SpecialAddSet().contains(character);
-
   icu::UnicodeSet set;
   set.add(character);
   set = set.closeOver(USET_CASE_INSENSITIVE);
-
-  UChar32 canon = 0;
-  if (in_special_add_set) {
-    canon = RegExpCaseFolding::Canonicalize(character);
-  }
-
   int32_t range_count = set.getRangeCount();
   int items = 0;
   for (int32_t i = 0; i < range_count; i++) {
     UChar32 start = set.getRangeStart(i);
     UChar32 end = set.getRangeEnd(i);
     CHECK(end - start + items <= letter_length);
-    for (UChar32 cu = start; cu <= end; cu++) {
-      if (one_byte_subject && cu > String::kMaxOneByteCharCode) break;
-      if (in_special_add_set && RegExpCaseFolding::Canonicalize(cu) != canon) {
-        continue;
-      }
-      letters[items++] = (unibrow::uchar)(cu);
+    while (start <= end) {
+      if (one_byte_subject && start > String::kMaxOneByteCharCode) break;
+      letters[items++] = (unibrow::uchar)(start);
+      start++;
     }
   }
   return items;
@@ -850,6 +843,10 @@ static bool ShortCutEmitCharacterPair(RegExpMacroAssembler* macro_assembler,
   }
   return false;
 }
+
+using EmitCharacterFunction = bool(Isolate* isolate, RegExpCompiler* compiler,
+                                   uc16 c, Label* on_failure, int cp_offset,
+                                   bool check, bool preloaded);
 
 // Only emits letters (things that have case).  Only used for case independent
 // matches.
@@ -1838,13 +1835,13 @@ RegExpNode* TextNode::FilterOneByte(int depth) {
     if (elm.text_type() == TextElement::ATOM) {
       Vector<const uc16> quarks = elm.atom()->data();
       for (int j = 0; j < quarks.length(); j++) {
-        uc16 c = quarks[j];
+        uint16_t c = quarks[j];
         if (elm.atom()->ignore_case()) {
           c = unibrow::Latin1::TryConvertToLatin1(c);
         }
         if (c > unibrow::Latin1::kMaxChar) return set_replacement(nullptr);
         // Replace quark in case we converted to Latin-1.
-        uc16* writable_quarks = const_cast<uc16*>(quarks.begin());
+        uint16_t* writable_quarks = const_cast<uint16_t*>(quarks.begin());
         writable_quarks[j] = c;
       }
     } else {
@@ -2299,6 +2296,7 @@ void TextNode::TextEmitPass(RegExpCompiler* compiler, TextEmitPassType pass,
       for (int j = preloaded ? 0 : quarks.length() - 1; j >= 0; j--) {
         if (first_element_checked && i == 0 && j == 0) continue;
         if (DeterminedAlready(quick_check, elm.cp_offset() + j)) continue;
+        EmitCharacterFunction* emit_function = nullptr;
         uc16 quark = quarks[j];
         if (elm.atom()->ignore_case()) {
           // Everywhere else we assume that a non-Latin-1 character cannot match
@@ -2306,9 +2304,6 @@ void TextNode::TextEmitPass(RegExpCompiler* compiler, TextEmitPassType pass,
           // invalid by using the Latin1 equivalent instead.
           quark = unibrow::Latin1::TryConvertToLatin1(quark);
         }
-        bool needs_bounds_check =
-            *checked_up_to < cp_offset + j || read_backward();
-        bool bounds_checked = false;
         switch (pass) {
           case NON_LATIN1_MATCH:
             DCHECK(one_byte);
@@ -2318,24 +2313,24 @@ void TextNode::TextEmitPass(RegExpCompiler* compiler, TextEmitPassType pass,
             }
             break;
           case NON_LETTER_CHARACTER_MATCH:
-            bounds_checked =
-                EmitAtomNonLetter(isolate, compiler, quark, backtrack,
-                                  cp_offset + j, needs_bounds_check, preloaded);
+            emit_function = &EmitAtomNonLetter;
             break;
           case SIMPLE_CHARACTER_MATCH:
-            bounds_checked = EmitSimpleCharacter(isolate, compiler, quark,
-                                                 backtrack, cp_offset + j,
-                                                 needs_bounds_check, preloaded);
+            emit_function = &EmitSimpleCharacter;
             break;
           case CASE_CHARACTER_MATCH:
-            bounds_checked =
-                EmitAtomLetter(isolate, compiler, quark, backtrack,
-                               cp_offset + j, needs_bounds_check, preloaded);
+            emit_function = &EmitAtomLetter;
             break;
           default:
             break;
         }
-        if (bounds_checked) UpdateBoundsCheck(cp_offset + j, checked_up_to);
+        if (emit_function != nullptr) {
+          bool bounds_check = *checked_up_to < cp_offset + j || read_backward();
+          bool bound_checked =
+              emit_function(isolate, compiler, quark, backtrack, cp_offset + j,
+                            bounds_check, preloaded);
+          if (bound_checked) UpdateBoundsCheck(cp_offset + j, checked_up_to);
+        }
       }
     } else {
       DCHECK_EQ(TextElement::CHAR_CLASS, elm.text_type());
@@ -3421,8 +3416,8 @@ void BackReferenceNode::Emit(RegExpCompiler* compiler, Trace* trace) {
 
   DCHECK_EQ(start_reg_ + 1, end_reg_);
   if (IgnoreCase(flags_)) {
-    assembler->CheckNotBackReferenceIgnoreCase(start_reg_, read_backward(),
-                                               trace->backtrack());
+    assembler->CheckNotBackReferenceIgnoreCase(
+        start_reg_, read_backward(), IsUnicode(flags_), trace->backtrack());
   } else {
     assembler->CheckNotBackReference(start_reg_, read_backward(),
                                      trace->backtrack());
@@ -3594,17 +3589,12 @@ template <typename... Propagators>
 class Analysis : public NodeVisitor {
  public:
   Analysis(Isolate* isolate, bool is_one_byte)
-      : isolate_(isolate),
-        is_one_byte_(is_one_byte),
-        error_(RegExpError::kNone) {}
+      : isolate_(isolate), is_one_byte_(is_one_byte), error_message_(nullptr) {}
 
   void EnsureAnalyzed(RegExpNode* that) {
     StackLimitCheck check(isolate());
     if (check.HasOverflowed()) {
-      if (FLAG_correctness_fuzzer_suppressions) {
-        FATAL("Analysis: Aborting on stack overflow");
-      }
-      fail(RegExpError::kAnalysisStackOverflow);
+      fail("Stack overflow");
       return;
     }
     if (that->info()->been_analyzed || that->info()->being_analyzed) return;
@@ -3614,12 +3604,12 @@ class Analysis : public NodeVisitor {
     that->info()->been_analyzed = true;
   }
 
-  bool has_failed() { return error_ != RegExpError::kNone; }
-  RegExpError error() {
-    DCHECK(error_ != RegExpError::kNone);
-    return error_;
+  bool has_failed() { return error_message_ != nullptr; }
+  const char* error_message() {
+    DCHECK(error_message_ != nullptr);
+    return error_message_;
   }
-  void fail(RegExpError error) { error_ = error; }
+  void fail(const char* error_message) { error_message_ = error_message; }
 
   Isolate* isolate() const { return isolate_; }
 
@@ -3704,19 +3694,19 @@ class Analysis : public NodeVisitor {
  private:
   Isolate* isolate_;
   bool is_one_byte_;
-  RegExpError error_;
+  const char* error_message_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(Analysis);
 };
 
-RegExpError AnalyzeRegExp(Isolate* isolate, bool is_one_byte,
+const char* AnalyzeRegExp(Isolate* isolate, bool is_one_byte,
                           RegExpNode* node) {
   Analysis<AssertionPropagator, EatsAtLeastPropagator> analysis(isolate,
                                                                 is_one_byte);
   DCHECK_EQ(node->info()->been_analyzed, false);
   analysis.EnsureAnalyzed(node);
-  DCHECK_IMPLIES(analysis.has_failed(), analysis.error() != RegExpError::kNone);
-  return analysis.has_failed() ? analysis.error() : RegExpError::kNone;
+  DCHECK_IMPLIES(analysis.has_failed(), analysis.error_message() != nullptr);
+  return analysis.has_failed() ? analysis.error_message() : nullptr;
 }
 
 void BackReferenceNode::FillInBMInfo(Isolate* isolate, int offset, int budget,
@@ -3804,74 +3794,32 @@ void TextNode::FillInBMInfo(Isolate* isolate, int initial_offset, int budget,
   if (initial_offset == 0) set_bm_info(not_at_start, bm);
 }
 
+// static
 RegExpNode* RegExpCompiler::OptionallyStepBackToLeadSurrogate(
-    RegExpNode* on_success, JSRegExp::Flags flags) {
-  DCHECK(!read_backward());
+    RegExpCompiler* compiler, RegExpNode* on_success, JSRegExp::Flags flags) {
+  DCHECK(!compiler->read_backward());
+  Zone* zone = compiler->zone();
   ZoneList<CharacterRange>* lead_surrogates = CharacterRange::List(
-      zone(), CharacterRange::Range(kLeadSurrogateStart, kLeadSurrogateEnd));
+      zone, CharacterRange::Range(kLeadSurrogateStart, kLeadSurrogateEnd));
   ZoneList<CharacterRange>* trail_surrogates = CharacterRange::List(
-      zone(), CharacterRange::Range(kTrailSurrogateStart, kTrailSurrogateEnd));
+      zone, CharacterRange::Range(kTrailSurrogateStart, kTrailSurrogateEnd));
 
-  ChoiceNode* optional_step_back = new (zone()) ChoiceNode(2, zone());
+  ChoiceNode* optional_step_back = new (zone) ChoiceNode(2, zone);
 
-  int stack_register = UnicodeLookaroundStackRegister();
-  int position_register = UnicodeLookaroundPositionRegister();
+  int stack_register = compiler->UnicodeLookaroundStackRegister();
+  int position_register = compiler->UnicodeLookaroundPositionRegister();
   RegExpNode* step_back = TextNode::CreateForCharacterRanges(
-      zone(), lead_surrogates, true, on_success, flags);
+      zone, lead_surrogates, true, on_success, flags);
   RegExpLookaround::Builder builder(true, step_back, stack_register,
                                     position_register);
   RegExpNode* match_trail = TextNode::CreateForCharacterRanges(
-      zone(), trail_surrogates, false, builder.on_match_success(), flags);
+      zone, trail_surrogates, false, builder.on_match_success(), flags);
 
   optional_step_back->AddAlternative(
       GuardedAlternative(builder.ForMatch(match_trail)));
   optional_step_back->AddAlternative(GuardedAlternative(on_success));
 
   return optional_step_back;
-}
-
-RegExpNode* RegExpCompiler::PreprocessRegExp(RegExpCompileData* data,
-                                             JSRegExp::Flags flags,
-                                             bool is_one_byte) {
-  // Wrap the body of the regexp in capture #0.
-  RegExpNode* captured_body =
-      RegExpCapture::ToNode(data->tree, 0, this, accept());
-  RegExpNode* node = captured_body;
-  if (!data->tree->IsAnchoredAtStart() && !IsSticky(flags)) {
-    // Add a .*? at the beginning, outside the body capture, unless
-    // this expression is anchored at the beginning or sticky.
-    JSRegExp::Flags default_flags = JSRegExp::Flags();
-    RegExpNode* loop_node = RegExpQuantifier::ToNode(
-        0, RegExpTree::kInfinity, false,
-        new (zone()) RegExpCharacterClass('*', default_flags), this,
-        captured_body, data->contains_anchor);
-
-    if (data->contains_anchor) {
-      // Unroll loop once, to take care of the case that might start
-      // at the start of input.
-      ChoiceNode* first_step_node = new (zone()) ChoiceNode(2, zone());
-      first_step_node->AddAlternative(GuardedAlternative(captured_body));
-      first_step_node->AddAlternative(GuardedAlternative(new (zone()) TextNode(
-          new (zone()) RegExpCharacterClass('*', default_flags), false,
-          loop_node)));
-      node = first_step_node;
-    } else {
-      node = loop_node;
-    }
-  }
-  if (is_one_byte) {
-    node = node->FilterOneByte(RegExpCompiler::kMaxRecursion);
-    // Do it again to propagate the new nodes to places where they were not
-    // put because they had not been calculated yet.
-    if (node != nullptr) {
-      node = node->FilterOneByte(RegExpCompiler::kMaxRecursion);
-    }
-  } else if (IsUnicode(flags) && (IsGlobal(flags) || IsSticky(flags))) {
-    node = OptionallyStepBackToLeadSurrogate(node, flags);
-  }
-
-  if (node == nullptr) node = new (zone()) EndNode(EndNode::BACKTRACK, zone());
-  return node;
 }
 
 }  // namespace internal

@@ -43,3 +43,5 @@ assertSame(211, globalThisPrototype.bar);
 assertSame(211, globalThis.bar);
 assertSame(211, bar);
 assertSame(211, valueOfBar);
+
+true;

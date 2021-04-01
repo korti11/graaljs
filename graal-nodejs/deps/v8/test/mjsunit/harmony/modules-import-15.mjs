@@ -3,9 +3,6 @@
 // found in the LICENSE file.
 
 // Flags: --allow-natives-syntax --harmony-dynamic-import
-//
-// Note: This test fails with top level await due to test1, which tries to
-//       import a module using top level await and expects it to fail.
 
 var ran = false;
 

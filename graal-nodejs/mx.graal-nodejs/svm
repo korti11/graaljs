@@ -1,2 +1,2 @@
 DYNAMIC_IMPORTS=/vm,/substratevm
-NATIVE_IMAGES=lib:graal-nodejs
+FORCE_BASH_LAUNCHERS=true

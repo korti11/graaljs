@@ -45,11 +45,7 @@ const bufferSource = fixtures.readSync('simple.wasm');
     const wasm = await WebAssembly.compile(bufferSource);
     const instance = await WebAssembly.instantiate(wasm);
 
-    Object.defineProperty(instance, 'exports', {
-      get() {
-        return { memory: new Uint8Array() };
-      },
-    });
+    Object.defineProperty(instance, 'exports', { get() { return {}; } });
     assert.throws(
       () => { wasi.start(instance); },
       {
@@ -69,8 +65,7 @@ const bufferSource = fixtures.readSync('simple.wasm');
       get() {
         return {
           _start() {},
-          _initialize() {},
-          memory: new Uint8Array(),
+          _initialize() {}
         };
       }
     });
