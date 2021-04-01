@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -82,6 +82,10 @@ public abstract class AbstractWritableArray extends DynamicArray {
 
     protected static final void setArrayProperties(DynamicObject object, Object array, long length, int usedLength, long indexOffset, int arrayOffset) {
         arraySetArray(object, array);
+        setArrayProperties(object, length, usedLength, indexOffset, arrayOffset);
+    }
+
+    protected static final void setArrayProperties(DynamicObject object, long length, int usedLength, long indexOffset, int arrayOffset) {
         arraySetLength(object, length);
         arraySetUsedLength(object, usedLength);
         arraySetIndexOffset(object, indexOffset);
@@ -167,11 +171,11 @@ public abstract class AbstractWritableArray extends DynamicArray {
     }
 
     public final boolean isSupportedContiguous(DynamicObject object, long index) {
-        return index >= firstElementIndex(object) - 1 && index <= lastElementIndex(object) + 1;
+        return index >= firstElementIndex(object) - 1 && index <= lastElementIndex(object) + 1 && index < Integer.MAX_VALUE;
     }
 
     public final boolean isSupportedHoles(DynamicObject object, long index) {
-        return index >= firstElementIndex(object) - JSConfig.MaxArrayHoleSize && index <= lastElementIndex(object) + JSConfig.MaxArrayHoleSize;
+        return index >= firstElementIndex(object) - JSConfig.MaxArrayHoleSize && index <= lastElementIndex(object) + JSConfig.MaxArrayHoleSize && index < Integer.MAX_VALUE;
     }
 
     protected abstract int prepareSupported(DynamicObject object, int index, ProfileHolder profile);
@@ -821,6 +825,19 @@ public abstract class AbstractWritableArray extends DynamicArray {
      * Move {@code len} elements from {@code src} to {@code dst}.
      */
     protected abstract void moveRangePrepared(DynamicObject object, int src, int dst, int len);
+
+    @Override
+    public ScriptArray shiftRangeImpl(DynamicObject object, long from) {
+        int usedLength = getUsedLength(object);
+        if (from < usedLength) {
+            int arrayOffset = (int) (getArrayOffset(object) + from);
+            int indexOffset = (int) (getIndexOffset(object) - from);
+            setArrayProperties(object, (int) (usedLength - from), (int) (lengthInt(object) - from), indexOffset, arrayOffset);
+            return this;
+        } else {
+            return removeRangeImpl(object, 0, from);
+        }
+    }
 
     protected interface SetSupportedProfileAccess extends ProfileAccess {
         default boolean ensureCapacityGrow(ProfileHolder profile, boolean condition) {

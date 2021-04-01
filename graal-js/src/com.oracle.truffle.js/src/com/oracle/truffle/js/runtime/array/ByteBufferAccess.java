@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -43,7 +43,9 @@ package com.oracle.truffle.js.runtime.array;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-abstract class ByteBufferAccess {
+import com.oracle.truffle.js.runtime.Boundaries;
+
+public abstract class ByteBufferAccess {
 
     @SuppressWarnings("static-method")
     public final int getInt8(ByteBuffer buffer, int index) {
@@ -61,10 +63,6 @@ abstract class ByteBufferAccess {
     }
 
     public abstract int getInt32(ByteBuffer buffer, int index);
-
-    public final long getUint32(ByteBuffer buffer, int index) {
-        return getInt32(buffer, index) & 0xffffffffL;
-    }
 
     public abstract float getFloat(ByteBuffer buffer, int index);
 
@@ -87,19 +85,19 @@ abstract class ByteBufferAccess {
 
     public abstract void putInt64(ByteBuffer buffer, int index, long value);
 
-    static final ByteBufferAccess littleEndian() {
+    public static final ByteBufferAccess littleEndian() {
         return ByteBufferSupport.littleEndian();
     }
 
-    static final ByteBufferAccess bigEndian() {
+    public static final ByteBufferAccess bigEndian() {
         return ByteBufferSupport.bigEndian();
     }
 
-    static final ByteBufferAccess nativeOrder() {
+    public static final ByteBufferAccess nativeOrder() {
         return ByteBufferSupport.nativeOrder();
     }
 
-    static final ByteBufferAccess forOrder(boolean littleEndian) {
+    public static final ByteBufferAccess forOrder(boolean littleEndian) {
         return littleEndian ? littleEndian() : bigEndian();
     }
 }
@@ -166,7 +164,7 @@ final class NativeByteBufferAccess extends AbstractByteBufferAccess {
 
     @Override
     protected ByteBuffer wrap(ByteBuffer buffer) {
-        return buffer.duplicate().order(ByteOrder.nativeOrder());
+        return Boundaries.byteBufferDuplicate(buffer).order(ByteOrder.nativeOrder());
     }
 }
 
@@ -175,7 +173,7 @@ final class LittleEndianByteBufferAccess extends AbstractByteBufferAccess {
 
     @Override
     protected ByteBuffer wrap(ByteBuffer buffer) {
-        return buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+        return Boundaries.byteBufferDuplicate(buffer).order(ByteOrder.LITTLE_ENDIAN);
     }
 }
 
@@ -184,6 +182,6 @@ final class BigEndianByteBufferAccess extends AbstractByteBufferAccess {
 
     @Override
     protected ByteBuffer wrap(ByteBuffer buffer) {
-        return buffer.duplicate().order(ByteOrder.BIG_ENDIAN);
+        return Boundaries.byteBufferDuplicate(buffer).order(ByteOrder.BIG_ENDIAN);
     }
 }

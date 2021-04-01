@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -42,22 +42,21 @@ package com.oracle.truffle.js.nodes.access;
 
 import java.util.Arrays;
 import java.util.Set;
-import java.util.concurrent.locks.Lock;
 
-import com.oracle.truffle.api.Assumption;
 import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.TruffleOptions;
+import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.Tag;
+import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
-import com.oracle.truffle.api.nodes.InvalidAssumptionException;
 import com.oracle.truffle.api.object.DynamicObject;
+import com.oracle.truffle.api.object.DynamicObjectLibrary;
 import com.oracle.truffle.api.object.HiddenKey;
-import com.oracle.truffle.api.object.Property;
-import com.oracle.truffle.api.object.Shape;
 import com.oracle.truffle.js.nodes.JSGuards;
+import com.oracle.truffle.js.nodes.JSNodeUtil;
 import com.oracle.truffle.js.nodes.JavaScriptBaseNode;
 import com.oracle.truffle.js.nodes.JavaScriptNode;
 import com.oracle.truffle.js.nodes.cast.JSToObjectNode;
@@ -169,11 +168,11 @@ public class ObjectLiteralNode extends JavaScriptNode {
             executeVoid(frame, obj, obj, context);
         }
 
-        public Object executeKey(@SuppressWarnings("unused") VirtualFrame frame) {
+        public Object evaluateKey(@SuppressWarnings("unused") VirtualFrame frame) {
             throw Errors.shouldNotReachHere();
         }
 
-        public Object executeValue(@SuppressWarnings("unused") VirtualFrame frame, @SuppressWarnings("unused") DynamicObject homeObject) {
+        public Object evaluateValue(@SuppressWarnings("unused") VirtualFrame frame, @SuppressWarnings("unused") DynamicObject homeObject) {
             throw Errors.shouldNotReachHere();
         }
 
@@ -193,8 +192,12 @@ public class ObjectLiteralNode extends JavaScriptNode {
             return expression instanceof FunctionNameHolder && ((FunctionNameHolder) expression).isAnonymous();
         }
 
-        protected static Object executeWithHomeObject(JavaScriptNode valueNode, VirtualFrame frame, DynamicObject obj) {
-            if (valueNode instanceof MakeMethodNode) {
+        protected static boolean isMethodNode(JavaScriptNode valueNode) {
+            return valueNode instanceof MakeMethodNode;
+        }
+
+        protected static Object evaluateWithHomeObject(JavaScriptNode valueNode, VirtualFrame frame, DynamicObject obj) {
+            if (isMethodNode(valueNode)) {
                 return ((MakeMethodNode) valueNode).executeWithObject(frame, obj);
             }
             return valueNode.execute(frame);
@@ -213,8 +216,7 @@ public class ObjectLiteralNode extends JavaScriptNode {
 
     private abstract static class CachingObjectLiteralMemberNode extends ObjectLiteralMemberNode {
         protected final Object name;
-        @CompilationFinal protected CacheEntry cache;
-        protected static final CacheEntry GENERIC = new CacheEntry(null, null, null, null, null);
+        @CompilationFinal private DynamicObjectLibrary dynamicObjectLibrary;
 
         CachingObjectLiteralMemberNode(Object name, boolean isStatic, int attributes, boolean isField) {
             super(isStatic, attributes, isField, false);
@@ -222,90 +224,19 @@ public class ObjectLiteralNode extends JavaScriptNode {
             this.name = name;
         }
 
-        protected static final class CacheEntry {
-            protected final Shape oldShape;
-            protected final Shape newShape;
-            protected final Property property;
-            protected final Assumption newShapeNotObsoleteAssumption;
-            protected final CacheEntry next;
-
-            protected CacheEntry(Shape oldShape, Shape newShape, Property property, Assumption newShapeNotObsoleteAssumption, CacheEntry next) {
-                this.oldShape = oldShape;
-                this.newShape = newShape;
-                this.property = property;
-                this.newShapeNotObsoleteAssumption = newShapeNotObsoleteAssumption;
-                this.next = next;
-            }
-
-            protected boolean isValid() {
-                return newShapeNotObsoleteAssumption.isValid();
-            }
-
-            @Override
-            public String toString() {
-                CompilerAsserts.neverPartOfCompilation();
-                StringBuilder sb = new StringBuilder();
-                int count = 0;
-                for (CacheEntry current = this; current != null; current = current.next) {
-                    sb.append(++count + " [property=" + current.property + ", oldShape=" + current.oldShape + ", newShape=" + current.newShape + "]\n");
-                }
-                return sb.toString();
-            }
-        }
-
-        protected final void insertIntoCache(Shape oldShape, Shape newShape, Property property, Assumption newShapeNotObsoleteAssumption, JSContext context) {
-            CompilerAsserts.neverPartOfCompilation();
-            Lock lock = getLock();
-            lock.lock();
-            try {
-                CacheEntry curr = cache;
-                if (curr == GENERIC) {
-                    return;
-                }
-                curr = filterValid(curr);
-                int count = 0;
-                for (CacheEntry c = curr; c != null; c = c.next) {
-                    ++count;
-                    if (c == GENERIC) {
-                        return;
-                    } else if (c.oldShape.equals(oldShape) && c.newShape.equals(newShape) && c.property.equals(property)) {
-                        // already in the cache
-                        return;
-                    } else if (count >= context.getPropertyCacheLimit()) {
-                        setGeneric();
-                        return;
-                    }
-                }
-                this.cache = new CacheEntry(oldShape, newShape, property, newShapeNotObsoleteAssumption, curr);
-            } finally {
-                lock.unlock();
-            }
-        }
-
-        private static CacheEntry filterValid(CacheEntry cache) {
-            if (cache == null) {
-                return null;
-            }
-            CacheEntry filteredNext = filterValid(cache.next);
-            if (cache.isValid()) {
-                if (filteredNext == cache.next) {
-                    return cache;
-                } else {
-                    return new CacheEntry(cache.oldShape, cache.newShape, cache.property, cache.newShapeNotObsoleteAssumption, filteredNext);
-                }
-            } else {
-                return filteredNext;
-            }
-        }
-
-        protected final void setGeneric() {
-            CompilerAsserts.neverPartOfCompilation();
-            this.cache = GENERIC;
-        }
-
         @Override
-        public final Object executeKey(VirtualFrame frame) {
+        public final Object evaluateKey(VirtualFrame frame) {
             return name;
+        }
+
+        protected final DynamicObjectLibrary dynamicObjectLibrary(JSContext context) {
+            DynamicObjectLibrary dynamicObjectLib = dynamicObjectLibrary;
+            if (dynamicObjectLib == null) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                dynamicObjectLibrary = dynamicObjectLib = insert(JSObjectUtil.createDispatched(name, context.getPropertyCacheLimit()));
+                JSObjectUtil.checkForNoSuchPropertyOrMethod(context, name);
+            }
+            return dynamicObjectLib;
         }
     }
 
@@ -319,67 +250,21 @@ public class ObjectLiteralNode extends JavaScriptNode {
 
         @Override
         public final void executeVoid(VirtualFrame frame, DynamicObject receiver, DynamicObject homeObject, JSContext context) {
-            Object value = executeWithHomeObject(valueNode, frame, homeObject);
+            Object value = evaluateWithHomeObject(valueNode, frame, homeObject);
             execute(receiver, value, context);
         }
 
         @Override
-        public Object executeValue(VirtualFrame frame, DynamicObject homeObject) {
-            return executeWithHomeObject(valueNode, frame, homeObject);
+        public Object evaluateValue(VirtualFrame frame, DynamicObject homeObject) {
+            return evaluateWithHomeObject(valueNode, frame, homeObject);
         }
 
-        @ExplodeLoop
         private void execute(DynamicObject obj, Object value, JSContext context) {
             if (isField) {
                 return;
             }
-            for (CacheEntry resolved = cache; resolved != null; resolved = resolved.next) {
-                if (resolved == GENERIC) {
-                    executeGeneric(obj, value);
-                    return;
-                }
-                if (resolved.oldShape.check(obj)) {
-                    try {
-                        resolved.newShapeNotObsoleteAssumption.check();
-                    } catch (InvalidAssumptionException e) {
-                        break;
-                    }
-                    if (resolved.property.getLocation().canStore(value)) {
-                        resolved.property.setSafe(obj, value, resolved.oldShape, resolved.newShape);
-                        return;
-                    }
-                }
-            }
-
-            CompilerDirectives.transferToInterpreterAndInvalidate();
-            rewrite(obj, value, context);
-        }
-
-        private void executeGeneric(DynamicObject obj, Object value) {
-            PropertyDescriptor propDesc = PropertyDescriptor.createData(value, attributes);
-            JSRuntime.definePropertyOrThrow(obj, name, propDesc);
-        }
-
-        private void rewrite(DynamicObject obj, Object value, JSContext context) {
-            CompilerAsserts.neverPartOfCompilation();
-            Shape oldShape = obj.getShape();
-            Property property = oldShape.getProperty(name);
-            Shape newShape;
-            Property newProperty;
-            if (property != null) {
-                if (JSProperty.isData(property) && !JSProperty.isProxy(property) && (property.getFlags() & JSAttributes.ATTRIBUTES_MASK) == attributes) {
-                    property.setGeneric(obj, value, null);
-                } else {
-                    JSObjectUtil.defineDataProperty(obj, name, value, attributes);
-                }
-                newShape = obj.getShape();
-                newProperty = newShape.getProperty(name);
-            } else {
-                JSObjectUtil.putDataProperty(context, obj, name, value, attributes);
-                newShape = obj.getShape();
-                newProperty = newShape.getLastProperty();
-            }
-            insertIntoCache(oldShape, newShape, newProperty, newShape.getValidAssumption(), context);
+            DynamicObjectLibrary dynamicObjectLib = dynamicObjectLibrary(context);
+            dynamicObjectLib.putWithFlags(obj, name, value, attributes);
         }
 
         @Override
@@ -403,94 +288,46 @@ public class ObjectLiteralNode extends JavaScriptNode {
             Object getterV = null;
             Object setterV = null;
             if (getterNode != null) {
-                getterV = executeWithHomeObject(getterNode, frame, homeObject);
+                getterV = evaluateWithHomeObject(getterNode, frame, homeObject);
             }
             if (setterNode != null) {
-                setterV = executeWithHomeObject(setterNode, frame, homeObject);
+                setterV = evaluateWithHomeObject(setterNode, frame, homeObject);
             }
             assert getterV != null || setterV != null;
             execute(receiver, getterV, setterV, context);
         }
 
-        @ExplodeLoop
         private void execute(DynamicObject obj, Object getterV, Object setterV, JSContext context) {
-            for (CacheEntry resolved = cache; resolved != null; resolved = resolved.next) {
-                if (resolved == GENERIC) {
-                    executeGeneric(obj, getterV, setterV);
-                    return;
-                }
-                if (resolved.oldShape.check(obj)) {
-                    try {
-                        resolved.newShapeNotObsoleteAssumption.check();
-                    } catch (InvalidAssumptionException e) {
-                        break;
-                    }
-                    Accessor accessor;
-                    if ((getterNode == null || setterNode == null) && resolved.oldShape == resolved.newShape) {
-                        // No full accessor information and there is an accessor property already
-                        // => merge the new and existing accessor functions
-                        accessor = mergedAccessor(obj, resolved.property, getterV, setterV);
-                    } else {
-                        accessor = new Accessor((DynamicObject) getterV, (DynamicObject) setterV);
-                    }
-                    if (resolved.property.getLocation().canStore(accessor)) {
-                        resolved.property.setSafe(obj, accessor, resolved.oldShape, resolved.newShape);
-                        return;
-                    }
-                }
+            DynamicObjectLibrary dynamicObjectLib = dynamicObjectLibrary(context);
+
+            DynamicObject getter = (DynamicObject) getterV;
+            DynamicObject setter = (DynamicObject) setterV;
+
+            if ((getterNode == null || setterNode == null) && JSProperty.isAccessor(dynamicObjectLib.getPropertyFlagsOrDefault(obj, name, 0))) {
+                // No full accessor information and there is an accessor property already
+                // => merge the new and existing accessor functions
+                Accessor existing = (Accessor) dynamicObjectLib.getOrDefault(obj, name, null);
+                getter = (getter == null) ? existing.getGetter() : getter;
+                setter = (setter == null) ? existing.getSetter() : setter;
             }
+            Accessor accessor = new Accessor(getter, setter);
 
-            CompilerDirectives.transferToInterpreterAndInvalidate();
-            rewrite(obj, getterV, setterV, context);
-        }
-
-        private void executeGeneric(DynamicObject obj, Object getterV, Object setterV) {
-            PropertyDescriptor propDesc = PropertyDescriptor.createAccessor((DynamicObject) getterV, (DynamicObject) setterV, attributes);
-            JSRuntime.definePropertyOrThrow(obj, name, propDesc);
-        }
-
-        private void rewrite(DynamicObject obj, Object getterV, Object setterV, JSContext context) {
-            CompilerAsserts.neverPartOfCompilation();
-            Shape oldShape = obj.getShape();
-            Property property = oldShape.getProperty(name);
-            Accessor value = new Accessor((DynamicObject) getterV, (DynamicObject) setterV);
-            Property newProperty;
-            Shape newShape;
-            if (property != null) {
-                if (JSProperty.isAccessor(property)) {
-                    property.setGeneric(obj, mergedAccessor(obj, property, getterV, setterV), null);
-                } else {
-                    JSObjectUtil.defineAccessorProperty(obj, name, value, attributes);
-                }
-                newShape = obj.getShape();
-                newProperty = newShape.getProperty(name);
-            } else {
-                JSObjectUtil.putAccessorProperty(context, obj, name, value, attributes);
-                newShape = obj.getShape();
-                newProperty = newShape.getLastProperty();
-            }
-            insertIntoCache(oldShape, newShape, newProperty, newShape.getValidAssumption(), context);
-        }
-
-        private static Accessor mergedAccessor(DynamicObject obj, Property property, Object getterV, Object setterV) {
-            Accessor oldAccessor = (Accessor) property.get(obj, null);
-            DynamicObject mergedGetter = (getterV == null) ? oldAccessor.getGetter() : (DynamicObject) getterV;
-            DynamicObject mergedSetter = (setterV == null) ? oldAccessor.getSetter() : (DynamicObject) setterV;
-            return new Accessor(mergedGetter, mergedSetter);
+            dynamicObjectLib.putWithFlags(obj, name, accessor, attributes | JSProperty.ACCESSOR);
         }
 
         @Override
         protected ObjectLiteralMemberNode copyUninitialized(Set<Class<? extends Tag>> materializedTags) {
-            return new ObjectLiteralAccessorMemberNode(name, isStatic, attributes, JavaScriptNode.cloneUninitialized(getterNode, materializedTags),
+            return new ObjectLiteralAccessorMemberNode(name, isStatic, attributes,
+                            JavaScriptNode.cloneUninitialized(getterNode, materializedTags),
                             JavaScriptNode.cloneUninitialized(setterNode, materializedTags));
         }
     }
 
-    private static class ComputedObjectLiteralDataMemberNode extends ObjectLiteralMemberNode {
+    public abstract static class ComputedObjectLiteralDataMemberNode extends ObjectLiteralMemberNode {
         @Child private JavaScriptNode propertyKey;
-        @Child private JavaScriptNode valueNode;
+        @Child protected JavaScriptNode valueNode;
         @Child private JSToPropertyKeyNode toPropertyKey;
-        @Child private SetFunctionNameNode setFunctionName;
+        @Child protected SetFunctionNameNode setFunctionName;
 
         ComputedObjectLiteralDataMemberNode(JavaScriptNode key, boolean isStatic, int attributes, JavaScriptNode valueNode, boolean isField, boolean isAnonymousFunctionDefinition) {
             super(isStatic, attributes, isField, isAnonymousFunctionDefinition);
@@ -500,17 +337,28 @@ public class ObjectLiteralNode extends JavaScriptNode {
             this.setFunctionName = isAnonymousFunctionDefinition(valueNode) ? SetFunctionNameNode.create() : null;
         }
 
-        @Override
-        public final void executeVoid(VirtualFrame frame, DynamicObject receiver, DynamicObject homeObject, JSContext context) {
+        @SuppressWarnings("unused")
+        @Specialization(guards = {"!isField", "!isAnonymousFunctionDefinition", "setFunctionName==null", "!isMethodNode(valueNode)"}, limit = "3")
+        public final void doNoFieldNoFunctionDef(VirtualFrame frame, DynamicObject receiver, DynamicObject homeObject, JSContext context,
+                        @CachedLibrary("receiver") DynamicObjectLibrary dynamicObject) {
+            Object key = evaluateKey(frame);
+            Object value = valueNode.execute(frame);
+            dynamicObject.put(receiver, key, value);
+        }
+
+        @SuppressWarnings("unused")
+        @Specialization
+        public final void doGeneric(VirtualFrame frame, DynamicObject receiver, DynamicObject homeObject, JSContext context) {
             if (isField) {
                 return;
             }
-            Object key = executeKey(frame);
+            Object key = evaluateKey(frame);
             Object value;
-            if (isAnonymousFunctionDefinition && valueNode instanceof ClassDefinitionNode) {
-                value = ((ClassDefinitionNode) valueNode).executeWithClassName(frame, key);
+            JavaScriptNode unwrappedValueNode;
+            if (isAnonymousFunctionDefinition && (unwrappedValueNode = JSNodeUtil.getWrappedNode(valueNode)) instanceof ClassDefinitionNode) {
+                value = ((ClassDefinitionNode) unwrappedValueNode).executeWithClassName(frame, key);
             } else {
-                value = executeWithHomeObject(valueNode, frame, homeObject);
+                value = evaluateWithHomeObject(valueNode, frame, homeObject);
                 if (setFunctionName != null) {
                     setFunctionName.execute(value, key);
                 }
@@ -521,19 +369,19 @@ public class ObjectLiteralNode extends JavaScriptNode {
         }
 
         @Override
-        public Object executeKey(VirtualFrame frame) {
+        public Object evaluateKey(VirtualFrame frame) {
             Object key = propertyKey.execute(frame);
             return toPropertyKey.execute(key);
         }
 
         @Override
-        public Object executeValue(VirtualFrame frame, DynamicObject homeObject) {
-            return executeWithHomeObject(valueNode, frame, homeObject);
+        public Object evaluateValue(VirtualFrame frame, DynamicObject homeObject) {
+            return evaluateWithHomeObject(valueNode, frame, homeObject);
         }
 
         @Override
         protected ObjectLiteralMemberNode copyUninitialized(Set<Class<? extends Tag>> materializedTags) {
-            return new ComputedObjectLiteralDataMemberNode(JavaScriptNode.cloneUninitialized(propertyKey, materializedTags), isStatic, attributes,
+            return ObjectLiteralNodeFactory.ComputedObjectLiteralDataMemberNodeGen.create(JavaScriptNode.cloneUninitialized(propertyKey, materializedTags), isStatic, attributes,
                             JavaScriptNode.cloneUninitialized(valueNode, materializedTags), isField, isAnonymousFunctionDefinition);
         }
     }
@@ -560,17 +408,17 @@ public class ObjectLiteralNode extends JavaScriptNode {
 
         @Override
         public final void executeVoid(VirtualFrame frame, DynamicObject receiver, DynamicObject homeObject, JSContext context) {
-            Object key = executeKey(frame);
+            Object key = evaluateKey(frame);
             Object getterV = null;
             Object setterV = null;
             if (getterNode != null) {
-                getterV = executeWithHomeObject(getterNode, frame, homeObject);
+                getterV = evaluateWithHomeObject(getterNode, frame, homeObject);
                 if (isGetterAnonymousFunction) {
                     setFunctionName.execute(getterV, key, "get");
                 }
             }
             if (setterNode != null) {
-                setterV = executeWithHomeObject(setterNode, frame, homeObject);
+                setterV = evaluateWithHomeObject(setterNode, frame, homeObject);
                 if (isSetterAnonymousFunction) {
                     setFunctionName.execute(setterV, key, "set");
                 }
@@ -582,7 +430,7 @@ public class ObjectLiteralNode extends JavaScriptNode {
         }
 
         @Override
-        public Object executeKey(VirtualFrame frame) {
+        public Object evaluateKey(VirtualFrame frame) {
             Object key = propertyKey.execute(frame);
             return toPropertyKey.execute(key);
         }
@@ -663,7 +511,7 @@ public class ObjectLiteralNode extends JavaScriptNode {
 
         @Override
         public final void executeVoid(VirtualFrame frame, DynamicObject receiver, DynamicObject homeObject, JSContext context) {
-            Object value = executeWithHomeObject(valueNode, frame, homeObject);
+            Object value = evaluateWithHomeObject(valueNode, frame, homeObject);
             PropertyDescriptor propDesc = PropertyDescriptor.createData(value, attributes);
             JSObject.defineOwnProperty(receiver, name, propDesc, true);
         }
@@ -692,13 +540,13 @@ public class ObjectLiteralNode extends JavaScriptNode {
         }
 
         @Override
-        public Object executeKey(VirtualFrame frame) {
+        public Object evaluateKey(VirtualFrame frame) {
             return keyNode.execute(frame);
         }
 
         @Override
-        public Object executeValue(VirtualFrame frame, DynamicObject homeObject) {
-            return executeWithHomeObject(valueNode, frame, homeObject);
+        public Object evaluateValue(VirtualFrame frame, DynamicObject homeObject) {
+            return evaluateWithHomeObject(valueNode, frame, homeObject);
         }
 
         @Override
@@ -720,7 +568,7 @@ public class ObjectLiteralNode extends JavaScriptNode {
 
         @Override
         public final void executeVoid(VirtualFrame frame, DynamicObject receiver, DynamicObject homeObject, JSContext context) {
-            Object value = executeWithHomeObject(valueNode, frame, homeObject);
+            Object value = evaluateWithHomeObject(valueNode, frame, homeObject);
             writePrivateNode.executeWrite(frame, value);
         }
 
@@ -747,10 +595,10 @@ public class ObjectLiteralNode extends JavaScriptNode {
             Object getter = null;
             Object setter = null;
             if (getterNode != null) {
-                getter = executeWithHomeObject(getterNode, frame, homeObject);
+                getter = evaluateWithHomeObject(getterNode, frame, homeObject);
             }
             if (setterNode != null) {
-                setter = executeWithHomeObject(setterNode, frame, homeObject);
+                setter = evaluateWithHomeObject(setterNode, frame, homeObject);
             }
 
             assert getter != null || setter != null;
@@ -775,7 +623,8 @@ public class ObjectLiteralNode extends JavaScriptNode {
 
     public static ObjectLiteralMemberNode newComputedDataMember(JavaScriptNode name, boolean isStatic, boolean enumerable, JavaScriptNode valueNode, boolean isField,
                     boolean isAnonymousFunctionDefinition) {
-        return new ComputedObjectLiteralDataMemberNode(name, isStatic, enumerable ? JSAttributes.getDefault() : JSAttributes.getDefaultNotEnumerable(), valueNode, isField,
+        return ObjectLiteralNodeFactory.ComputedObjectLiteralDataMemberNodeGen.create(name, isStatic, enumerable ? JSAttributes.getDefault() : JSAttributes.getDefaultNotEnumerable(), valueNode,
+                        isField,
                         isAnonymousFunctionDefinition);
     }
 
@@ -792,7 +641,7 @@ public class ObjectLiteralNode extends JavaScriptNode {
     }
 
     public static ObjectLiteralMemberNode newComputedDataMember(JavaScriptNode name, boolean isStatic, int attributes, JavaScriptNode valueNode) {
-        return new ComputedObjectLiteralDataMemberNode(name, isStatic, attributes, valueNode, false, false);
+        return ObjectLiteralNodeFactory.ComputedObjectLiteralDataMemberNodeGen.create(name, isStatic, attributes, valueNode, false, false);
     }
 
     public static ObjectLiteralMemberNode newPrivateFieldMember(JavaScriptNode name, boolean isStatic, JavaScriptNode valueNode, JSWriteFrameSlotNode writePrivateNode) {

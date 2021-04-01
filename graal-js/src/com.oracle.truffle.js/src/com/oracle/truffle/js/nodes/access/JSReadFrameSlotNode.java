@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -139,9 +139,13 @@ abstract class JSReadScopeFrameSlotNode extends JSReadFrameSlotNode {
         return super.getInt(levelFrame);
     }
 
-    @Specialization(guards = "levelFrame.isDouble(frameSlot)")
+    @Specialization(guards = "levelFrame.isDouble(frameSlot) || levelFrame.isInt(frameSlot)")
     protected final double doDouble(Frame levelFrame) {
-        return super.getDouble(levelFrame);
+        if (levelFrame.isInt(frameSlot)) {
+            return super.getInt(levelFrame);
+        } else {
+            return super.getDouble(levelFrame);
+        }
     }
 
     @Specialization(guards = {"levelFrame.isObject(frameSlot)", "!hasTemporalDeadZone()"})
@@ -202,9 +206,13 @@ abstract class JSReadCurrentFrameSlotNode extends JSReadFrameSlotNode {
         return super.getInt(frame);
     }
 
-    @Specialization(guards = "frame.isDouble(frameSlot)")
+    @Specialization(guards = "frame.isDouble(frameSlot) || frame.isInt(frameSlot)")
     protected final double doDouble(VirtualFrame frame) {
-        return super.getDouble(frame);
+        if (frame.isInt(frameSlot)) {
+            return super.getInt(frame);
+        } else {
+            return super.getDouble(frame);
+        }
     }
 
     @Specialization(guards = "frame.isObject(frameSlot)")

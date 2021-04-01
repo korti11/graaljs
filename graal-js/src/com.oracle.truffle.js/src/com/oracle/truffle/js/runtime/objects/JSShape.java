@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -43,7 +43,6 @@ package com.oracle.truffle.js.runtime.objects;
 import com.oracle.truffle.api.Assumption;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.HiddenKey;
-import com.oracle.truffle.api.object.ObjectType;
 import com.oracle.truffle.api.object.Property;
 import com.oracle.truffle.api.object.Shape;
 import com.oracle.truffle.js.runtime.JSConfig;
@@ -53,6 +52,7 @@ import com.oracle.truffle.js.runtime.builtins.JSClass;
 import com.oracle.truffle.js.runtime.builtins.JSDictionary;
 import com.oracle.truffle.js.runtime.builtins.JSOrdinary;
 import com.oracle.truffle.js.runtime.util.UnmodifiableArrayList;
+import com.oracle.truffle.js.runtime.util.UnmodifiablePropertyKeyList;
 
 /**
  * Static helper methods for JS-specific operations on shapes.
@@ -91,11 +91,11 @@ public final class JSShape {
     }
 
     public static JSClass getJSClass(Shape shape) {
-        return (JSClass) shape.getObjectType();
+        return (JSClass) shape.getDynamicType();
     }
 
-    public static ObjectType getJSClassNoCast(Shape shape) {
-        return shape.getObjectType();
+    public static Object getJSClassNoCast(Shape shape) {
+        return shape.getDynamicType();
     }
 
     public static JSSharedData getSharedData(Shape shape) {
@@ -154,6 +154,11 @@ public final class JSShape {
         return JSShapeData.getProperties(shape);
     }
 
+    public static <T> UnmodifiablePropertyKeyList<T> getPropertyKeyList(Shape shape, boolean strings, boolean symbols) {
+        assert JSConfig.FastOwnKeys;
+        return JSShapeData.getPropertyKeyList(shape, strings, symbols);
+    }
+
     public static UnmodifiableArrayList<String> getEnumerablePropertyNames(Shape shape) {
         assert JSConfig.FastOwnKeys;
         return JSShapeData.getEnumerablePropertyNames(shape);
@@ -197,6 +202,8 @@ public final class JSShape {
     public static Class<? extends DynamicObject> getLayout(JSClass jsclass) {
         if (jsclass == JSOrdinary.INSTANCE || jsclass == JSDictionary.INSTANCE) {
             return JSOrdinaryObject.DefaultLayout.class;
+        } else if (jsclass == JSOrdinary.INTERNAL_FIELD_INSTANCE) {
+            return JSOrdinaryObject.InternalFieldLayout.class;
         }
         return JSDynamicObject.class;
     }

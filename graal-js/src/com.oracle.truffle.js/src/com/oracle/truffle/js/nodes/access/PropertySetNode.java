@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -51,6 +51,7 @@ import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.interop.ArityException;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.UnknownIdentifierException;
+import com.oracle.truffle.api.interop.UnknownKeyException;
 import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.interop.UnsupportedTypeException;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
@@ -77,6 +78,7 @@ import com.oracle.truffle.js.nodes.function.JSFunctionCallNode;
 import com.oracle.truffle.js.nodes.interop.ExportValueNode;
 import com.oracle.truffle.js.runtime.Errors;
 import com.oracle.truffle.js.runtime.JSArguments;
+import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.Symbol;
@@ -961,7 +963,7 @@ public class PropertySetNode extends PropertyCacheNode<PropertySetNode.SetCacheN
 
         @Override
         protected boolean setValue(Object thisObj, Object value, Object receiver, PropertySetNode root, boolean guard) {
-            JSObject.set((DynamicObject) thisObj, root.getKey(), value, root.isStrict());
+            JSObject.set((DynamicObject) thisObj, root.getKey(), value, root.isStrict(), root);
             return true;
         }
     }
@@ -1034,7 +1036,7 @@ public class PropertySetNode extends PropertyCacheNode<PropertySetNode.SetCacheN
                     JSObject.defineOwnProperty(thisJSObj, key, PropertyDescriptor.createData(value, root.getAttributeFlags()), root.isStrict());
                 }
             } else {
-                JSObject.setWithReceiver(thisJSObj, key, value, receiver, root.isStrict(), jsclassProfile);
+                JSObject.setWithReceiver(thisJSObj, key, value, receiver, root.isStrict(), jsclassProfile, root);
             }
         }
 
@@ -1061,12 +1063,13 @@ public class PropertySetNode extends PropertyCacheNode<PropertySetNode.SetCacheN
         private final JSContext context;
         @Child private InteropLibrary interop;
         @Child private InteropLibrary setterInterop;
+        private final BranchProfile errorBranch = BranchProfile.create();
 
         public ForeignPropertySetNode(JSContext context) {
             super(new ForeignLanguageCheckNode());
             this.context = context;
             this.export = ExportValueNode.create();
-            this.interop = InteropLibrary.getFactory().createDispatched(3);
+            this.interop = InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit);
         }
 
         private Object nullCheck(Object truffleObject, Object key) {
@@ -1109,6 +1112,16 @@ public class PropertySetNode extends PropertyCacheNode<PropertySetNode.SetCacheN
 
         private boolean performWriteMember(Object truffleObject, Object value, PropertySetNode root) {
             String stringKey = (String) root.getKey();
+
+            if (context.getContextOptions().hasForeignHashProperties() && interop.hasHashEntries(truffleObject)) {
+                try {
+                    interop.writeHashEntry(truffleObject, stringKey, value);
+                } catch (UnknownKeyException | UnsupportedMessageException | UnsupportedTypeException e) {
+                    errorBranch.enter();
+                    throw Errors.createTypeErrorInteropException(truffleObject, e, "writeHashEntry", this);
+                }
+            }
+
             if (context.isOptionNashornCompatibilityMode()) {
                 if (tryInvokeSetter(truffleObject, value, root)) {
                     return true;
@@ -1121,6 +1134,7 @@ public class PropertySetNode extends PropertyCacheNode<PropertySetNode.SetCacheN
                     CompilerDirectives.transferToInterpreterAndInvalidate();
                     optimistic = false;
                 } catch (UnsupportedTypeException | UnsupportedMessageException e) {
+                    errorBranch.enter();
                     throw Errors.createTypeErrorInteropException(truffleObject, e, "writeMember", stringKey, this);
                 }
             } else {
@@ -1128,6 +1142,7 @@ public class PropertySetNode extends PropertyCacheNode<PropertySetNode.SetCacheN
                     try {
                         interop.writeMember(truffleObject, stringKey, value);
                     } catch (UnknownIdentifierException | UnsupportedTypeException | UnsupportedMessageException e) {
+                        errorBranch.enter();
                         throw Errors.createTypeErrorInteropException(truffleObject, e, "writeMember", stringKey, this);
                     }
                 }
@@ -1146,7 +1161,7 @@ public class PropertySetNode extends PropertyCacheNode<PropertySetNode.SetCacheN
                 }
                 if (setterInterop == null) {
                     CompilerDirectives.transferToInterpreterAndInvalidate();
-                    setterInterop = insert(InteropLibrary.getFactory().createDispatched(3));
+                    setterInterop = insert(InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit));
                 }
                 if (!setterInterop.isMemberInvocable(thisObj, setterKey)) {
                     return false;

@@ -50,11 +50,13 @@ import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Fallback;
+import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.interop.ArityException;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.InvalidArrayIndexException;
+import com.oracle.truffle.api.interop.UnknownIdentifierException;
 import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.interop.UnsupportedTypeException;
 import com.oracle.truffle.api.library.CachedLibrary;
@@ -96,7 +98,6 @@ import com.oracle.truffle.js.runtime.builtins.JSArray;
 import com.oracle.truffle.js.runtime.builtins.JSFunction;
 import com.oracle.truffle.js.runtime.builtins.JSFunctionData;
 import com.oracle.truffle.js.runtime.java.JavaAccess;
-import com.oracle.truffle.js.runtime.java.adapter.JavaAdapterFactory;
 import com.oracle.truffle.js.runtime.objects.JSDynamicObject;
 import com.oracle.truffle.js.runtime.objects.Undefined;
 
@@ -359,15 +360,16 @@ public final class JavaBuiltins extends JSBuiltinsContainer.SwitchEnum<JavaBuilt
                 types[i] = toHostClass(arguments[i], env);
             }
 
-            JavaAccess.checkAccess(types, getContext());
-
-            Class<?> result;
-            if (types.length == 1 && classOverrides == null) {
-                result = getContext().getJavaAdapterClassFor(types[0]);
-            } else {
-                result = JavaAdapterFactory.getAdapterClassFor(types, classOverrides);
+            try {
+                JavaAccess.checkAccess(types, getContext());
+                if (classOverrides != null) {
+                    return env.createHostAdapterClassWithStaticOverrides(types, classOverrides);
+                } else {
+                    return env.createHostAdapterClass(types);
+                }
+            } catch (Exception ex) {
+                throw Errors.createTypeError(ex.getMessage(), ex, this);
             }
-            return env.asHostSymbol(result);
         }
 
         protected static boolean isType(Object obj, TruffleLanguage.Env env) {
@@ -391,7 +393,7 @@ public final class JavaBuiltins extends JSBuiltinsContainer.SwitchEnum<JavaBuilt
 
         JavaFromNode(JSContext context, JSBuiltin builtin) {
             super(context, builtin);
-            this.interop = InteropLibrary.getFactory().createDispatched(3);
+            this.interop = InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit);
         }
 
         private void write(Object target, int index, Object value) {
@@ -449,6 +451,7 @@ public final class JavaBuiltins extends JSBuiltinsContainer.SwitchEnum<JavaBuilt
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class JavaToNode extends JSBuiltinNode {
 
         @Child private JSToObjectArrayNode toObjectArrayNode;
@@ -461,8 +464,8 @@ public final class JavaBuiltins extends JSBuiltinsContainer.SwitchEnum<JavaBuilt
             super(context, builtin);
             this.toObjectArrayNode = JSToObjectArrayNode.create(context);
             this.exportValue = ExportValueNode.create();
-            this.newArray = InteropLibrary.getFactory().createDispatched(3);
-            this.arrayElements = InteropLibrary.getFactory().createDispatched(3);
+            this.newArray = InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit);
+            this.arrayElements = InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit);
 
         }
 
@@ -496,7 +499,7 @@ public final class JavaBuiltins extends JSBuiltinsContainer.SwitchEnum<JavaBuilt
             }
         }
 
-        @Specialization(guards = {"!isJSObject(obj)"}, limit = "3")
+        @Specialization(guards = {"!isJSObject(obj)"}, limit = "InteropLibraryLimit")
         protected Object toNonObject(Object obj, @SuppressWarnings("unused") Object toType,
                         @CachedLibrary("obj") InteropLibrary interop) {
             if (interop.hasArrayElements(obj)) {
@@ -537,7 +540,11 @@ public final class JavaBuiltins extends JSBuiltinsContainer.SwitchEnum<JavaBuilt
         @Specialization
         @TruffleBoundary
         protected Object superAdapter(Object adapter) {
-            return JavaAdapterFactory.getSuperAdapter(adapter);
+            try {
+                return InteropLibrary.getUncached().readMember(adapter, "super");
+            } catch (UnsupportedMessageException | UnknownIdentifierException e) {
+                return Undefined.instance;
+            }
         }
     }
 

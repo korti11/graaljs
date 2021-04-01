@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -49,9 +49,9 @@ import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.source.SourceSection;
 import com.oracle.truffle.js.lang.JavaScriptLanguage;
-import com.oracle.truffle.js.runtime.builtins.JSNonProxy;
 import com.oracle.truffle.js.runtime.builtins.JSError;
 import com.oracle.truffle.js.runtime.builtins.JSFunction;
+import com.oracle.truffle.js.runtime.builtins.JSNonProxy;
 import com.oracle.truffle.js.runtime.objects.JSDynamicObject;
 import com.oracle.truffle.js.runtime.objects.JSObject;
 import com.oracle.truffle.js.runtime.objects.JSObjectUtil;
@@ -130,6 +130,11 @@ public final class Errors {
     @TruffleBoundary
     public static JSException createTypeError(String message, Node originatingNode) {
         return JSException.create(JSErrorType.TypeError, message, originatingNode);
+    }
+
+    @TruffleBoundary
+    public static JSException createTypeError(String message, Throwable cause, Node originatingNode) {
+        return JSException.create(JSErrorType.TypeError, message, cause, originatingNode);
     }
 
     @TruffleBoundary
@@ -353,7 +358,13 @@ public final class Errors {
 
     @TruffleBoundary
     public static JSException createTypeErrorNotWritableProperty(Object key, Object thisObj, Node originatingNode) {
-        return Errors.createTypeError(keyToString(key) + " is not a writable property of " + JSRuntime.safeToString(thisObj), originatingNode);
+        String message;
+        if (JavaScriptLanguage.getCurrentJSRealm().getContext().isOptionNashornCompatibilityMode()) {
+            message = keyToString(key) + " is not a writable property of " + JSRuntime.safeToString(thisObj);
+        } else {
+            message = "Cannot assign to read only property '" + key.toString() + "' of " + JSRuntime.safeToString(thisObj);
+        }
+        return Errors.createTypeError(message, originatingNode);
     }
 
     @TruffleBoundary
@@ -519,6 +530,11 @@ public final class Errors {
     }
 
     @TruffleBoundary
+    public static JSException createTypeErrorReadOnlyBuffer() {
+        return Errors.createTypeError("Read-only buffer");
+    }
+
+    @TruffleBoundary
     public static JSException createTypeErrorArrayBufferExpected() {
         return Errors.createTypeError("ArrayBuffer expected");
     }
@@ -611,6 +627,16 @@ public final class Errors {
     @TruffleBoundary
     public static JSException createRangeErrorIndexTooLarge(Node originatingNode) {
         return Errors.createRangeError("index is too large", originatingNode);
+    }
+
+    @TruffleBoundary
+    public static JSException createRangeErrorInvalidBufferSize() {
+        return Errors.createRangeError("Buffer too large");
+    }
+
+    @TruffleBoundary
+    public static JSException createRangeErrorInvalidBufferOffset() {
+        return Errors.createRangeError("Invalid buffer offset");
     }
 
     @TruffleBoundary
@@ -756,7 +782,7 @@ public final class Errors {
     }
 
     @TruffleBoundary
-    public static JSException createErrorFromException(Exception e) {
+    public static JSException createErrorFromException(Throwable e) {
         return JSException.create(JSErrorType.Error, e.getMessage(), e, null);
     }
 
@@ -798,4 +824,40 @@ public final class Errors {
     public static JSException createTypeErrorCannotAddPrivateMember(String name, Node originatingNode) {
         return createTypeError(String.format("Duplicate private member %s.", name), originatingNode);
     }
+
+    @TruffleBoundary
+    public static JSException createTypeError(Throwable cause, Node originatingNode) {
+        return JSException.create(JSErrorType.TypeError, cause.getMessage(), cause, originatingNode);
+    }
+
+    @TruffleBoundary
+    public static JSException createRangeError(Throwable cause, Node originatingNode) {
+        return JSException.create(JSErrorType.RangeError, cause.getMessage(), cause, originatingNode);
+    }
+
+    @TruffleBoundary
+    public static JSException createCompileError(String message, Node originatingNode) {
+        return JSException.create(JSErrorType.CompileError, message, originatingNode);
+    }
+
+    @TruffleBoundary
+    public static JSException createCompileError(Throwable cause, Node originatingNode) {
+        return JSException.create(JSErrorType.CompileError, cause.getMessage(), cause, originatingNode);
+    }
+
+    @TruffleBoundary
+    public static JSException createLinkError(String message) {
+        return JSException.create(JSErrorType.LinkError, message);
+    }
+
+    @TruffleBoundary
+    public static JSException createLinkError(Throwable cause, Node originatingNode) {
+        return JSException.create(JSErrorType.LinkError, cause.getMessage(), cause, originatingNode);
+    }
+
+    @TruffleBoundary
+    public static JSException createRuntimeError(Throwable cause, Node originatingNode) {
+        return JSException.create(JSErrorType.RuntimeError, cause.getMessage(), cause, originatingNode);
+    }
+
 }

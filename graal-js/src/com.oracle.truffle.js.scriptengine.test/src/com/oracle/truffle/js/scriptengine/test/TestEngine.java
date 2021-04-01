@@ -265,9 +265,9 @@ public class TestEngine {
         try {
             TestUtil.getEngineNashornCompat(manager).eval("new java.util.ArrayList().iterator().next()");
             fail("ScriptException/NoSuchElementException expected");
-        } catch (ScriptException ex) {
+        } catch (Exception ex) {
             boolean foundNoSuchElementException = false;
-            Throwable cause = ex.getCause();
+            Throwable cause = ex;
             while (cause != null) {
                 if (cause instanceof NoSuchElementException) {
                     foundNoSuchElementException = true;
@@ -277,6 +277,17 @@ public class TestEngine {
             }
             assertTrue(foundNoSuchElementException);
         }
+    }
+
+    @Test
+    public void noNullInNashornEngine() {
+        ScriptEngine engine = manager.getEngineByName("nashorn");
+        if (engine != null) {
+            ScriptEngineFactory factory = engine.getFactory();
+            assertEquals(-1, factory.getNames().indexOf(null));
+            assertEquals(-1, factory.getMimeTypes().indexOf(null));
+            assertEquals(-1, factory.getExtensions().indexOf(null));
+        } // else no nashorn engine anymore
     }
 
 }

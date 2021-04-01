@@ -65,7 +65,6 @@ import java.util.regex.Pattern;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
-import org.junit.Assert;
 import org.junit.internal.TextListener;
 import org.junit.runner.Description;
 import org.junit.runner.JUnitCore;
@@ -77,11 +76,9 @@ import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.ParentRunner;
 import org.junit.runners.model.InitializationError;
 
-import com.oracle.truffle.js.lang.JavaScriptLanguage;
 import com.oracle.truffle.js.runtime.JSContextOptions;
-import com.oracle.truffle.js.runtime.JSRealm;
-import com.oracle.truffle.js.runtime.objects.JSObject;
 import com.oracle.truffle.js.test.JSTest;
+import com.oracle.truffle.js.test.polyglot.PolyglotBuiltinTest;
 import com.oracle.truffle.js.test.suite.JSTestRunner.TestCase;
 
 public final class JSTestRunner extends ParentRunner<TestCase> {
@@ -228,9 +225,7 @@ public final class JSTestRunner extends ParentRunner<TestCase> {
             engineContext.leave();
             String mimeType = testCase.sourceName.endsWith(MODULE_SUFFIX) ? MODULE_MIME_TYPE : APPLICATION_MIME_TYPE;
             Source source = Source.newBuilder(ID, testCase.sourceFile.toFile()).name(testCase.sourceName).content(sourceLines).mimeType(mimeType).build();
-            Value result = engineContext.eval(source);
-
-            Assert.assertTrue(result.asBoolean());
+            engineContext.eval(source);
         } catch (Throwable ex) {
             notifier.fireTestFailure(new Failure(testCase.testName, ex));
         } finally {
@@ -272,9 +267,10 @@ public final class JSTestRunner extends ParentRunner<TestCase> {
         return sourceLines.contains("@option " + optionName);
     }
 
-    private static void setTestGlobals(Context engineContext, boolean inNashornMode) {
-        JSRealm realm = JavaScriptLanguage.getJSRealm(engineContext);
-        JSObject.set(realm.getGlobalObject(), "OptionNashornCompat", inNashornMode);
+    private static void setTestGlobals(Context context, boolean inNashornMode) {
+        Value globalBindings = context.getBindings("js");
+        globalBindings.putMember("OptionNashornCompat", inNashornMode);
+        PolyglotBuiltinTest.addTestPolyglotBuiltins(context);
     }
 
     public static void runInMain(Class<?> testClass, String[] args) throws InitializationError, NoTestsRemainException {

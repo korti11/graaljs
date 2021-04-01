@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 import org.graalvm.options.OptionDescriptor;
 import org.graalvm.options.OptionDescriptors;
@@ -160,7 +161,7 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
     public static final String IMPLEMENTATION_NAME = "GraalVM JavaScript";
     public static final String ID = "js";
 
-    private volatile JSContext languageContext;
+    @CompilationFinal private volatile JSContext languageContext;
     private volatile boolean multiContext;
 
     private final Assumption promiseJobsQueueEmptyAssumption;
@@ -240,9 +241,10 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
         final Source source = request.getSource();
         final MaterializedFrame requestFrame = request.getFrame();
         final JSContext context = getJSContext();
-        final boolean strict = isStrictLocation(request.getLocation());
+        final Node locationNode = request.getLocation();
+        final boolean strict = isStrictLocation(locationNode);
         final ExecutableNode executableNode = new ExecutableNode(this) {
-            @Child private JavaScriptNode expression = insert(parseInlineScript(context, source, requestFrame, strict));
+            @Child private JavaScriptNode expression = insert(parseInlineScript(context, source, requestFrame, strict, locationNode));
             @Child private ExportValueNode exportValueNode = ExportValueNode.create();
 
             @Override
@@ -283,11 +285,11 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
     }
 
     @TruffleBoundary
-    protected static JavaScriptNode parseInlineScript(JSContext context, Source code, MaterializedFrame lexicalContextFrame, boolean strict) {
+    protected static JavaScriptNode parseInlineScript(JSContext context, Source code, MaterializedFrame lexicalContextFrame, boolean strict, Node locationNode) {
         boolean profileTime = context.getContextOptions().isProfileTime();
         long startTime = profileTime ? System.nanoTime() : 0L;
         try {
-            return context.getEvaluator().parseInlineScript(context, code, lexicalContextFrame, strict);
+            return context.getEvaluator().parseInlineScript(context, code, lexicalContextFrame, strict, locationNode);
         } finally {
             if (profileTime) {
                 context.getTimeProfiler().printElapsed(startTime, "parsing " + code.getName());
@@ -297,6 +299,7 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
 
     @Override
     protected JSRealm createContext(Env env) {
+        CompilerAsserts.neverPartOfCompilation();
         JSContext context = languageContext;
         if (context == null) {
             context = initLanguageContext(env);
@@ -314,6 +317,7 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
     }
 
     private synchronized JSContext initLanguageContext(Env env) {
+        CompilerAsserts.neverPartOfCompilation();
         JSContext curContext = languageContext;
         if (curContext != null) {
             assert curContext.getContextOptions().equals(JSContextOptions.fromOptionValues(env.getOptions()));
@@ -335,6 +339,7 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
 
     @Override
     protected boolean patchContext(JSRealm realm, Env newEnv) {
+        CompilerAsserts.neverPartOfCompilation();
         assert realm.getContext().getLanguage() == this;
 
         if (optionsAllowPreInitializedContext(realm.getEnv(), newEnv) && realm.patchContext(newEnv)) {
@@ -349,7 +354,6 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
      * Options which can be patched without throwing away the pre-initialized context.
      */
     private static final OptionKey<?>[] PREINIT_CONTEXT_PATCHABLE_OPTIONS = {
-                    JSContextOptions.ARRAY_SORT_INHERITED,
                     JSContextOptions.TIMER_RESOLUTION,
                     JSContextOptions.SHELL,
                     JSContextOptions.V8_COMPATIBILITY_MODE,
@@ -364,6 +368,7 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
                     JSContextOptions.PERFORMANCE,
                     JSContextOptions.CLASS_FIELDS,
                     JSContextOptions.REGEXP_STATIC_RESULT,
+                    JSContextOptions.TIME_ZONE,
     };
 
     /**
@@ -466,7 +471,7 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
             if (!promiseJobsQueueEmptyAssumption.isValid()) {
                 agent.processAllPromises(true);
             }
-            if (realm.getContext().getContextOptions().isTestV8Mode()) {
+            if (getJSContext().getContextOptions().isTestV8Mode()) {
                 processTimeoutCallbacks(realm);
             }
         }
@@ -491,7 +496,7 @@ public final class JavaScriptLanguage extends AbstractJavaScriptLanguage {
     }
 
     public JSContext getJSContext() {
-        return languageContext;
+        return Objects.requireNonNull(languageContext);
     }
 
     public boolean bindMemberFunctions() {

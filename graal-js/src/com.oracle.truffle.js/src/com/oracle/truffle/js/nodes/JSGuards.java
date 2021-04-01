@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -40,7 +40,6 @@
  */
 package com.oracle.truffle.js.nodes;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 
 import com.oracle.truffle.api.interop.TruffleObject;
@@ -82,6 +81,7 @@ import com.oracle.truffle.js.runtime.builtins.intl.JSNumberFormat;
 import com.oracle.truffle.js.runtime.builtins.intl.JSPluralRules;
 import com.oracle.truffle.js.runtime.builtins.intl.JSRelativeTimeFormat;
 import com.oracle.truffle.js.runtime.builtins.intl.JSSegmenter;
+import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyModule;
 import com.oracle.truffle.js.runtime.java.JavaPackage;
 import com.oracle.truffle.js.runtime.objects.JSDynamicObject;
 import com.oracle.truffle.js.runtime.objects.JSObject;
@@ -142,7 +142,7 @@ public final class JSGuards {
     }
 
     public static boolean isJSFunctionShape(Shape shape) {
-        return shape.getObjectType() == JSFunction.INSTANCE;
+        return shape.getDynamicType() == JSFunction.INSTANCE;
     }
 
     public static boolean isBoundJSFunction(Object value) {
@@ -333,12 +333,12 @@ public final class JSGuards {
         return JSAdapter.isJSAdapter(object);
     }
 
-    public static boolean isValidPrototype(Object prototype) {
-        return isJSObject(prototype) || isJSNull(prototype);
+    public static boolean isJSWebAssemblyModule(Object object) {
+        return JSWebAssemblyModule.isJSWebAssemblyModule(object);
     }
 
-    public static boolean isByteBuffer(Object buffer) {
-        return buffer instanceof ByteBuffer;
+    public static boolean isValidPrototype(Object prototype) {
+        return isJSObject(prototype) || isJSNull(prototype);
     }
 
     public static boolean isList(Object value) {
@@ -460,7 +460,7 @@ public final class JSGuards {
     }
 
     public static boolean isJSObjectShape(Shape shape) {
-        return shape.getObjectType() instanceof JSClass;
+        return shape.getDynamicType() instanceof JSClass;
     }
 
     public static boolean isArrayIndexLengthInRange(String str) {

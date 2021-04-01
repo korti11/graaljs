@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -41,8 +41,6 @@
 package com.oracle.truffle.js.builtins;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.NoSuchFileException;
 
@@ -51,6 +49,7 @@ import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.dsl.Cached;
+import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Cached.Shared;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.interop.ArityException;
@@ -62,12 +61,9 @@ import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.interop.UnsupportedTypeException;
 import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
-import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.profiles.ConditionProfile;
 import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.js.builtins.PolyglotBuiltinsFactory.PolyglotConstructNodeGen;
-import com.oracle.truffle.js.builtins.PolyglotBuiltinsFactory.PolyglotCreateForeignDynamicObjectNodeGen;
-import com.oracle.truffle.js.builtins.PolyglotBuiltinsFactory.PolyglotCreateForeignObjectNodeGen;
 import com.oracle.truffle.js.builtins.PolyglotBuiltinsFactory.PolyglotEvalFileNodeGen;
 import com.oracle.truffle.js.builtins.PolyglotBuiltinsFactory.PolyglotEvalNodeGen;
 import com.oracle.truffle.js.builtins.PolyglotBuiltinsFactory.PolyglotExecuteNodeGen;
@@ -165,20 +161,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
             keys(1),
             hasKeys(1),
             isInstantiable(1),
-            evalFile(2), // under special flag
-
-            createForeignObject(0) {
-                @Override
-                public boolean isAOTSupported() {
-                    return false;
-                }
-            },
-            createForeignDynamicObject(0) {
-                @Override
-                public boolean isAOTSupported() {
-                    return false;
-                }
-            };
+            evalFile(2); // under special flag
 
             private final int length;
 
@@ -229,21 +212,12 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
                     return PolyglotHasKeysNodeGen.create(context, builtin, args().fixedArgs(1).createArgumentNodes(context));
                 case evalFile:
                     return PolyglotEvalFileNodeGen.create(context, builtin, args().fixedArgs(2).createArgumentNodes(context));
-                case createForeignObject:
-                    if (!JSConfig.SubstrateVM) {
-                        return PolyglotCreateForeignObjectNodeGen.create(context, builtin, args().fixedArgs(0).createArgumentNodes(context));
-                    }
-                    break;
-                case createForeignDynamicObject:
-                    if (!JSConfig.SubstrateVM) {
-                        return PolyglotCreateForeignDynamicObjectNodeGen.create(context, builtin, args().fixedArgs(0).createArgumentNodes(context));
-                    }
-                    break;
             }
             return null;
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotExportNode extends JSBuiltinNode {
         @Child private ExportValueNode exportValue;
 
@@ -254,7 +228,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected Object doString(String identifier, Object value,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             Object polyglotBindings;
             try {
                 polyglotBindings = getContext().getRealm().getEnv().getPolyglotBindings();
@@ -267,7 +241,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization(guards = {"!isString(identifier)"})
         protected Object doMaybeUnbox(TruffleObject identifier, Object value,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             if (interop.isString(identifier)) {
                 String unboxed;
                 try {
@@ -287,6 +261,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotImportNode extends JSBuiltinNode {
         PolyglotImportNode(JSContext context, JSBuiltin builtin) {
             super(context, builtin);
@@ -294,7 +269,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected Object doString(String identifier,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop,
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop,
                         @Shared("importValue") @Cached ImportValueNode importValueNode) {
             Object polyglotBindings;
             try {
@@ -313,7 +288,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization(guards = {"!isString(identifier)"})
         protected Object doMaybeUnbox(TruffleObject identifier,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop,
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop,
                         @Shared("importValue") @Cached ImportValueNode importValueNode) {
             if (interop.isString(identifier)) {
                 String unboxed;
@@ -334,6 +309,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotIsExecutableNode extends JSBuiltinNode {
 
         PolyglotIsExecutableNode(JSContext context, JSBuiltin builtin) {
@@ -342,7 +318,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected static boolean truffleObject(TruffleObject obj,
-                        @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return interop.isExecutable(obj);
         }
 
@@ -358,16 +334,17 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotIsBoxedPrimitiveNode extends JSBuiltinNode {
 
         PolyglotIsBoxedPrimitiveNode(JSContext context, JSBuiltin builtin) {
             super(context, builtin);
         }
 
-        @Specialization(limit = "3")
+        @Specialization(limit = "InteropLibraryLimit")
         protected static boolean truffleObject(TruffleObject obj,
                         @CachedLibrary("obj") InteropLibrary interop) {
-            return interop.isBoolean(obj) || interop.isString(obj) || interop.isNumber(obj);
+            return JSInteropUtil.isBoxedPrimitive(obj, interop);
         }
 
         @Specialization(guards = "isJavaPrimitive(obj)")
@@ -382,6 +359,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotIsNullNode extends JSBuiltinNode {
 
         PolyglotIsNullNode(JSContext context, JSBuiltin builtin) {
@@ -390,7 +368,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected static boolean truffleObject(TruffleObject obj,
-                        @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return interop.isNull(obj);
         }
 
@@ -406,6 +384,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotHasSizeNode extends JSBuiltinNode {
 
         PolyglotHasSizeNode(JSContext context, JSBuiltin builtin) {
@@ -414,7 +393,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected boolean truffleObject(TruffleObject obj,
-                        @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return interop.hasArrayElements(obj);
         }
 
@@ -430,6 +409,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotReadNode extends JSBuiltinNode {
 
         PolyglotReadNode(JSContext context, JSBuiltin builtin) {
@@ -439,21 +419,21 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @Specialization
         protected Object member(TruffleObject obj, String name,
                         @Shared("importValue") @Cached("create()") ImportValueNode foreignConvert,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return JSInteropUtil.readMemberOrDefault(obj, name, Null.instance, interop, foreignConvert, this);
         }
 
         @Specialization
         protected Object arrayElementInt(TruffleObject obj, int index,
                         @Shared("importValue") @Cached("create()") ImportValueNode foreignConvert,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return JSInteropUtil.readArrayElementOrDefault(obj, index, Null.instance, interop, foreignConvert, this);
         }
 
         @Specialization(guards = "isNumber(index)", replaces = "arrayElementInt")
         protected Object arrayElement(TruffleObject obj, Number index,
                         @Shared("importValue") @Cached("create()") ImportValueNode foreignConvert,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return JSInteropUtil.readArrayElementOrDefault(obj, JSRuntime.longValue(index), Null.instance, interop, foreignConvert, this);
         }
 
@@ -461,8 +441,8 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @Specialization(guards = {"!isString(key)", "!isNumber(key)"})
         protected Object unsupportedKey(TruffleObject obj, Object key,
                         @Shared("importValue") @Cached("create()") ImportValueNode foreignConvert,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop,
-                        @CachedLibrary(limit = "3") InteropLibrary keyInterop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop,
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary keyInterop) {
             try {
                 if (keyInterop.isString(key)) {
                     return member(obj, keyInterop.asString(key), foreignConvert, interop);
@@ -482,6 +462,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotWriteNode extends JSBuiltinNode {
 
         PolyglotWriteNode(JSContext context, JSBuiltin builtin) {
@@ -491,7 +472,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @Specialization
         protected Object member(TruffleObject obj, String name, Object value,
                         @Shared("exportValue") @Cached ExportValueNode exportValue,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             Object convertedValue = exportValue.execute(value);
             try {
                 interop.writeMember(obj, name, convertedValue);
@@ -506,7 +487,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @Specialization
         protected Object arrayElementInt(TruffleObject obj, int index, Object value,
                         @Shared("exportValue") @Cached ExportValueNode exportValue,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             Object convertedValue = exportValue.execute(value);
             try {
                 interop.writeArrayElement(obj, index, convertedValue);
@@ -521,7 +502,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @Specialization(guards = "isNumber(index)", replaces = "arrayElementInt")
         protected Object arrayElement(TruffleObject obj, Number index, Object value,
                         @Shared("exportValue") @Cached ExportValueNode exportValue,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             Object convertedValue = exportValue.execute(value);
             try {
                 interop.writeArrayElement(obj, JSRuntime.longValue(index), convertedValue);
@@ -537,8 +518,8 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @Specialization(guards = {"!isString(key)", "!isNumber(key)"})
         protected Object unsupportedKey(TruffleObject obj, Object key, Object value,
                         @Shared("exportValue") @Cached ExportValueNode exportValue,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop,
-                        @CachedLibrary(limit = "3") InteropLibrary keyInterop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop,
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary keyInterop) {
             try {
                 if (keyInterop.isString(key)) {
                     return member(obj, keyInterop.asString(key), value, exportValue, interop);
@@ -558,6 +539,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotRemoveNode extends JSBuiltinNode {
 
         PolyglotRemoveNode(JSContext context, JSBuiltin builtin) {
@@ -566,7 +548,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected boolean member(TruffleObject obj, String name,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             try {
                 interop.removeMember(obj, name);
                 return true;
@@ -579,7 +561,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected boolean arrayElementInt(TruffleObject obj, int index,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             try {
                 interop.removeArrayElement(obj, index);
                 return true;
@@ -592,7 +574,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization(guards = "isNumber(index)", replaces = "arrayElementInt")
         protected boolean arrayElement(TruffleObject obj, Number index,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             try {
                 interop.removeArrayElement(obj, JSRuntime.longValue(index));
                 return true;
@@ -606,8 +588,8 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @SuppressWarnings("unused")
         @Specialization(guards = {"!isString(key)", "!isNumber(key)"})
         protected Object unsupportedKey(TruffleObject obj, Object key,
-                        @Shared("interop") @CachedLibrary(limit = "3") InteropLibrary interop,
-                        @CachedLibrary(limit = "3") InteropLibrary keyInterop) {
+                        @Shared("interop") @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop,
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary keyInterop) {
             try {
                 if (keyInterop.isString(key)) {
                     return member(obj, keyInterop.asString(key), interop);
@@ -627,6 +609,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotUnboxValueNode extends JSBuiltinNode {
 
         PolyglotUnboxValueNode(JSContext context, JSBuiltin builtin) {
@@ -635,7 +618,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected Object truffleObject(TruffleObject obj,
-                        @CachedLibrary(limit = "1") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             Object unboxed = JSInteropUtil.toPrimitiveOrDefault(obj, obj, interop, this);
             if (unboxed == obj) {
                 throw Errors.createTypeErrorNotATruffleObject("unbox");
@@ -656,6 +639,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotExecuteNode extends JSBuiltinNode {
 
         PolyglotExecuteNode(JSContext context, JSBuiltin builtin) {
@@ -665,7 +649,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @Specialization
         protected Object execute(TruffleObject obj, Object[] arguments,
                         @Cached ExportValueNode exportValue,
-                        @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             Object target = exportValue.execute(obj);
             Object[] convertedArgs = new Object[arguments.length];
             for (int i = 0; i < arguments.length; i++) {
@@ -685,6 +669,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotConstructNode extends JSBuiltinNode {
 
         PolyglotConstructNode(JSContext context, JSBuiltin builtin) {
@@ -694,7 +679,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         @Specialization
         protected Object doNew(TruffleObject obj, Object[] arguments,
                         @Cached ExportValueNode exportValue,
-                        @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             Object target = exportValue.execute(obj);
             Object[] convertedArgs = new Object[arguments.length];
             for (int i = 0; i < arguments.length; i++) {
@@ -714,6 +699,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotGetSizeNode extends JSBuiltinNode {
 
         PolyglotGetSizeNode(JSContext context, JSBuiltin builtin) {
@@ -722,7 +708,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected Object getSize(TruffleObject obj,
-                        @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             try {
                 return interop.getArraySize(obj);
             } catch (UnsupportedMessageException e) {
@@ -855,6 +841,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotHasKeysNode extends JSBuiltinNode {
 
         PolyglotHasKeysNode(JSContext context, JSBuiltin builtin) {
@@ -863,7 +850,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected boolean hasKeys(TruffleObject obj,
-                        @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return interop.hasMembers(obj);
         }
 
@@ -892,6 +879,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
         }
     }
 
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotIsInstantiableNode extends JSBuiltinNode {
 
         PolyglotIsInstantiableNode(JSContext context, JSBuiltin builtin) {
@@ -900,7 +888,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected static boolean isInstantiable(TruffleObject obj,
-                        @CachedLibrary(limit = "3") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return interop.isInstantiable(obj);
         }
 
@@ -911,77 +899,13 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
     }
 
     /**
-     * This node exists for debugging purposes. You can call Interop.createForeignObject() from
-     * JavaScript code to create a {@link TruffleObject}. It is used to simplify testing interop
-     * features in JavaScript code.
-     *
-     */
-    abstract static class PolyglotCreateForeignObjectNode extends JSBuiltinNode {
-
-        private static Class<?> testMapClass;
-
-        PolyglotCreateForeignObjectNode(JSContext context, JSBuiltin builtin) {
-            super(context, builtin);
-        }
-
-        @Specialization
-        @TruffleBoundary
-        protected Object createForeignObject() {
-            if (!JSConfig.SubstrateVM) {
-                try {
-                    if (testMapClass == null) {
-                        testMapClass = Class.forName("com.oracle.truffle.js.test.polyglot.ForeignTestMap");
-                    }
-                    return getContext().getRealm().getEnv().asGuestValue(testMapClass.newInstance());
-                } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
-                    throw Errors.createTypeError("cannot test with ForeignTestMap: " + e.getMessage());
-                }
-            } else {
-                return Undefined.instance;
-            }
-        }
-    }
-
-    /**
-     * This node exists for debugging purposes. You can call Interop.createForeignDynamicObject()
-     * from JavaScript code to create a {@link DynamicObject}. It is used to simplify testing
-     * interop features in JavaScript code.
-     *
-     */
-    abstract static class PolyglotCreateForeignDynamicObjectNode extends JSBuiltinNode {
-
-        private static Class<?> testMapClass;
-
-        PolyglotCreateForeignDynamicObjectNode(JSContext context, JSBuiltin builtin) {
-            super(context, builtin);
-        }
-
-        @Specialization
-        @TruffleBoundary
-        protected Object createForeignDynamicObject() {
-            if (!JSConfig.SubstrateVM) {
-                try {
-                    if (testMapClass == null) {
-                        testMapClass = Class.forName("com.oracle.truffle.js.test.polyglot.ForeignDynamicObject");
-                    }
-                    Method createNew = testMapClass.getMethod("createNew");
-                    return createNew.invoke(null);
-                } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
-                    throw Errors.createTypeError("cannot test with ForeignDynamicObject: " + e.getMessage());
-                }
-            } else {
-                return Undefined.instance;
-            }
-        }
-    }
-
-    /**
      * Forces the conversion of an (potential) interop value to a JavaScript compliant value. In
      * addition to the conversions forced at the language boundary anyway (e.g., Java primitive
      * types like short or float that are not supported by JavaScript), this operation also converts
      * Nullish interop values to the JavaScript null value, and unboxes boxed TruffleObjects.
      *
      */
+    @ImportStatic({JSConfig.class})
     abstract static class PolyglotToJSValueNode extends JSBuiltinNode {
         PolyglotToJSValueNode(JSContext context, JSBuiltin builtin) {
             super(context, builtin);
@@ -989,7 +913,7 @@ public final class PolyglotBuiltins extends JSBuiltinsContainer.SwitchEnum<Polyg
 
         @Specialization
         protected final Object toJSValue(TruffleObject obj,
-                        @CachedLibrary(limit = "1") InteropLibrary interop) {
+                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
             return JSInteropUtil.toPrimitiveOrDefault(obj, obj, interop, this);
         }
 

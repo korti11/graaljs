@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -60,10 +60,12 @@ import com.oracle.truffle.js.nodes.interop.ExportValueNode;
 import com.oracle.truffle.js.nodes.interop.JSInteropExecuteNode;
 import com.oracle.truffle.js.nodes.interop.JSInteropInstantiateNode;
 import com.oracle.truffle.js.nodes.unary.IsCallableNode;
+import com.oracle.truffle.js.runtime.JSException;
 import com.oracle.truffle.js.runtime.JSFrameUtil;
 import com.oracle.truffle.js.runtime.JSRealm;
 import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.interop.InteropFunction;
+import com.oracle.truffle.js.runtime.objects.JSLazyString;
 import com.oracle.truffle.js.runtime.objects.JSNonProxyObject;
 import com.oracle.truffle.js.runtime.objects.JSObject;
 import com.oracle.truffle.js.runtime.objects.Null;
@@ -220,8 +222,11 @@ public abstract class JSFunctionObject extends JSNonProxyObject {
             if (obj instanceof InteropFunction) {
                 obj = ((InteropFunction) obj).getFunction();
             }
-            if (JSGuards.isJSObject(instance) && !JSProxy.isJSProxy(instance)) {
-                DynamicObject proto = JSObject.getPrototype((DynamicObject) instance);
+            if (obj instanceof JSException) {
+                obj = ((JSException) obj).getErrorObjectEager();
+            }
+            if (JSGuards.isJSObject(obj) && !JSProxy.isJSProxy(obj)) {
+                DynamicObject proto = JSObject.getPrototype((DynamicObject) obj);
                 while (proto != Null.instance) {
                     if (proto == constructorPrototype) {
                         return true;
@@ -258,11 +263,14 @@ public abstract class JSFunctionObject extends JSNonProxyObject {
             this.boundTargetFunction = boundTargetFunction;
             this.boundThis = boundThis;
             this.boundArguments = boundArguments;
+            this.boundLength = calculateBoundLength();
         }
 
-        private DynamicObject boundTargetFunction;
-        private Object boundThis;
-        private Object[] boundArguments;
+        private final DynamicObject boundTargetFunction;
+        private final Object boundThis;
+        private final Object[] boundArguments;
+        private final int boundLength;
+        private CharSequence boundName;
 
         public DynamicObject getBoundTargetFunction() {
             return boundTargetFunction;
@@ -275,5 +283,47 @@ public abstract class JSFunctionObject extends JSNonProxyObject {
         public Object[] getBoundArguments() {
             return boundArguments;
         }
+
+        public CharSequence getBoundName() {
+            if (boundName == null) {
+                initializeBoundName();
+            }
+            return boundName;
+        }
+
+        public void setTargetName(CharSequence targetName) {
+            boundName = JSLazyString.create("bound ", targetName);
+        }
+
+        @TruffleBoundary
+        private void initializeBoundName() {
+            setTargetName(getFunctionName(boundTargetFunction));
+        }
+
+        private static CharSequence getFunctionName(DynamicObject function) {
+            if (JSFunction.isBoundFunction(function)) {
+                return ((JSFunctionObject.Bound) function).getBoundName();
+            } else {
+                return JSFunction.getName(function);
+            }
+        }
+
+        public int getBoundLength() {
+            return boundLength;
+        }
+
+        private int calculateBoundLength() {
+            return Math.max(0, getBoundFunctionLength(boundTargetFunction) - boundArguments.length);
+        }
+
+        private static int getBoundFunctionLength(DynamicObject function) {
+            if (JSFunction.isBoundFunction(function)) {
+                return ((JSFunctionObject.Bound) function).getBoundLength();
+            } else {
+                return JSFunction.getLength(function);
+            }
+        }
+
     }
+
 }

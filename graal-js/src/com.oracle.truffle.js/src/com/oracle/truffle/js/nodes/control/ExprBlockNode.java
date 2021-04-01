@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -43,7 +43,6 @@ package com.oracle.truffle.js.nodes.control;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.Tag;
 import com.oracle.truffle.api.nodes.BlockNode;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.UnexpectedResultException;
 import com.oracle.truffle.js.nodes.JavaScriptNode;
 
@@ -58,37 +57,19 @@ public final class ExprBlockNode extends AbstractBlockNode implements SequenceNo
         return filterStatements(statements, true);
     }
 
-    @ExplodeLoop
     @Override
     public boolean executeBoolean(VirtualFrame frame) throws UnexpectedResultException {
-        JavaScriptNode[] stmts = statements;
-        int last = stmts.length - 1;
-        for (int i = 0; i < last; ++i) {
-            executeVoid(frame, stmts[i], i, BlockNode.NO_ARGUMENT);
-        }
-        return executeBoolean(frame, stmts[last], last, BlockNode.NO_ARGUMENT);
+        return block.executeBoolean(frame, BlockNode.NO_ARGUMENT);
     }
 
-    @ExplodeLoop
     @Override
     public int executeInt(VirtualFrame frame) throws UnexpectedResultException {
-        JavaScriptNode[] stmts = statements;
-        int last = stmts.length - 1;
-        for (int i = 0; i < last; ++i) {
-            executeVoid(frame, stmts[i], i, BlockNode.NO_ARGUMENT);
-        }
-        return executeInt(frame, stmts[last], last, BlockNode.NO_ARGUMENT);
+        return block.executeInt(frame, BlockNode.NO_ARGUMENT);
     }
 
-    @ExplodeLoop
     @Override
     public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
-        JavaScriptNode[] stmts = statements;
-        int last = stmts.length - 1;
-        for (int i = 0; i < last; ++i) {
-            executeVoid(frame, stmts[i], i, BlockNode.NO_ARGUMENT);
-        }
-        return executeDouble(frame, stmts[last], last, BlockNode.NO_ARGUMENT);
+        return block.executeDouble(frame, BlockNode.NO_ARGUMENT);
     }
 
     @Override

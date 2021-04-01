@@ -3,11 +3,33 @@
 This changelog summarizes major changes between GraalVM versions of the GraalVM JavaScript (ECMAScript) language runtime.
 The main focus is on user-observable behavior of the engine.
 
+## Version 21.1.0
+* Updated Node.js to version 14.16.0.
+* Prototype of WebAssembly JavaScript Interface implemented. It is available behind the `--js.webassembly` flag.
+* Implemented iterator interop support, enabling foreign objects that have an iterator to be used where JS expects iterables, as well as JS iterables to be used in other languages and via the [Value](https://www.graalvm.org/sdk/javadoc/org/graalvm/polyglot/Value.html#getIterator--) API.
+* Adopted new buffer interop support, allowing foreign buffers to be used with typed arrays and `DataView`, without copying. Likewise enables `ArrayBuffer` to be used in other languages.
+* Experimental option `js.array-sort-inherited` was removed. Values visible through holes in array(-like) object are always sorted according to the latest version of ECMAScript specification.
+* Updated ICU4J library to version 68.2.
+* Implemented the [Atomics.waitAsync](https://github.com/tc39/proposal-atomics-wait-async) proposal. It is available in ECMAScript 2022 mode (`--js.ecmascript-version=2022`).
+* Implemented hash map interop support. Allows foreign hash maps to be iterated using `for in/of` loops, `new Map(hash)`, `Array.from(hash)`, etc. If the `--js.foreign-hash-properties` option is enabled (default), foreign hash maps can also be accessed using `hash[key]`, `hash.key`, and used in `{...hash}`. If the `--js.foreign-object-prototype` option is enabled, foreign hash maps also have `Map.prototype` methods.
+
+## Version 21.0.0
+* ECMAScript 2021 mode/features enabled by default.
+* Updated Node.js to version 12.20.1.
+* Adopted new interop exception handling and made JS exceptions extend `AbstractTruffleException`.
+* Implemented interop identity messages.
+* Expose `Graal.versionECMAScript` instead of `Graal.versionJS`.
+* Implemented the [relative indexing method](https://tc39.es/proposal-relative-indexing-method/) proposal. It is available in ECMAScript 2022 mode (`--js.ecmascript-version=2022`).
+
 ## Version 20.3.0
 * Updated Node.js to version 12.18.4.
 * Fixed field/getter/setter access order in nashorn-compat mode, see [issue #343](https://github.com/graalvm/graaljs/issues/343).
 * ScriptEngine: Fixed "Multiple applicable overloads found" error in nashorn-compat mode, see [issue #286](https://github.com/graalvm/graaljs/issues/286).
 * ScriptEngine: Enabled low precedence lossy number, string-to-boolean, and number-to-boolean conversions in nashorn-compat mode.
+* Fixed `Java.extend` to respect `HostAccess.Builder.allowImplementations`, see [issue #294](https://github.com/graalvm/graaljs/issues/294).
+* Added Java host interop support for mapping JS objects to abstract classes (if `HostAccess` allows it).
+* `js.foreign-object-prototype` is a supported option to set JavaScript prototypes for foreign objects mimicing JavaScript types. It was renamed from `js.experimental-foreign-object-prototype`.
+* Changed `ToPrimitive` abstract operation to follow the specification for foreign objects. `InteropLibrary.toDisplayString` is not used by `ToPrimitive/ToString` conversions anymore.
 
 ## Version 20.2.0
 * Implemented the [Intl.NumberFormat Unified API](https://github.com/tc39/proposal-unified-intl-numberformat) proposal.

@@ -3,7 +3,7 @@ suite = {
 
   "name" : "graal-js",
 
-  "version" : "20.3.0",
+  "version" : "21.1.0",
   "release" : False,
   "groupId" : "org.graalvm.js",
   "url" : "http://www.graalvm.org/",
@@ -24,7 +24,7 @@ suite = {
         {
            "name" : "regex",
            "subdir" : True,
-           "version" : "683d5bdb11baace6319c4c8bb7b2a363a1a4d1a8",
+           "version" : "322b03c9e896bf57642ee1f511c9a809ca83ed7d",
            "urls" : [
                 {"url" : "https://github.com/oracle/graal.git", "kind" : "git"},
                 {"url" : "https://curio.ssw.jku.at/nexus/content/repositories/snapshots", "kind" : "binary"},
@@ -60,89 +60,18 @@ suite = {
 
     "ICU4J" : {
       "moduleName" : "com.ibm.icu",
-      "sha1" : "2e159807158095566726600534034030dddab6d0",
-      "sourceSha1" : "eb549b85cf9012f129d7d0489cd52fd49e9d9fc4",
+      "sha1" : "76893e6000401ace133a65262254be0ebe556d46",
+      "sourceSha1" : "fae7d45fe56f4ef2a35ef6bd30245052268ffda1",
       "maven" : {
         "groupId" : "com.ibm.icu",
         "artifactId" : "icu4j",
-        "version" : "67.1",
+        "version" : "68.2",
       },
-    },
-
-    "ASM-7.1" : {
-      "moduleName" : "org.objectweb.asm",
-      "sha1" : "fa29aa438674ff19d5e1386d2c3527a0267f291e",
-      "sourceSha1" : "9d170062d595240da35301362b079e5579c86f49",
-      "maven" : {
-        "groupId" : "org.ow2.asm",
-        "artifactId" : "asm",
-        "version" : "7.1",
-      },
-    },
-
-    "ASM_TREE-7.1" : {
-      "moduleName" : "org.objectweb.asm.tree",
-      "sha1" : "a3662cf1c1d592893ffe08727f78db35392fa302",
-      "sourceSha1" : "157238292b551de8680505fa2d19590d136e25b9",
-      "maven" : {
-        "groupId" : "org.ow2.asm",
-        "artifactId" : "asm-tree",
-        "version" : "7.1",
-      },
-      "dependencies" : [
-        "ASM-7.1",
-      ],
-    },
-
-    "ASM_ANALYSIS-7.1" : {
-      "moduleName" : "org.objectweb.asm.tree.analysis",
-      "sha1" : "379e0250f7a4a42c66c5e94e14d4c4491b3c2ed3",
-      "sourceSha1" : "36789198124eb075f1a5efa18a0a7812fb16f47f",
-      "maven" : {
-        "groupId" : "org.ow2.asm",
-        "artifactId" : "asm-analysis",
-        "version" : "7.1",
-      },
-      "dependencies" : [
-        "ASM_TREE-7.1",
-      ],
-    },
-
-    "ASM_COMMONS-7.1" : {
-      "moduleName" : "org.objectweb.asm.commons",
-      "sha1" : "431dc677cf5c56660c1c9004870de1ed1ea7ce6c",
-      "sourceSha1" : "a62ff3ae6e37affda7c6fb7d63b89194c6d006ee",
-      "maven" : {
-        "groupId" : "org.ow2.asm",
-        "artifactId" : "asm-commons",
-        "version" : "7.1",
-      },
-      "dependencies" : [
-        "ASM-7.1",
-        "ASM_TREE-7.1",
-        "ASM_ANALYSIS-7.1",
-      ],
-    },
-
-    "ASM_UTIL-7.1" : {
-      "moduleName" : "org.objectweb.asm.util",
-      "sha1" : "5b0b0f8cdb6c90582302ffcf5c20447206122f48",
-      "sourceSha1" : "728ab1171a60dd2c408e6dd1d12fceb560635346",
-      "maven" : {
-        "groupId" : "org.ow2.asm",
-        "artifactId" : "asm-util",
-        "version" : "7.1",
-      },
-      "dependencies" : [
-        "ASM-7.1",
-        "ASM_TREE-7.1",
-        "ASM_ANALYSIS-7.1",
-      ],
     },
 
     "TEST262" : {
-      "sha1" : "551f5233714aea646d97cfc97c1f4cc7f34bd683",
-      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/truffle/js/test262-538fcd88.tar.bz2"],
+      "sha1" : "a4d799e4324963f70c5f2201c1bdd2ae577ec476",
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/truffle/js/test262-950d0975.tar.bz2"],
     },
 
     "TESTNASHORN" : {
@@ -161,8 +90,8 @@ suite = {
     },
 
     "TESTV8" : {
-      "sha1" : "11c15b8c2f0ef3b6cce1162a6c52057bebab45d7",
-      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/truffle/js/testv8-20200722.tar.gz"],
+      "sha1" : "464716ee065d14bc9b4d0b295c07d18999be2d8a",
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/truffle/js/testv8-20210215.tar.gz"],
     },
 
     "JACKSON_CORE" : {
@@ -203,9 +132,6 @@ suite = {
         "com.oracle.truffle.js.codec",
         "com.oracle.truffle.js.runtime.doubleconv",
         "truffle:TRUFFLE_API",
-        "ASM-7.1",
-        "ASM_COMMONS-7.1",
-        "ASM_UTIL-7.1",
         "ICU4J",
       ],
       "annotationProcessors" : ["truffle:TRUFFLE_DSL_PROCESSOR", "TRUFFLE_JS_FACTORY_PROCESSOR"],
@@ -270,6 +196,7 @@ suite = {
       "sourceDirs" : ["src"],
       "dependencies" : [
         "sdk:LAUNCHER_COMMON",
+        "sdk:JLINE3",
       ],
       "jacoco" : "include",
       "checkstyle" : "com.oracle.truffle.js",
@@ -447,6 +374,7 @@ suite = {
         "JACKSON_DATABIND",
         "NASHORN_INTERNAL_TESTS",
       ],
+      "annotationProcessors" : ["truffle:TRUFFLE_DSL_PROCESSOR"],
       "checkstyle" : "com.oracle.truffle.js",
       "javaCompliance" : "8+",
       "workingSets" : "Truffle,JavaScript,Test",
@@ -479,7 +407,6 @@ suite = {
         },
         "exports" : [
           "com.oracle.truffle.js.lang to org.graalvm.truffle",
-          "com.oracle.truffle.js.runtime.java.adapter",
         ],
       },
       "subDir" : "src",
@@ -493,11 +420,6 @@ suite = {
         "sdk:GRAAL_SDK",
       ],
       "exclude": [
-        "ASM-7.1",
-        "ASM_TREE-7.1",
-        "ASM_ANALYSIS-7.1",
-        "ASM_COMMONS-7.1",
-        "ASM_UTIL-7.1",
         "ICU4J",
       ],
       "description" : "Graal JavaScript engine",

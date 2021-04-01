@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -47,14 +47,16 @@ import java.util.List;
 import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.ExactMath;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.interop.InteropException;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.TruffleObject;
+import com.oracle.truffle.api.nodes.EncapsulatingNodeReference;
+import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.HiddenKey;
-import com.oracle.truffle.api.object.ObjectType;
 import com.oracle.truffle.api.profiles.BranchProfile;
 import com.oracle.truffle.api.profiles.ConditionProfile;
 import com.oracle.truffle.js.lang.JavaScriptLanguage;
@@ -87,7 +89,6 @@ import com.oracle.truffle.js.runtime.objects.JSObject;
 import com.oracle.truffle.js.runtime.objects.Null;
 import com.oracle.truffle.js.runtime.objects.Nullish;
 import com.oracle.truffle.js.runtime.objects.PropertyDescriptor;
-import com.oracle.truffle.js.runtime.objects.PropertyReference;
 import com.oracle.truffle.js.runtime.objects.Undefined;
 import com.oracle.truffle.js.runtime.util.JSHashMap;
 
@@ -264,13 +265,13 @@ public final class JSRuntime {
      * objects.
      */
     public static boolean isObject(Object vo) {
-        assert vo instanceof JSObject == hasJSObjectType(vo);
+        assert vo instanceof JSObject == hasJSDynamicType(vo);
         return vo instanceof JSObject;
     }
 
-    private static boolean hasJSObjectType(Object vo) {
+    private static boolean hasJSDynamicType(Object vo) {
         if (JSDynamicObject.isJSDynamicObject(vo)) {
-            ObjectType type = ((JSDynamicObject) vo).getShape().getObjectType();
+            Object type = ((JSDynamicObject) vo).getShape().getDynamicType();
             return (type instanceof JSClass) && (type != Null.NULL_CLASS);
         } else {
             return false;
@@ -320,7 +321,7 @@ public final class JSRuntime {
                 return JSObject.toPrimitive((DynamicObject) value, hint);
             } else if (isForeignObject(value)) {
                 TruffleObject tObj = (TruffleObject) value;
-                return toPrimitiveFromForeign(tObj, TO_STRING_MAX_DEPTH);
+                return toPrimitiveFromForeign(tObj, hint);
             }
         }
         return value;
@@ -331,7 +332,7 @@ public final class JSRuntime {
      * Converts a foreign object to a primitive value.
      */
     @TruffleBoundary
-    public static Object toPrimitiveFromForeign(Object tObj, int depth) {
+    public static Object toPrimitiveFromForeign(Object tObj, String hint) {
         TruffleLanguage.Env env;
         InteropLibrary interop = InteropLibrary.getFactory().getUncached(tObj);
         if (interop.isNull(tObj)) {
@@ -347,11 +348,57 @@ public final class JSRuntime {
             } else {
                 return JSRuntime.toJSNull(javaObject.toString());
             }
-        } else if (interop.isBoolean(tObj) || interop.isString(tObj) || interop.isNumber(tObj)) {
+        } else if (JSInteropUtil.isBoxedPrimitive(tObj, interop)) {
             return JSInteropUtil.toPrimitiveOrDefault(tObj, Null.instance, interop, null);
         } else {
-            return JSRuntime.foreignToString(tObj, depth, true);
+            return foreignOrdinaryToPrimitive(tObj, hint);
         }
+    }
+
+    @TruffleBoundary
+    private static Object foreignOrdinaryToPrimitive(Object obj, String hint) {
+        JSRealm realm = JavaScriptLanguage.getCurrentJSRealm();
+        InteropLibrary interop = InteropLibrary.getFactory().getUncached(obj);
+        String[] methodNames;
+        if (hint.equals(HINT_STRING)) {
+            methodNames = new String[]{TO_STRING, VALUE_OF};
+        } else {
+            assert JSRuntime.HINT_NUMBER.equals(hint);
+            methodNames = new String[]{VALUE_OF, TO_STRING};
+        }
+        DynamicObject proto;
+        if (interop.hasArrayElements(obj)) {
+            proto = realm.getArrayPrototype();
+        } else if (interop.isExecutable(obj)) {
+            proto = realm.getFunctionPrototype();
+        } else if (interop.isInstant(obj)) {
+            proto = realm.getDatePrototype();
+        } else {
+            proto = realm.getObjectPrototype();
+        }
+
+        for (String name : methodNames) {
+            if (interop.hasMembers(obj) && interop.isMemberInvocable(obj, name)) {
+                Object result;
+                try {
+                    result = importValue(interop.invokeMember(obj, name));
+                } catch (InteropException e) {
+                    result = null;
+                }
+                if (result != null && !isObject(result)) {
+                    return result;
+                }
+            }
+
+            Object method = JSObject.getMethod(proto, name);
+            if (isCallable(method)) {
+                Object result = call(method, obj, new Object[]{});
+                if (!isObject(result)) {
+                    return result;
+                }
+            }
+        }
+        throw Errors.createTypeErrorCannotConvertToPrimitiveValue();
     }
 
     /**
@@ -378,7 +425,7 @@ public final class JSRuntime {
             InteropLibrary interop = InteropLibrary.getFactory().getUncached(value);
             if (interop.isNull(value)) {
                 return false;
-            } else if (interop.isBoolean(value) || interop.isString(value) || interop.isNumber(value)) {
+            } else if (JSInteropUtil.isBoxedPrimitive(value, interop)) {
                 return toBoolean(JSInteropUtil.toPrimitiveOrDefault(value, Null.instance, interop, null));
             } else {
                 return true;
@@ -408,7 +455,7 @@ public final class JSRuntime {
         if (isObject(value)) {
             primitive = JSObject.toPrimitive((DynamicObject) value, HINT_NUMBER);
         } else if (isForeignObject(value)) {
-            primitive = toPrimitiveFromForeign(value, TO_STRING_MAX_DEPTH);
+            primitive = toPrimitiveFromForeign(value, HINT_NUMBER);
         } else {
             primitive = value;
         }
@@ -784,11 +831,7 @@ public final class JSRuntime {
     }
 
     public static double truncateDouble(double value) {
-        return Math.signum(value) * JSRuntime.mathFloor(Math.abs(value));
-    }
-
-    public static double truncateDouble2(double thing) {
-        return (thing < 0) ? JSRuntime.mathCeil(thing) : JSRuntime.mathFloor(thing);
+        return ExactMath.truncate(value);
     }
 
     /**
@@ -834,7 +877,7 @@ public final class JSRuntime {
     }
 
     private static double doubleModuloTwo32(double value) {
-        return value - JSRuntime.mathFloor(value / TWO32) * TWO32;
+        return value - Math.floor(value / TWO32) * TWO32;
     }
 
     /**
@@ -879,7 +922,7 @@ public final class JSRuntime {
             return toString(JSObject.toPrimitive((DynamicObject) value, HINT_STRING));
         } else if (value instanceof TruffleObject) {
             assert !isJSNative(value);
-            return toString(toPrimitiveFromForeign(value, TO_STRING_MAX_DEPTH));
+            return toString(toPrimitiveFromForeign(value, HINT_STRING));
         }
         throw toStringTypeError(value);
     }
@@ -1068,11 +1111,6 @@ public final class JSRuntime {
         }
         sb.append(isArrayLike ? ']' : '}');
         return sb.toString();
-    }
-
-    @TruffleBoundary
-    public static String foreignToString(Object value) {
-        return foreignToString(value, TO_STRING_MAX_DEPTH, true);
     }
 
     private static String foreignToString(Object value, int depth, boolean allowSideEffects) {
@@ -1343,8 +1381,6 @@ public final class JSRuntime {
             return (String) obj;
         } else if (obj instanceof JSLazyString) {
             return ((JSLazyString) obj).toString();
-        } else if (obj instanceof PropertyReference) {
-            return ((PropertyReference) obj).toString();
         }
         return Boundaries.javaToString(obj);
     }
@@ -1447,7 +1483,16 @@ public final class JSRuntime {
         if (CompilerDirectives.injectBranchProbability(CompilerDirectives.LIKELY_PROBABILITY, JSDynamicObject.isJSDynamicObject(value))) {
             return (DynamicObject) value;
         }
-        return toObjectFromPrimitive(ctx, value, true);
+        Object unboxedValue = value;
+        if (isForeignObject(value)) {
+            InteropLibrary interop = InteropLibrary.getUncached(value);
+            assert !interop.isNull(value);
+            unboxedValue = JSInteropUtil.toPrimitiveOrDefault(value, null, interop, null);
+            if (unboxedValue == null) {
+                return (TruffleObject) value; // not a boxed primitive value
+            }
+        }
+        return toObjectFromPrimitive(ctx, unboxedValue, true);
     }
 
     @TruffleBoundary
@@ -1460,8 +1505,6 @@ public final class JSRuntime {
             return JSString.create(ctx, (JSLazyString) value);
         } else if (value instanceof BigInt) {
             return JSBigInt.create(ctx, (BigInt) value);
-        } else if (value instanceof PropertyReference) {
-            return JSString.create(ctx, value.toString());
         } else if (isNumber(value)) {
             return JSNumber.create(ctx, (Number) value);
         } else if (value instanceof Symbol) {
@@ -1646,7 +1689,7 @@ public final class JSRuntime {
      * Implementation of the abstract operation RequireObjectCoercible.
      */
     public static <T> T requireObjectCoercible(T argument, JSContext context) {
-        if (argument == Undefined.instance || argument == Null.instance) {
+        if (argument == Undefined.instance || argument == Null.instance || (isForeignObject(argument) && InteropLibrary.getUncached(argument).isNull(argument))) {
             throw Errors.createTypeErrorNotObjectCoercible(argument, null, context);
         }
         return argument;
@@ -1968,11 +2011,11 @@ public final class JSRuntime {
      * Is value is a {@link CharSequence} that lazily evaluates to a {@link String}).
      */
     public static boolean isLazyString(Object value) {
-        return value instanceof JSLazyString || value instanceof PropertyReference;
+        return value instanceof JSLazyString;
     }
 
     public static boolean isStringClass(Class<?> clazz) {
-        return String.class.isAssignableFrom(clazz) || JSLazyString.class.isAssignableFrom(clazz) || PropertyReference.class.isAssignableFrom(clazz);
+        return String.class.isAssignableFrom(clazz) || JSLazyString.class.isAssignableFrom(clazz);
     }
 
     public static Object nullToUndefined(Object value) {
@@ -2429,6 +2472,8 @@ public final class JSRuntime {
     public static Object toPropertyKey(Object arg) {
         if (arg instanceof String) {
             return arg;
+        } else if (arg instanceof Symbol) {
+            return arg;
         }
         Object key = toPrimitive(arg);
         if (key instanceof Symbol) {
@@ -2451,6 +2496,22 @@ public final class JSRuntime {
             return JSInteropUtil.call(fnObj, arguments);
         } else {
             throw Errors.createTypeErrorNotAFunction(fnObj);
+        }
+    }
+
+    public static Object call(Object fnObj, Object holder, Object[] arguments, Node encapsulatingNode) {
+        EncapsulatingNodeReference encapsulating = null;
+        Node prev = null;
+        if (encapsulatingNode != null) {
+            encapsulating = EncapsulatingNodeReference.getCurrent();
+            prev = encapsulating.set(encapsulatingNode);
+        }
+        try {
+            return call(fnObj, holder, arguments);
+        } finally {
+            if (encapsulatingNode != null) {
+                encapsulating.set(prev);
+            }
         }
     }
 
@@ -2497,51 +2558,7 @@ public final class JSRuntime {
             return false;
         }
         double d = doubleValue((Number) obj);
-        if (Double.isInfinite(d) || Double.isNaN(d)) {
-            return false;
-        }
-        return Math.floor(Math.abs(d)) == Math.abs(d);
-    }
-
-    @TruffleBoundary
-    public static double mathFloor(double d) {
-        if (Double.isNaN(d)) {
-            return Double.NaN;
-        }
-        if (JSRuntime.isNegativeZero(d)) {
-            return -0.0;
-        }
-        if (JSRuntime.isSafeInteger(d)) {
-            long i = (long) d;
-            return d < i ? i - 1 : i;
-        } else {
-            return Math.floor(d);
-        }
-    }
-
-    @TruffleBoundary
-    public static double mathCeil(double d) {
-        if (Double.isNaN(d)) {
-            return Double.NaN;
-        }
-        if (JSRuntime.isNegativeZero(d)) {
-            return -0.0;
-        }
-        if (JSRuntime.isSafeInteger(d)) {
-            long i = (long) d;
-            long result = d > i ? i + 1 : i;
-            if (result == 0 && d < 0) {
-                return -0.0;
-            }
-            return result;
-        } else {
-            return Math.ceil(d);
-        }
-    }
-
-    @TruffleBoundary
-    public static double mathRint(double d) {
-        return Math.rint(d);
+        return d - JSRuntime.truncateDouble(d) == 0.0;
     }
 
     /**

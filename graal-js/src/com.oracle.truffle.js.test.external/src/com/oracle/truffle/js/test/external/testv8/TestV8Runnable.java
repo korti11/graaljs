@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -48,6 +48,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -76,16 +77,29 @@ public class TestV8Runnable extends TestRunnable {
     private static final String HARMONY_PRIVATE_FIELDS = "--harmony-private-fields";
     private static final String HARMONY_PRIVATE_METHODS = "--harmony-private-methods";
     private static final String NO_ASYNC_STACK_TRACES = "--noasync-stack-traces";
+    private static final String NO_EXPOSE_WASM = "--noexpose-wasm";
 
-    private static final String[] ES2021_FLAGS = new String[]{
-                    "--harmony-logical-assignment",
-                    "--harmony-promise-any",
+    private static final Set<String> UNSUPPORTED_FLAGS = new HashSet<>(Arrays.asList(new String[]{
+                    "--experimental-wasm-bulk-memory",
+                    "--experimental-wasm-compilation-hints",
+                    "--experimental-wasm-eh",
+                    "--experimental-wasm-gc",
+                    "--experimental-wasm-memory64",
+                    "--experimental-wasm-mv",
+                    "--experimental-wasm-reftypes",
+                    "--experimental-wasm-return-call",
+                    "--experimental-wasm-simd",
+                    "--experimental-wasm-threads",
+                    "--experimental-wasm-typed-funcref",
+                    "--experimental-wasm-type-reflection",
+                    "--harmony-import-assertions",
+                    "--wasm-staging"
+    }));
+    private static final Set<String> ES2022_FLAGS = new HashSet<>(Arrays.asList(new String[]{
                     "--harmony-regexp-match-indices",
-                    "--harmony-string-replaceall",
                     "--harmony-top-level-await",
-                    "--harmony-weak-refs",
-                    "--harmony-weak-refs-with-cleanup-some"
-    };
+                    "--harmony-atomics-waitasync"
+    }));
 
     private static final String FLAGS_PREFIX = "// Flags: ";
     private static final String FILES_PREFIX = "// Files: ";
@@ -93,6 +107,8 @@ public class TestV8Runnable extends TestRunnable {
     private static final Pattern FILES_FIND_PATTERN = Pattern.compile("// Files: (.*)");
     private static final Pattern SPLIT_PATTERN = Pattern.compile("\\s+");
     private static final String MODULE_FILE_EXT = ".mjs";
+
+    private static final Source GC_NOOP_SOURCE = Source.newBuilder("js", "gc = function() { };", "").buildLiteral();
 
     public TestV8Runnable(TestSuite suite, TestFile testFile) {
         super(suite, testFile);
@@ -113,6 +129,9 @@ public class TestV8Runnable extends TestRunnable {
         if (flags.contains(HARMONY_SHAREDARRAYBUFFER)) {
             extraOptions.put(JSContextOptions.SHARED_ARRAY_BUFFER_NAME, "true");
         }
+        if (suite.getConfig().isPolyglot()) {
+            extraOptions.put(JSContextOptions.WEBASSEMBLY_NAME, Boolean.toString(!flags.contains(NO_EXPOSE_WASM)));
+        }
 
         suite.logVerbose("Starting: " + getName());
 
@@ -120,18 +139,21 @@ public class TestV8Runnable extends TestRunnable {
             printScript(TestSuite.toPrintableCode(code));
         }
 
-        // ecma versions
+        boolean supported = true;
         int minESVersion = suite.getConfig().getMinESVersion();
+        int flagVersion = minESVersion;
+        for (String flag : flags) {
+            if (ES2022_FLAGS.contains(flag)) {
+                assert !UNSUPPORTED_FLAGS.contains(flag) : flag;
+                flagVersion = JSConfig.ECMAScript2022;
+            } else if (UNSUPPORTED_FLAGS.contains(flag)) {
+                supported = false;
+            }
+        }
+
         TestFile.EcmaVersion ecmaVersion = testFile.getEcmaVersion();
         if (ecmaVersion == null) {
-            boolean needsES2021 = false;
-            for (String es2021Flag : ES2021_FLAGS) {
-                if (flags.contains(es2021Flag)) {
-                    needsES2021 = true;
-                    break;
-                }
-            }
-            ecmaVersion = TestFile.EcmaVersion.forVersions(needsES2021 ? JSConfig.ECMAScript2021 : minESVersion);
+            ecmaVersion = TestFile.EcmaVersion.forVersions(flagVersion);
         } else {
             ecmaVersion = ecmaVersion.filterByMinVersion(minESVersion);
         }
@@ -143,8 +165,11 @@ public class TestV8Runnable extends TestRunnable {
             extraOptions.put(JSContextOptions.ASYNC_STACK_TRACES_NAME, "false");
         }
 
-        // now run it
-        testFile.setResult(runTest(ecmaVersion, version -> runInternal(version, file, negative, shouldThrow, module, extraOptions, setupFiles)));
+        if (supported) {
+            testFile.setResult(runTest(ecmaVersion, version -> runInternal(version, file, negative, shouldThrow, module, extraOptions, setupFiles)));
+        } else {
+            testFile.setStatus(TestFile.Status.SKIP); // attn: does not force-skip statusOverrides
+        }
     }
 
     private TestFile.Result runInternal(int ecmaVersion, File file, boolean negative, boolean shouldThrow, boolean module, Map<String, String> extraOptions, List<String> setupFiles) {
@@ -178,8 +203,9 @@ public class TestV8Runnable extends TestRunnable {
     }
 
     private TestFile.Result runInJVM(int ecmaVersion, File file, boolean negative, boolean shouldThrow, boolean module, Map<String, String> extraOptions, List<String> setupFiles) {
+        boolean replaceGCBuiltin = shouldReplaceGCBuiltin(file);
         Source[] prequelSources = loadHarnessSources(ecmaVersion);
-        Source[] sources = Arrays.copyOf(prequelSources, prequelSources.length + 2 + setupFiles.size());
+        Source[] sources = Arrays.copyOf(prequelSources, prequelSources.length + 2 + (replaceGCBuiltin ? 1 : 0) + setupFiles.size());
         int sourceIdx = prequelSources.length;
         try {
             for (String setupFile : setupFiles) {
@@ -188,8 +214,12 @@ public class TestV8Runnable extends TestRunnable {
         } catch (IOException ioex) {
             return TestFile.Result.failed(ioex);
         }
-        sources[sources.length - 1] = Source.newBuilder(JavaScriptLanguage.ID, createTestFileNamePrefix(file), "").buildLiteral();
-        sources[sources.length - 2] = ((TestV8) suite).getMockupSource();
+        sources[sourceIdx++] = ((TestV8) suite).getMockupSource();
+        if (replaceGCBuiltin) {
+            sources[sourceIdx++] = GC_NOOP_SOURCE;
+        }
+        sources[sourceIdx++] = Source.newBuilder(JavaScriptLanguage.ID, createTestFileNamePrefix(file), "").buildLiteral();
+        assert sourceIdx == sources.length;
 
         TestCallable tc = new TestCallable(suite, sources, toSource(file, module), file, ecmaVersion, extraOptions);
         if (!suite.getConfig().isPrintFullOutput()) {
@@ -208,6 +238,13 @@ public class TestV8Runnable extends TestRunnable {
                 return TestFile.Result.failed(e);
             }
         }
+    }
+
+    // delete the gc() builtin in cases where not strictly needed
+    // this avoids excessive gc()ing in some tests
+    private static boolean shouldReplaceGCBuiltin(File file) {
+        String fp = file.getPath();
+        return fp.endsWith("es6/typedarray-of.js") || fp.endsWith("regress/regress-crbug-854299.js");
     }
 
     private TestFile.Result runExtLauncher(int ecmaVersion, File file, boolean negative, boolean shouldThrow, boolean module, Map<String, String> extraOptions, List<String> setupFiles) {

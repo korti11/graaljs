@@ -55,7 +55,9 @@ const {
 } = require('internal/process/execution');
 
 const publicWorker = require('worker_threads');
-const debug = require('internal/util/debuglog').debuglog('worker');
+let debug = require('internal/util/debuglog').debuglog('worker', (fn) => {
+  debug = fn;
+});
 
 const assert = require('internal/assert');
 
@@ -75,7 +77,7 @@ debug(`[${threadId}] is setting up worker child environment`);
 
 // Set up the message port and start listening
 const port = getEnvMessagePort();
-// Graal.js: explicitly initialize support for Java objects in messages, 
+// Graal.js: explicitly initialize support for Java objects in messages,
 // since env message port does not call oninit()
 port.sharedMemMessaging = SharedMemMessagingInit();
 
@@ -137,9 +139,14 @@ port.on('message', (message) => {
     // The counter is only passed to the workers created by the main thread, not
     // to workers created by other workers.
     let cachedCwd = '';
+    let lastCounter = -1;
     const originalCwd = process.cwd;
 
     process.cwd = function() {
+      const currentCounter = Atomics.load(cwdCounter, 0);
+      if (currentCounter === lastCounter)
+        return cachedCwd;
+      lastCounter = currentCounter;
       cachedCwd = originalCwd();
       return cachedCwd;
     };
@@ -151,7 +158,7 @@ port.on('message', (message) => {
     debug(`[${threadId}] starts worker script ${filename} ` +
           `(eval = ${eval}) at cwd = ${process.cwd()}`);
     port.postMessage({ type: UP_AND_RUNNING });
-    if (doEval) {
+    if (doEval === 'classic') {
       const { evalScript } = require('internal/process/execution');
       const name = '[worker eval]';
       // This is necessary for CJS module compilation.
@@ -163,6 +170,11 @@ port.on('message', (message) => {
       });
       process.argv.splice(1, 0, name);
       evalScript(name, filename);
+    } else if (doEval === 'module') {
+      const { evalModule } = require('internal/process/execution');
+      evalModule(filename).catch((e) => {
+        workerOnGlobalUncaughtException(e, true);
+      });
     } else {
       // script filename
       // runMain here might be monkey-patched by users in --require.
@@ -200,7 +212,7 @@ function workerOnGlobalUncaughtException(error, fromPromise) {
 
   let serialized;
   try {
-    const { serializeError } = require('internal/error-serdes');
+    const { serializeError } = require('internal/error_serdes');
     serialized = serializeError(error);
   } catch {}
   debug(`[${threadId}] uncaught exception serialized = ${!!serialized}`);
