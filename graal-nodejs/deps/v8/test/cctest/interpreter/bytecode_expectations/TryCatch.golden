@@ -11,8 +11,9 @@ snippet: "
 "
 frame size: 2
 parameter count: 1
-bytecode array length: 22
+bytecode array length: 23
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
                 B(Mov), R(context), R(0),
   /*   40 S> */ B(LdaSmi), I8(1),
   /*   49 S> */ B(Return),
@@ -30,7 +31,7 @@ constant pool: [
   SCOPE_INFO_TYPE,
 ]
 handlers: [
-  [3, 6, 6],
+  [4, 7, 7],
 ]
 
 ---
@@ -41,8 +42,9 @@ snippet: "
 "
 frame size: 3
 parameter count: 1
-bytecode array length: 54
+bytecode array length: 55
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
                 B(Mov), R(context), R(1),
   /*   47 S> */ B(LdaSmi), I8(1),
                 B(Star), R(0),
@@ -77,7 +79,7 @@ constant pool: [
   SCOPE_INFO_TYPE,
 ]
 handlers: [
-  [3, 7, 9],
-  [27, 31, 33],
+  [4, 8, 10],
+  [28, 32, 34],
 ]
 

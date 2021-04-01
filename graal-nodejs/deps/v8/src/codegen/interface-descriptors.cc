@@ -85,8 +85,6 @@ void CallDescriptors::InitializeOncePerProcess() {
   DCHECK(!AllocateDescriptor{}.HasContextParameter());
   DCHECK(!AllocateHeapNumberDescriptor{}.HasContextParameter());
   DCHECK(!AbortDescriptor{}.HasContextParameter());
-  DCHECK(!WasmFloat32ToNumberDescriptor{}.HasContextParameter());
-  DCHECK(!WasmFloat64ToNumberDescriptor{}.HasContextParameter());
 }
 
 void CallDescriptors::TearDown() {
@@ -202,21 +200,9 @@ void LoadDescriptor::InitializePlatformSpecific(
   data->InitializePlatformSpecific(arraysize(registers), registers);
 }
 
-void LoadNoFeedbackDescriptor::InitializePlatformSpecific(
-    CallInterfaceDescriptorData* data) {
-  Register registers[] = {ReceiverRegister(), NameRegister(), ICKindRegister()};
-  data->InitializePlatformSpecific(arraysize(registers), registers);
-}
-
 void LoadGlobalDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
   Register registers[] = {NameRegister(), SlotRegister()};
-  data->InitializePlatformSpecific(arraysize(registers), registers);
-}
-
-void LoadGlobalNoFeedbackDescriptor::InitializePlatformSpecific(
-    CallInterfaceDescriptorData* data) {
-  Register registers[] = {NameRegister(), ICKindRegister()};
   data->InitializePlatformSpecific(arraysize(registers), registers);
 }
 
@@ -288,11 +274,6 @@ void TypeConversionStackParameterDescriptor::InitializePlatformSpecific(
 }
 
 void AsyncFunctionStackParameterDescriptor::InitializePlatformSpecific(
-    CallInterfaceDescriptorData* data) {
-  data->InitializePlatformSpecific(0, nullptr);
-}
-
-void GetIteratorStackParameterDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
   data->InitializePlatformSpecific(0, nullptr);
 }
@@ -377,30 +358,24 @@ void ArrayNArgumentsConstructorDescriptor::InitializePlatformSpecific(
   data->InitializePlatformSpecific(arraysize(registers), registers);
 }
 
-#if !V8_TARGET_ARCH_IA32
-// We need a custom descriptor on ia32 to avoid using xmm0.
-void WasmFloat32ToNumberDescriptor::InitializePlatformSpecific(
+void WasmMemoryGrowDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
   DefaultInitializePlatformSpecific(data, kParameterCount);
 }
 
-// We need a custom descriptor on ia32 to avoid using xmm0.
-void WasmFloat64ToNumberDescriptor::InitializePlatformSpecific(
+void WasmTableGetDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
   DefaultInitializePlatformSpecific(data, kParameterCount);
 }
-#endif  // !V8_TARGET_ARCH_IA32
 
-void WasmTableInitDescriptor::InitializePlatformSpecific(
+void WasmTableSetDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
-  DefaultInitializePlatformSpecific(data,
-                                    kParameterCount - kStackArgumentsCount);
+  DefaultInitializePlatformSpecific(data, kParameterCount);
 }
 
-void WasmTableCopyDescriptor::InitializePlatformSpecific(
+void WasmThrowDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
-  DefaultInitializePlatformSpecific(data,
-                                    kParameterCount - kStackArgumentsCount);
+  DefaultInitializePlatformSpecific(data, kParameterCount);
 }
 
 void WasmAtomicNotifyDescriptor::InitializePlatformSpecific(
@@ -409,23 +384,12 @@ void WasmAtomicNotifyDescriptor::InitializePlatformSpecific(
 }
 
 #if !defined(V8_TARGET_ARCH_MIPS) && !defined(V8_TARGET_ARCH_MIPS64)
-void WasmI32AtomicWait32Descriptor::InitializePlatformSpecific(
+void WasmI32AtomicWaitDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
   DefaultInitializePlatformSpecific(data, kParameterCount);
 }
 
-void WasmI32AtomicWait64Descriptor::InitializePlatformSpecific(
-    CallInterfaceDescriptorData* data) {
-  DefaultInitializePlatformSpecific(data, kParameterCount);
-}
-
-void WasmI64AtomicWait32Descriptor::InitializePlatformSpecific(
-    CallInterfaceDescriptorData* data) {
-  DefaultInitializePlatformSpecific(data,
-                                    kParameterCount - kStackArgumentsCount);
-}
-
-void WasmI64AtomicWait64Descriptor::InitializePlatformSpecific(
+void WasmI64AtomicWaitDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
   DefaultInitializePlatformSpecific(data, kParameterCount);
 }

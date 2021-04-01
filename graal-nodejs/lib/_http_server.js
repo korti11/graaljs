@@ -22,12 +22,10 @@
 'use strict';
 
 const {
-  ArrayIsArray,
   Error,
   ObjectKeys,
   ObjectSetPrototypeOf,
   Symbol,
-  SymbolFor,
 } = primordials;
 
 const net = require('net');
@@ -41,7 +39,6 @@ const {
   continueExpression,
   chunkExpression,
   kIncomingMessage,
-  kRequestTimeout,
   HTTPParser,
   isLenient,
   _checkInvalidHeaderChar: checkInvalidHeaderChar,
@@ -51,6 +48,7 @@ const { OutgoingMessage } = require('_http_outgoing');
 const {
   kOutHeaders,
   kNeedDrain,
+  nowDate,
   emitStatistics
 } = require('internal/http');
 const {
@@ -59,98 +57,92 @@ const {
 } = require('internal/async_hooks');
 const { IncomingMessage } = require('_http_incoming');
 const {
-  ERR_HTTP_REQUEST_TIMEOUT,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_STATUS_CODE,
   ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR
 } = require('internal/errors').codes;
-const {
-  validateInteger,
-  validateBoolean
-} = require('internal/validators');
 const Buffer = require('buffer').Buffer;
 const {
   DTRACE_HTTP_SERVER_REQUEST,
   DTRACE_HTTP_SERVER_RESPONSE
 } = require('internal/dtrace');
+const { getOptionValue } = require('internal/options');
 const { observerCounts, constants } = internalBinding('performance');
-const { setTimeout, clearTimeout } = require('timers');
 const { NODE_PERFORMANCE_ENTRY_TYPE_HTTP } = constants;
 
 const kServerResponse = Symbol('ServerResponse');
 const kServerResponseStatistics = Symbol('ServerResponseStatistics');
+const kDefaultHttpServerTimeout =
+  getOptionValue('--http-server-default-timeout');
 
 const STATUS_CODES = {
-  100: 'Continue',                   // RFC 7231 6.2.1
-  101: 'Switching Protocols',        // RFC 7231 6.2.2
-  102: 'Processing',                 // RFC 2518 10.1 (obsoleted by RFC 4918)
-  103: 'Early Hints',                // RFC 8297 2
-  200: 'OK',                         // RFC 7231 6.3.1
-  201: 'Created',                    // RFC 7231 6.3.2
-  202: 'Accepted',                   // RFC 7231 6.3.3
-  203: 'Non-Authoritative Information', // RFC 7231 6.3.4
-  204: 'No Content',                 // RFC 7231 6.3.5
-  205: 'Reset Content',              // RFC 7231 6.3.6
-  206: 'Partial Content',            // RFC 7233 4.1
-  207: 'Multi-Status',               // RFC 4918 11.1
-  208: 'Already Reported',           // RFC 5842 7.1
-  226: 'IM Used',                    // RFC 3229 10.4.1
-  300: 'Multiple Choices',           // RFC 7231 6.4.1
-  301: 'Moved Permanently',          // RFC 7231 6.4.2
-  302: 'Found',                      // RFC 7231 6.4.3
-  303: 'See Other',                  // RFC 7231 6.4.4
-  304: 'Not Modified',               // RFC 7232 4.1
-  305: 'Use Proxy',                  // RFC 7231 6.4.5
-  307: 'Temporary Redirect',         // RFC 7231 6.4.7
-  308: 'Permanent Redirect',         // RFC 7238 3
-  400: 'Bad Request',                // RFC 7231 6.5.1
-  401: 'Unauthorized',               // RFC 7235 3.1
-  402: 'Payment Required',           // RFC 7231 6.5.2
-  403: 'Forbidden',                  // RFC 7231 6.5.3
-  404: 'Not Found',                  // RFC 7231 6.5.4
-  405: 'Method Not Allowed',         // RFC 7231 6.5.5
-  406: 'Not Acceptable',             // RFC 7231 6.5.6
-  407: 'Proxy Authentication Required', // RFC 7235 3.2
-  408: 'Request Timeout',            // RFC 7231 6.5.7
-  409: 'Conflict',                   // RFC 7231 6.5.8
-  410: 'Gone',                       // RFC 7231 6.5.9
-  411: 'Length Required',            // RFC 7231 6.5.10
-  412: 'Precondition Failed',        // RFC 7232 4.2
-  413: 'Payload Too Large',          // RFC 7231 6.5.11
-  414: 'URI Too Long',               // RFC 7231 6.5.12
-  415: 'Unsupported Media Type',     // RFC 7231 6.5.13
-  416: 'Range Not Satisfiable',      // RFC 7233 4.4
-  417: 'Expectation Failed',         // RFC 7231 6.5.14
-  418: 'I\'m a Teapot',              // RFC 7168 2.3.3
-  421: 'Misdirected Request',        // RFC 7540 9.1.2
-  422: 'Unprocessable Entity',       // RFC 4918 11.2
-  423: 'Locked',                     // RFC 4918 11.3
-  424: 'Failed Dependency',          // RFC 4918 11.4
-  425: 'Too Early',                  // RFC 8470 5.2
-  426: 'Upgrade Required',           // RFC 2817 and RFC 7231 6.5.15
-  428: 'Precondition Required',      // RFC 6585 3
-  429: 'Too Many Requests',          // RFC 6585 4
-  431: 'Request Header Fields Too Large', // RFC 6585 5
-  451: 'Unavailable For Legal Reasons', // RFC 7725 3
-  500: 'Internal Server Error',      // RFC 7231 6.6.1
-  501: 'Not Implemented',            // RFC 7231 6.6.2
-  502: 'Bad Gateway',                // RFC 7231 6.6.3
-  503: 'Service Unavailable',        // RFC 7231 6.6.4
-  504: 'Gateway Timeout',            // RFC 7231 6.6.5
-  505: 'HTTP Version Not Supported', // RFC 7231 6.6.6
-  506: 'Variant Also Negotiates',    // RFC 2295 8.1
-  507: 'Insufficient Storage',       // RFC 4918 11.5
-  508: 'Loop Detected',              // RFC 5842 7.2
+  100: 'Continue',
+  101: 'Switching Protocols',
+  102: 'Processing',                 // RFC 2518, obsoleted by RFC 4918
+  103: 'Early Hints',
+  200: 'OK',
+  201: 'Created',
+  202: 'Accepted',
+  203: 'Non-Authoritative Information',
+  204: 'No Content',
+  205: 'Reset Content',
+  206: 'Partial Content',
+  207: 'Multi-Status',               // RFC 4918
+  208: 'Already Reported',
+  226: 'IM Used',
+  300: 'Multiple Choices',           // RFC 7231
+  301: 'Moved Permanently',
+  302: 'Found',
+  303: 'See Other',
+  304: 'Not Modified',
+  305: 'Use Proxy',
+  307: 'Temporary Redirect',
+  308: 'Permanent Redirect',         // RFC 7238
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  402: 'Payment Required',
+  403: 'Forbidden',
+  404: 'Not Found',
+  405: 'Method Not Allowed',
+  406: 'Not Acceptable',
+  407: 'Proxy Authentication Required',
+  408: 'Request Timeout',
+  409: 'Conflict',
+  410: 'Gone',
+  411: 'Length Required',
+  412: 'Precondition Failed',
+  413: 'Payload Too Large',
+  414: 'URI Too Long',
+  415: 'Unsupported Media Type',
+  416: 'Range Not Satisfiable',
+  417: 'Expectation Failed',
+  418: 'I\'m a Teapot',              // RFC 7168
+  421: 'Misdirected Request',
+  422: 'Unprocessable Entity',       // RFC 4918
+  423: 'Locked',                     // RFC 4918
+  424: 'Failed Dependency',          // RFC 4918
+  425: 'Unordered Collection',       // RFC 4918
+  426: 'Upgrade Required',           // RFC 2817
+  428: 'Precondition Required',      // RFC 6585
+  429: 'Too Many Requests',          // RFC 6585
+  431: 'Request Header Fields Too Large', // RFC 6585
+  451: 'Unavailable For Legal Reasons',
+  500: 'Internal Server Error',
+  501: 'Not Implemented',
+  502: 'Bad Gateway',
+  503: 'Service Unavailable',
+  504: 'Gateway Timeout',
+  505: 'HTTP Version Not Supported',
+  506: 'Variant Also Negotiates',    // RFC 2295
+  507: 'Insufficient Storage',       // RFC 4918
+  508: 'Loop Detected',
   509: 'Bandwidth Limit Exceeded',
-  510: 'Not Extended',               // RFC 2774 7
-  511: 'Network Authentication Required' // RFC 6585 6
+  510: 'Not Extended',               // RFC 2774
+  511: 'Network Authentication Required' // RFC 6585
 };
 
-const kOnMessageBegin = HTTPParser.kOnMessageBegin | 0;
 const kOnExecute = HTTPParser.kOnExecute | 0;
-const kOnTimeout = HTTPParser.kOnTimeout | 0;
 
 class HTTPServerAsyncResource {
   constructor(type, socket) {
@@ -184,7 +176,7 @@ ObjectSetPrototypeOf(ServerResponse.prototype, OutgoingMessage.prototype);
 ObjectSetPrototypeOf(ServerResponse, OutgoingMessage);
 
 ServerResponse.prototype._finish = function _finish() {
-  DTRACE_HTTP_SERVER_RESPONSE(this.socket);
+  DTRACE_HTTP_SERVER_RESPONSE(this.connection);
   if (this[kServerResponseStatistics] !== undefined) {
     emitStatistics(this[kServerResponseStatistics]);
   }
@@ -222,6 +214,7 @@ ServerResponse.prototype.assignSocket = function assignSocket(socket) {
   socket._httpMessage = this;
   socket.on('close', onServerResponseClose);
   this.socket = socket;
+  this.connection = socket;
   this.emit('socket', socket);
   this._flush();
 };
@@ -230,7 +223,7 @@ ServerResponse.prototype.detachSocket = function detachSocket(socket) {
   assert(socket._httpMessage === this);
   socket.removeListener('close', onServerResponseClose);
   socket._httpMessage = null;
-  this.socket = null;
+  this.socket = this.connection = null;
 };
 
 ServerResponse.prototype.writeContinue = function writeContinue(cb) {
@@ -271,16 +264,7 @@ function writeHead(statusCode, reason, obj) {
   if (this[kOutHeaders]) {
     // Slow-case: when progressive API and header fields are passed.
     let k;
-    if (ArrayIsArray(obj)) {
-      if (obj.length % 2 !== 0) {
-        throw new ERR_INVALID_ARG_VALUE('headers', obj);
-      }
-
-      for (let n = 0; n < obj.length; n += 2) {
-        k = obj[n + 0];
-        if (k) this.setHeader(k, obj[n + 1]);
-      }
-    } else if (obj) {
+    if (obj) {
       const keys = ObjectKeys(obj);
       // Retain for(;;) loop for performance reasons
       // Refs: https://github.com/nodejs/node/pull/30958
@@ -348,14 +332,12 @@ function Server(options, requestListener) {
   this[kIncomingMessage] = options.IncomingMessage || IncomingMessage;
   this[kServerResponse] = options.ServerResponse || ServerResponse;
 
-  const maxHeaderSize = options.maxHeaderSize;
-  if (maxHeaderSize !== undefined)
-    validateInteger(maxHeaderSize, 'maxHeaderSize', 0);
-  this.maxHeaderSize = maxHeaderSize;
-
   const insecureHTTPParser = options.insecureHTTPParser;
-  if (insecureHTTPParser !== undefined)
-    validateBoolean(insecureHTTPParser, 'options.insecureHTTPParser');
+  if (insecureHTTPParser !== undefined &&
+      typeof insecureHTTPParser !== 'boolean') {
+    throw new ERR_INVALID_ARG_TYPE(
+      'options.insecureHTTPParser', 'boolean', insecureHTTPParser);
+  }
   this.insecureHTTPParser = insecureHTTPParser;
 
   net.Server.call(this, { allowHalfOpen: true });
@@ -366,16 +348,15 @@ function Server(options, requestListener) {
 
   // Similar option to this. Too lazy to write my own docs.
   // http://www.squid-cache.org/Doc/config/half_closed_clients/
-  // https://wiki.squid-cache.org/SquidFaq/InnerWorkings#What_is_a_half-closed_filedescriptor.3F
+  // http://wiki.squid-cache.org/SquidFaq/InnerWorkings#What_is_a_half-closed_filedescriptor.3F
   this.httpAllowHalfOpen = false;
 
   this.on('connection', connectionListener);
 
-  this.timeout = 0;
+  this.timeout = kDefaultHttpServerTimeout;
   this.keepAliveTimeout = 5000;
   this.maxHeadersCount = null;
   this.headersTimeout = 60 * 1000; // 60 seconds
-  this.requestTimeout = 0;
 }
 ObjectSetPrototypeOf(Server.prototype, net.Server.prototype);
 ObjectSetPrototypeOf(Server, net.Server);
@@ -388,7 +369,9 @@ Server.prototype.setTimeout = function setTimeout(msecs, callback) {
   return this;
 };
 
-Server.prototype[EE.captureRejectionSymbol] = function(err, event, ...args) {
+Server.prototype[EE.captureRejectionSymbol] = function(
+  err, event, ...args) {
+
   switch (event) {
     case 'request':
       const [ , res] = args;
@@ -404,7 +387,7 @@ Server.prototype[EE.captureRejectionSymbol] = function(err, event, ...args) {
       }
       break;
     default:
-      net.Server.prototype[SymbolFor('nodejs.rejection')]
+      net.Server.prototype[Symbol.for('nodejs.rejection')]
         .call(this, err, event, ...args);
   }
 };
@@ -437,12 +420,13 @@ function connectionListenerInternal(server, socket) {
   parser.initialize(
     HTTPParser.REQUEST,
     new HTTPServerAsyncResource('HTTPINCOMINGMESSAGE', socket),
-    server.maxHeaderSize || 0,
     server.insecureHTTPParser === undefined ?
       isLenient() : server.insecureHTTPParser,
-    server.headersTimeout || 0,
   );
   parser.socket = socket;
+
+  // We are starting to wait for our headers.
+  parser.parsingHeadersStart = nowDate();
   socket.parser = parser;
 
   // Propagate headers limit from server instance to parser
@@ -493,19 +477,6 @@ function connectionListenerInternal(server, socket) {
   }
   parser[kOnExecute] =
     onParserExecute.bind(undefined, server, socket, parser, state);
-
-  parser[kOnTimeout] =
-    onParserTimeout.bind(undefined, server, socket);
-
-  // When receiving new requests on the same socket (pipelining or keep alive)
-  // make sure the requestTimeout is active.
-  parser[kOnMessageBegin] =
-    setRequestTimeout.bind(undefined, server, socket);
-
-  // This protects from DOS attack where an attacker establish the connection
-  // without sending any data on applications where server.timeout is left to
-  // the default value of zero.
-  setRequestTimeout(server, socket);
 
   socket._paused = false;
 }
@@ -593,35 +564,32 @@ function socketOnData(server, socket, parser, state, d) {
   onParserExecuteCommon(server, socket, parser, state, ret, d);
 }
 
-function onRequestTimeout(socket) {
-  socket[kRequestTimeout] = undefined;
-  socketOnError.call(socket, new ERR_HTTP_REQUEST_TIMEOUT());
-}
-
 function onParserExecute(server, socket, parser, state, ret) {
-  // When underlying `net.Socket` instance is consumed - no
-  // `data` events are emitted, and thus `socket.setTimeout` fires the
-  // callback even if the data is constantly flowing into the socket.
-  // See, https://github.com/nodejs/node/commit/ec2822adaad76b126b5cccdeaa1addf2376c9aa6
   socket._unrefTimer();
+  const start = parser.parsingHeadersStart;
   debug('SERVER socketOnParserExecute %d', ret);
+
+  // If we have not parsed the headers, destroy the socket
+  // after server.headersTimeout to protect from DoS attacks.
+  // start === 0 means that we have parsed headers, while
+  // server.headersTimeout === 0 means user disabled this check.
+  if (
+    start !== 0 && server.headersTimeout &&
+    nowDate() - start > server.headersTimeout
+  ) {
+    const serverTimeout = server.emit('timeout', socket);
+
+    if (!serverTimeout)
+      socket.destroy();
+    return;
+  }
+
   onParserExecuteCommon(server, socket, parser, state, ret, undefined);
-}
-
-function onParserTimeout(server, socket) {
-  const serverTimeout = server.emit('timeout', socket);
-
-  if (!serverTimeout)
-    socket.destroy();
 }
 
 const noop = () => {};
 const badRequestResponse = Buffer.from(
   `HTTP/1.1 400 ${STATUS_CODES[400]}${CRLF}` +
-  `Connection: close${CRLF}${CRLF}`, 'ascii'
-);
-const requestTimeoutResponse = Buffer.from(
-  `HTTP/1.1 408 ${STATUS_CODES[408]}${CRLF}` +
   `Connection: close${CRLF}${CRLF}`, 'ascii'
 );
 const requestHeaderFieldsTooLargeResponse = Buffer.from(
@@ -634,21 +602,9 @@ function socketOnError(e) {
   this.on('error', noop);
 
   if (!this.server.emit('clientError', e, this)) {
-    if (this.writable && this.bytesWritten === 0) {
-      let response;
-
-      switch (e.code) {
-        case 'HPE_HEADER_OVERFLOW':
-          response = requestHeaderFieldsTooLargeResponse;
-          break;
-        case 'ERR_HTTP_REQUEST_TIMEOUT':
-          response = requestTimeoutResponse;
-          break;
-        default:
-          response = badRequestResponse;
-          break;
-      }
-
+    if (this.writable) {
+      const response = e.code === 'HPE_HEADER_OVERFLOW' ?
+        requestHeaderFieldsTooLargeResponse : badRequestResponse;
       this.write(response);
     }
     this.destroy(e);
@@ -676,7 +632,6 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
     socket.removeListener('close', state.onClose);
     socket.removeListener('drain', state.onDrain);
     socket.removeListener('error', socketOnError);
-    socket.removeListener('timeout', socketOnTimeout);
     unconsume(parser, socket);
     parser.finish();
     freeParser(parser, req, socket);
@@ -688,20 +643,11 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
       const bodyHead = d.slice(ret, d.length);
 
       socket.readableFlowing = null;
-
-      // Clear the requestTimeout after upgrading the connection.
-      clearRequestTimeout(req);
-
       server.emit(eventName, req, socket, bodyHead);
     } else {
       // Got CONNECT method, but have no handler.
       socket.destroy();
     }
-  } else {
-    // When receiving new requests on the same socket (pipelining or keep alive)
-    // make sure the requestTimeout is active.
-    parser[kOnMessageBegin] =
-      setRequestTimeout.bind(undefined, server, socket);
   }
 
   if (socket._paused && socket.parser) {
@@ -727,32 +673,6 @@ function clearIncoming(req) {
   }
 }
 
-function setRequestTimeout(server, socket) {
-  // Set the request timeout handler.
-  if (
-    !socket[kRequestTimeout] &&
-    server.requestTimeout && server.requestTimeout > 0
-  ) {
-    debug('requestTimeout timer set');
-    socket[kRequestTimeout] =
-      setTimeout(onRequestTimeout, server.requestTimeout, socket).unref();
-  }
-}
-
-function clearRequestTimeout(req) {
-  if (!req) {
-    req = this;
-  }
-
-  if (!req[kRequestTimeout]) {
-    return;
-  }
-
-  debug('requestTimeout timer cleared');
-  clearTimeout(req[kRequestTimeout]);
-  req[kRequestTimeout] = undefined;
-}
-
 function resOnFinish(req, res, socket, state, server) {
   // Usually the first incoming element should be our request.  it may
   // be that in the case abortIncoming() was called that the incoming
@@ -766,14 +686,6 @@ function resOnFinish(req, res, socket, state, server) {
   // bytes will be pulled off the wire.
   if (!req._consuming && !req._readableState.resumeScheduled)
     req._dump();
-
-  // Make sure the requestTimeout is cleared before finishing.
-  // This might occur if the application has sent a response
-  // without consuming the request body, which would have already
-  // cleared the timer.
-  // clearRequestTimeout can be executed even if the timer is not active,
-  // so this is safe.
-  clearRequestTimeout(req);
 
   res.detachSocket(socket);
   clearIncoming(req);
@@ -809,6 +721,13 @@ function emitCloseNT(self) {
 function parserOnIncoming(server, socket, state, req, keepAlive) {
   resetSocketTimeout(server, socket, state);
 
+  if (server.keepAliveTimeout > 0) {
+    req.on('end', resetHeadersTimeoutOnReqEnd);
+  }
+
+  // Set to zero to communicate that we have finished parsing.
+  socket.parser.parsingHeadersStart = 0;
+
   if (req.upgrade) {
     req.upgrade = req.method === 'CONNECT' ||
                   server.listenerCount('upgrade') > 0;
@@ -833,7 +752,6 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   const res = new server[kServerResponse](req);
-  res._keepAliveTimeout = server.keepAliveTimeout;
   res._onPendingData = updateOutgoingData.bind(undefined, socket, state);
 
   res.shouldKeepAlive = keepAlive;
@@ -869,8 +787,6 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
       res.end();
     }
   } else {
-    req.on('end', clearRequestTimeout);
-
     server.emit('request', req, res);
   }
   return 0;  // No special treatment.
@@ -934,6 +850,17 @@ function generateSocketListenerWrapper(originalFnName) {
 
     return res;
   };
+}
+
+function resetHeadersTimeoutOnReqEnd() {
+  debug('resetHeadersTimeoutOnReqEnd');
+
+  const parser = this.socket.parser;
+  // Parser can be null if the socket was destroyed
+  // in that case, there is nothing to do.
+  if (parser) {
+    parser.parsingHeadersStart = nowDate();
+  }
 }
 
 module.exports = {

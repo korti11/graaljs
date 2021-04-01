@@ -5,11 +5,10 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
   SymbolToStringTag,
-  Uint8ArrayPrototype,
   uncurryThis,
 } = primordials;
 
-const TypedArrayPrototype = ObjectGetPrototypeOf(Uint8ArrayPrototype);
+const TypedArrayPrototype = ObjectGetPrototypeOf(Uint8Array.prototype);
 
 const TypedArrayProto_toStringTag =
     uncurryThis(

@@ -2,15 +2,10 @@
 
 const {
   ArrayPrototypeJoin,
-  ArrayPrototypeMap,
-  ArrayPrototypePush,
-  FunctionPrototype,
   ObjectSetPrototypeOf,
   PromiseAll,
-  PromiseResolve,
-  PromisePrototypeCatch,
-  ReflectApply,
   SafeSet,
+  SafePromise,
   StringPrototypeIncludes,
   StringPrototypeMatch,
   StringPrototypeReplace,
@@ -21,9 +16,9 @@ const { ModuleWrap } = internalBinding('module_wrap');
 
 const { decorateErrorStack } = require('internal/util');
 const assert = require('internal/assert');
-const resolvedPromise = PromiseResolve();
+const resolvedPromise = SafePromise.resolve();
 
-const noop = FunctionPrototype;
+function noop() {}
 
 let hasPausedEntry = false;
 
@@ -37,64 +32,62 @@ class ModuleJob {
     this.isMain = isMain;
     this.inspectBrk = inspectBrk;
 
+    // This is a Promise<{ module, reflect }>, whose fields will be copied
+    // onto `this` by `link()` below once it has been resolved.
+    this.modulePromise = moduleProvider.call(loader, url, isMain);
     this.module = undefined;
-    // Expose the promise to the ModuleWrap directly for linking below.
-    // `this.module` is also filled in below.
-    this.modulePromise = ReflectApply(moduleProvider, loader, [url, isMain]);
 
     // Wait for the ModuleWrap instance being linked with all dependencies.
     const link = async () => {
       this.module = await this.modulePromise;
       assert(this.module instanceof ModuleWrap);
 
-      // Explicitly keeping track of dependency jobs is needed in order
-      // to flatten out the dependency graph below in `_instantiate()`,
-      // so that circular dependencies can't cause a deadlock by two of
-      // these `link` callbacks depending on each other.
       const dependencyJobs = [];
       const promises = this.module.link(async (specifier) => {
         const jobPromise = this.loader.getModuleJob(specifier, url);
-        ArrayPrototypePush(dependencyJobs, jobPromise);
-        const job = await jobPromise;
-        return job.modulePromise;
+        dependencyJobs.push(jobPromise);
+        return (await jobPromise).modulePromise;
       });
 
       if (promises !== undefined)
-        await PromiseAll(promises);
+        await SafePromise.all(promises);
 
-      return PromiseAll(dependencyJobs);
+      return SafePromise.all(dependencyJobs);
     };
     // Promise for the list of all dependencyJobs.
     this.linked = link();
     // This promise is awaited later anyway, so silence
     // 'unhandled rejection' warnings.
-    PromisePrototypeCatch(this.linked, noop);
+    this.linked.catch(noop);
 
-    // instantiated == deep dependency jobs wrappers are instantiated,
-    // and module wrapper is instantiated.
+    // instantiated == deep dependency jobs wrappers instantiated,
+    // module wrapper instantiated
     this.instantiated = undefined;
   }
 
-  instantiate() {
-    if (this.instantiated === undefined) {
-      this.instantiated = this._instantiate();
+  async instantiate() {
+    if (!this.instantiated) {
+      return this.instantiated = this._instantiate();
     }
-    return this.instantiated;
+    await this.instantiated;
+    return this.module;
   }
 
+  // This method instantiates the module associated with this job and its
+  // entire dependency graph, i.e. creates all the module namespaces and the
+  // exported/imported variables.
   async _instantiate() {
     const jobsInGraph = new SafeSet();
+
     const addJobsToDependencyGraph = async (moduleJob) => {
       if (jobsInGraph.has(moduleJob)) {
         return;
       }
       jobsInGraph.add(moduleJob);
       const dependencyJobs = await moduleJob.linked;
-      return PromiseAll(
-        ArrayPrototypeMap(dependencyJobs, addJobsToDependencyGraph));
+      return PromiseAll(dependencyJobs.map(addJobsToDependencyGraph));
     };
     await addJobsToDependencyGraph(this);
-
     try {
       if (!hasPausedEntry && this.inspectBrk) {
         hasPausedEntry = true;
@@ -109,27 +102,21 @@ class ModuleJob {
                                   ' does not provide an export named')) {
         const splitStack = StringPrototypeSplit(e.stack, '\n');
         const parentFileUrl = splitStack[0];
-        const [, childSpecifier, name] = StringPrototypeMatch(e.message,
-                                                              /module '(.*)' does not provide an export named '(.+)'/);
+        const childSpecifier = StringPrototypeMatch(e.message, /module '(.*)' does/)[1];
         const childFileURL =
-            await this.loader.resolve(childSpecifier, parentFileUrl);
+              await this.loader.resolve(childSpecifier, parentFileUrl);
         const format = await this.loader.getFormat(childFileURL);
         if (format === 'commonjs') {
           const importStatement = splitStack[1];
-          // TODO(@ctavan): The original error stack only provides the single
-          // line which causes the error. For multi-line import statements we
-          // cannot generate an equivalent object descructuring assignment by
-          // just parsing the error stack.
-          const oneLineNamedImports = StringPrototypeMatch(importStatement, /{.*}/);
-          const destructuringAssignment = oneLineNamedImports &&
-              StringPrototypeReplace(oneLineNamedImports, /\s+as\s+/g, ': ');
-          e.message = `Named export '${name}' not found. The requested module` +
-            ` '${childSpecifier}' is a CommonJS module, which may not support` +
-            ' all module.exports as named exports.\nCommonJS modules can ' +
-            'always be imported via the default export, for example using:' +
-            `\n\nimport pkg from '${childSpecifier}';\n${
-              destructuringAssignment ?
-                `const ${destructuringAssignment} = pkg;\n` : ''}`;
+          const namedImports = StringPrototypeMatch(importStatement, /{.*}/)[0];
+          const destructuringAssignment = StringPrototypeReplace(namedImports, /\s+as\s+/g, ': ');
+          e.message = `The requested module '${childSpecifier}' is expected ` +
+            'to be of type CommonJS, which does not support named exports. ' +
+            'CommonJS modules can be imported by importing the default ' +
+            'export.\n' +
+            'For example:\n' +
+            `import pkg from '${childSpecifier}';\n` +
+            `const ${destructuringAssignment} = pkg;`;
           const newStack = StringPrototypeSplit(e.stack, '\n');
           newStack[3] = `SyntaxError: ${e.message}`;
           e.stack = ArrayPrototypeJoin(newStack, '\n');
@@ -137,20 +124,19 @@ class ModuleJob {
       }
       throw e;
     }
-
     for (const dependencyJob of jobsInGraph) {
       // Calling `this.module.instantiate()` instantiates not only the
       // ModuleWrap in this module, but all modules in the graph.
       dependencyJob.instantiated = resolvedPromise;
     }
+    return this.module;
   }
 
   async run() {
-    await this.instantiate();
+    const module = await this.instantiate();
     const timeout = -1;
     const breakOnSigint = false;
-    await this.module.evaluate(timeout, breakOnSigint);
-    return { module: this.module };
+    return { module, result: module.evaluate(timeout, breakOnSigint) };
   }
 }
 ObjectSetPrototypeOf(ModuleJob.prototype, null);

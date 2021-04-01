@@ -7,8 +7,6 @@
 
 #include "src/parsing/preparse-data.h"
 
-#include <memory>
-
 #include "src/common/assert-scope.h"
 
 namespace v8 {
@@ -157,21 +155,16 @@ class BaseConsumedPreparseData : public ConsumedPreparseData {
       int* function_length, int* num_inner_functions, bool* uses_super_property,
       LanguageMode* language_mode) final;
 
-  void RestoreScopeAllocationData(DeclarationScope* scope,
-                                  AstValueFactory* ast_value_factory,
-                                  Zone* zone) final;
+  void RestoreScopeAllocationData(DeclarationScope* scope) final;
 
 #ifdef DEBUG
   bool VerifyDataStart();
 #endif
 
  private:
-  void RestoreDataForScope(Scope* scope, AstValueFactory* ast_value_factory,
-                           Zone* zone);
+  void RestoreDataForScope(Scope* scope);
   void RestoreDataForVariable(Variable* var);
-  void RestoreDataForInnerScopes(Scope* scope,
-                                 AstValueFactory* ast_value_factory,
-                                 Zone* zone);
+  void RestoreDataForInnerScopes(Scope* scope);
 
   std::unique_ptr<ByteData> scope_data_;
   // When consuming the data, these indexes point to the data we're going to
@@ -202,7 +195,6 @@ class ZonePreparseData : public ZoneObject {
                                      int child_length);
 
   Handle<PreparseData> Serialize(Isolate* isolate);
-  Handle<PreparseData> Serialize(OffThreadIsolate* isolate);
 
   int children_length() const { return static_cast<int>(children_.size()); }
 

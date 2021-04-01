@@ -12,12 +12,14 @@ namespace internal {
 namespace compiler {
 
 // Forward declarations.
-class JSGraphAssembler;
+class CommonOperatorBuilder;
+class Graph;
+
 
 // Lowers Select nodes to diamonds.
 class SelectLowering final : public Reducer {
  public:
-  SelectLowering(JSGraphAssembler* graph_assembler, Graph* graph);
+  SelectLowering(Graph* graph, CommonOperatorBuilder* common);
   ~SelectLowering() override;
 
   const char* reducer_name() const override { return "SelectLowering"; }
@@ -25,13 +27,11 @@ class SelectLowering final : public Reducer {
   Reduction Reduce(Node* node) override;
 
  private:
-  Reduction LowerSelect(Node* node);
+  CommonOperatorBuilder* common() const { return common_; }
+  Graph* graph() const { return graph_; }
 
-  JSGraphAssembler* gasm() const { return graph_assembler_; }
-  Node* start() const { return start_; }
-
-  JSGraphAssembler* graph_assembler_;
-  Node* start_;
+  CommonOperatorBuilder* common_;
+  Graph* graph_;
 };
 
 }  // namespace compiler

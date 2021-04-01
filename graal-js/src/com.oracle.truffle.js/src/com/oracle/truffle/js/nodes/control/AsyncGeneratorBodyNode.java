@@ -56,11 +56,11 @@ import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.frame.MaterializedFrame;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.Tag;
-import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.nodes.NodeCost;
 import com.oracle.truffle.api.nodes.NodeInfo;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.object.DynamicObject;
+import com.oracle.truffle.api.profiles.ValueProfile;
 import com.oracle.truffle.api.source.SourceSection;
 import com.oracle.truffle.js.nodes.JavaScriptNode;
 import com.oracle.truffle.js.nodes.access.JSReadFrameSlotNode;
@@ -69,7 +69,6 @@ import com.oracle.truffle.js.nodes.access.PropertySetNode;
 import com.oracle.truffle.js.nodes.access.ScopeFrameNode;
 import com.oracle.truffle.js.nodes.function.SpecializedNewObjectNode;
 import com.oracle.truffle.js.nodes.promise.AsyncRootNode;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.JSFrameUtil;
 import com.oracle.truffle.js.runtime.JSRealm;
@@ -97,7 +96,7 @@ public final class AsyncGeneratorBodyNode extends JavaScriptNode {
         @Child private AsyncGeneratorRejectNode asyncGeneratorRejectNode;
         @Child private AsyncGeneratorResumeNextNode asyncGeneratorResumeNextNode;
         @Child private TryCatchNode.GetErrorObjectNode getErrorObjectNode;
-        @Child private InteropLibrary exceptions;
+        private final ValueProfile typeProfile = ValueProfile.createClassProfile();
         private final JSContext context;
         private final String functionName;
 
@@ -140,7 +139,7 @@ public final class AsyncGeneratorBodyNode extends JavaScriptNode {
 
             if (enterContext) {
                 childContext = realm.getTruffleContext();
-                prev = childContext.enter(this);
+                prev = childContext.enter();
             }
 
             try {
@@ -183,19 +182,18 @@ public final class AsyncGeneratorBodyNode extends JavaScriptNode {
                 }
             } finally {
                 if (enterContext) {
-                    childContext.leave(this, prev);
+                    childContext.leave(prev);
                 }
             }
         }
 
         private boolean shouldCatch(Throwable exception) {
-            if (getErrorObjectNode == null || asyncGeneratorRejectNode == null || exceptions == null) {
+            if (getErrorObjectNode == null || asyncGeneratorRejectNode == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
                 getErrorObjectNode = insert(TryCatchNode.GetErrorObjectNode.create(context));
                 asyncGeneratorRejectNode = insert(AsyncGeneratorRejectNode.create(context));
-                exceptions = insert(InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit));
             }
-            return TryCatchNode.shouldCatch(exception, exceptions);
+            return TryCatchNode.shouldCatch(exception, typeProfile);
         }
 
         @Override

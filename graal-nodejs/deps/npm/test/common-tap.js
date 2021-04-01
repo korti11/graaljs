@@ -283,8 +283,3 @@ Environment.prototype.extend = function (env) {
   }
   return self
 }
-
-var reEscape = /[\\[\](){}*?+.^$|]/g
-exports.escapeForRe = function (string) {
-  return string.replace(reEscape, '\\$&')
-}

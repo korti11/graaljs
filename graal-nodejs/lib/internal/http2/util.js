@@ -8,7 +8,6 @@ const {
   ObjectCreate,
   ObjectKeys,
   Set,
-  String,
   Symbol,
 } = primordials;
 
@@ -301,7 +300,7 @@ function getDefaultSettings() {
 
   if ((flags & (1 << IDX_SETTINGS_MAX_HEADER_LIST_SIZE)) ===
       (1 << IDX_SETTINGS_MAX_HEADER_LIST_SIZE)) {
-    holder.maxHeaderListSize = holder.maxHeaderSize =
+    holder.maxHeaderListSize =
       settingsBuffer[IDX_SETTINGS_MAX_HEADER_LIST_SIZE];
   }
 
@@ -329,7 +328,6 @@ function getSettings(session, remote) {
     maxFrameSize: settingsBuffer[IDX_SETTINGS_MAX_FRAME_SIZE],
     maxConcurrentStreams: settingsBuffer[IDX_SETTINGS_MAX_CONCURRENT_STREAMS],
     maxHeaderListSize: settingsBuffer[IDX_SETTINGS_MAX_HEADER_LIST_SIZE],
-    maxHeaderSize: settingsBuffer[IDX_SETTINGS_MAX_HEADER_LIST_SIZE],
     enableConnectProtocol:
       !!settingsBuffer[IDX_SETTINGS_ENABLE_CONNECT_PROTOCOL]
   };
@@ -357,20 +355,10 @@ function updateSettingsBuffer(settings) {
     settingsBuffer[IDX_SETTINGS_MAX_FRAME_SIZE] =
       settings.maxFrameSize;
   }
-  if (typeof settings.maxHeaderListSize === 'number' ||
-      typeof settings.maxHeaderSize === 'number') {
+  if (typeof settings.maxHeaderListSize === 'number') {
     flags |= (1 << IDX_SETTINGS_MAX_HEADER_LIST_SIZE);
-    if (settings.maxHeaderSize !== undefined &&
-      (settings.maxHeaderSize !== settings.maxHeaderListSize)) {
-      process.emitWarning(
-        'settings.maxHeaderSize overwrite settings.maxHeaderListSize'
-      );
-      settingsBuffer[IDX_SETTINGS_MAX_HEADER_LIST_SIZE] =
-        settings.maxHeaderSize;
-    } else {
-      settingsBuffer[IDX_SETTINGS_MAX_HEADER_LIST_SIZE] =
-        settings.maxHeaderListSize;
-    }
+    settingsBuffer[IDX_SETTINGS_MAX_HEADER_LIST_SIZE] =
+      settings.maxHeaderListSize;
   }
   if (typeof settings.enablePush === 'boolean') {
     flags |= (1 << IDX_SETTINGS_ENABLE_PUSH);
@@ -554,7 +542,7 @@ const assertWithinRange = hideStackFrames(
 
 function toHeaderObject(headers) {
   const obj = ObjectCreate(null);
-  for (var n = 0; n < headers.length; n += 2) {
+  for (var n = 0; n < headers.length; n = n + 2) {
     const name = headers[n];
     let value = headers[n + 1];
     if (name === HTTP2_HEADER_STATUS)

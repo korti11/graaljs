@@ -41,7 +41,6 @@ server.listen(0, options.host, function() {
     // This space intentionally left blank
   });
   req.on('close', function() {
-    assert.strictEqual(req.destroyed, true);
     server.close();
   });
   function destroy() {

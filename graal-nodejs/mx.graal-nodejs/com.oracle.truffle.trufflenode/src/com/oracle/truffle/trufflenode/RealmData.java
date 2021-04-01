@@ -43,7 +43,6 @@ package com.oracle.truffle.trufflenode;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.object.DynamicObject;
 
 /**
@@ -52,7 +51,6 @@ import com.oracle.truffle.api.object.DynamicObject;
 public final class RealmData {
     private Object securityToken;
     private final Map<Integer, Object> embedderData = new HashMap<>();
-    private final Map<Integer, DynamicObject> functionTemplateObjects = new HashMap<>();
 
     private DynamicObject nativeUtf8Write;
     private DynamicObject nativeUtf8Slice;
@@ -92,15 +90,6 @@ public final class RealmData {
 
     public Object getEmbedderData(int index) {
         return embedderData.get(index);
-    }
-
-    public void setFunctionTemplateObject(int index, DynamicObject functionObject) {
-        functionTemplateObjects.put(index, functionObject);
-    }
-
-    @CompilerDirectives.TruffleBoundary
-    public DynamicObject getFunctionTemplateObject(int index) {
-        return functionTemplateObjects.get(index);
     }
 
     public void setResolverFactory(DynamicObject resolverFactory) {

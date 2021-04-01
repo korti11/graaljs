@@ -56,7 +56,7 @@ const net = require('net');
 
         for (let i = 1; i < iter; i++) {
           client.write('a');
-          assert.strictEqual(client.bufferSize, i);
+          assert.strictEqual(client.bufferSize, i + 1);
         }
 
         // It seems that tlsSockets created from sockets of `Duplex` emit no

@@ -4,7 +4,6 @@
 
 #include "src/inspector/custom-preview.h"
 
-#include "../../third_party/inspector_protocol/crdtp/json.h"
 #include "src/debug/debug-interface.h"
 #include "src/inspector/injected-script.h"
 #include "src/inspector/inspected-context.h"
@@ -116,15 +115,12 @@ bool substituteObjectTags(int sessionId, const String16& groupName,
     protocol::Response response =
         injectedScript->wrapObject(originValue, groupName, WrapMode::kNoPreview,
                                    configValue, maxDepth - 1, &wrapper);
-    if (!response.IsSuccess() || !wrapper) {
+    if (!response.isSuccess() || !wrapper) {
       reportError(context, tryCatch, "cannot wrap value");
       return false;
     }
-    std::vector<uint8_t> json;
-    v8_crdtp::json::ConvertCBORToJSON(v8_crdtp::SpanFrom(wrapper->Serialize()),
-                                      &json);
     v8::Local<v8::Value> jsonWrapper;
-    v8_inspector::StringView serialized(json.data(), json.size());
+    String16 serialized = wrapper->toJSON();
     if (!v8::JSON::Parse(context, toV8String(isolate, serialized))
              .ToLocal(&jsonWrapper)) {
       reportError(context, tryCatch, "cannot wrap value");

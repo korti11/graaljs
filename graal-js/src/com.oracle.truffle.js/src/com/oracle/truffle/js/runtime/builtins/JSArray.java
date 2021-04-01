@@ -53,6 +53,7 @@ import com.oracle.truffle.api.object.HiddenKey;
 import com.oracle.truffle.api.object.Shape;
 import com.oracle.truffle.js.builtins.ArrayFunctionBuiltins;
 import com.oracle.truffle.js.builtins.ArrayPrototypeBuiltins;
+import com.oracle.truffle.js.runtime.Boundaries;
 import com.oracle.truffle.js.runtime.Errors;
 import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
@@ -219,9 +220,6 @@ public final class JSArray extends JSAbstractArray implements JSConstructorFacto
 
     private static List<String> unscopableNameList(JSContext context) {
         List<String> names = new ArrayList<>();
-        if (context.getEcmaScriptVersion() >= JSConfig.ECMAScript2022) {
-            names.add("at");
-        }
         names.add("copyWithin");
         names.add(JSArray.ENTRIES);
         names.add("fill");
@@ -391,9 +389,8 @@ public final class JSArray extends JSAbstractArray implements JSConstructorFacto
         return obj;
     }
 
-    public static DynamicObject createLazyArray(JSContext context, List<?> list, int size) {
-        assert list.size() == size;
-        return create(context, LazyArray.createLazyArray(), list, size);
+    public static DynamicObject createLazyArray(JSContext context, List<?> list) {
+        return create(context, LazyArray.createLazyArray(), list, Boundaries.listSize(list));
     }
 
     @Override

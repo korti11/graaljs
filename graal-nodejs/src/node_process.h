@@ -8,7 +8,8 @@
 namespace node {
 
 v8::MaybeLocal<v8::Object> CreateEnvVarProxy(v8::Local<v8::Context> context,
-                                             v8::Isolate* isolate);
+                                             v8::Isolate* isolate,
+                                             v8::Local<v8::Object> data);
 
 // Most of the time, it's best to use `console.error` to write
 // to the process.stderr stream.  However, in some cases, such as

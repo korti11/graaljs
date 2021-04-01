@@ -20,8 +20,6 @@ async function validateTruncate() {
 
   await fileHandle.truncate(5);
   assert.deepStrictEqual((await readFile(filename)).toString(), 'Hello');
-
-  await fileHandle.close();
 }
 
 validateTruncate().then(common.mustCall());

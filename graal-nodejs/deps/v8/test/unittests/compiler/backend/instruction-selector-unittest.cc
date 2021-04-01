@@ -41,13 +41,12 @@ InstructionSelectorTest::Stream InstructionSelectorTest::StreamBuilder::Build(
   SourcePositionTable source_position_table(graph());
   TickCounter tick_counter;
   size_t max_unoptimized_frame_height = 0;
-  size_t max_pushed_argument_count = 0;
   InstructionSelector selector(
       test_->zone(), node_count, &linkage, &sequence, schedule,
       &source_position_table, nullptr,
       InstructionSelector::kEnableSwitchJumpTable, &tick_counter,
-      &max_unoptimized_frame_height, &max_pushed_argument_count,
-      source_position_mode, features, InstructionSelector::kDisableScheduling,
+      &max_unoptimized_frame_height, source_position_mode, features,
+      InstructionSelector::kDisableScheduling,
       InstructionSelector::kEnableRootsRelativeAddressing,
       PoisoningMitigationLevel::kPoisonAll);
   selector.SelectInstructions();
@@ -338,8 +337,7 @@ TARGET_TEST_F(InstructionSelectorTest, CallJSFunctionWithDeopt) {
   Node* context = m.Parameter(2);
 
   ZoneVector<MachineType> int32_type(1, MachineType::Int32(), zone());
-  ZoneVector<MachineType> tagged_type(1, MachineType::AnyTagged(), zone());
-  ZoneVector<MachineType> empty_type(zone());
+  ZoneVector<MachineType> empty_types(zone());
 
   auto call_descriptor = Linkage::GetJSCallDescriptor(
       zone(), false, 1,
@@ -350,10 +348,9 @@ TARGET_TEST_F(InstructionSelectorTest, CallJSFunctionWithDeopt) {
       m.common()->TypedStateValues(&int32_type, SparseInputMask::Dense()),
       m.Int32Constant(1));
   Node* locals = m.AddNode(
-      m.common()->TypedStateValues(&empty_type, SparseInputMask::Dense()));
+      m.common()->TypedStateValues(&empty_types, SparseInputMask::Dense()));
   Node* stack = m.AddNode(
-      m.common()->TypedStateValues(&tagged_type, SparseInputMask::Dense()),
-      m.UndefinedConstant());
+      m.common()->TypedStateValues(&empty_types, SparseInputMask::Dense()));
   Node* context_sentinel = m.Int32Constant(0);
   Node* state_node = m.AddNode(
       m.common()->FrameState(bailout_id, OutputFrameStateCombine::PokeAt(0),
@@ -489,6 +486,7 @@ TARGET_TEST_F(InstructionSelectorTest, CallStubWithDeoptRecursiveFrameState) {
   Node* context2 = m.Int32Constant(46);
 
   ZoneVector<MachineType> int32_type(1, MachineType::Int32(), zone());
+  ZoneVector<MachineType> int32x2_type(2, MachineType::Int32(), zone());
   ZoneVector<MachineType> float64_type(1, MachineType::Float64(), zone());
 
   Callable callable = Builtins::CallableFor(isolate(), Builtins::kToObject);
@@ -519,8 +517,8 @@ TARGET_TEST_F(InstructionSelectorTest, CallStubWithDeoptRecursiveFrameState) {
       m.common()->TypedStateValues(&float64_type, SparseInputMask::Dense()),
       m.Float64Constant(0.25));
   Node* stack2 = m.AddNode(
-      m.common()->TypedStateValues(&int32_type, SparseInputMask::Dense()),
-      m.Int32Constant(44));
+      m.common()->TypedStateValues(&int32x2_type, SparseInputMask::Dense()),
+      m.Int32Constant(44), m.Int32Constant(45));
   Node* state_node =
       m.AddNode(m.common()->FrameState(bailout_id_before,
                                        OutputFrameStateCombine::PokeAt(0),
@@ -551,7 +549,7 @@ TARGET_TEST_F(InstructionSelectorTest, CallStubWithDeoptRecursiveFrameState) {
       1 +  // Code object.
       1 +  // Poison index.
       1 +  // Frame state deopt id
-      5 +  // One input for each value in frame state + context.
+      6 +  // One input for each value in frame state + context.
       5 +  // One input for each value in the parent frame state + context.
       1 +  // Function.
       1;   // Context.
@@ -577,16 +575,17 @@ TARGET_TEST_F(InstructionSelectorTest, CallStubWithDeoptRecursiveFrameState) {
   // Values from the nested frame.
   EXPECT_EQ(1u, desc_before->parameters_count());
   EXPECT_EQ(1u, desc_before->locals_count());
-  EXPECT_EQ(1u, desc_before->stack_count());
+  EXPECT_EQ(2u, desc_before->stack_count());
   EXPECT_EQ(43, s.ToInt32(call_instr->InputAt(9)));
   EXPECT_EQ(46, s.ToInt32(call_instr->InputAt(10)));
   EXPECT_EQ(0.25, s.ToFloat64(call_instr->InputAt(11)));
   EXPECT_EQ(44, s.ToInt32(call_instr->InputAt(12)));
+  EXPECT_EQ(45, s.ToInt32(call_instr->InputAt(13)));
 
   // Function.
-  EXPECT_EQ(s.ToVreg(function_node), s.ToVreg(call_instr->InputAt(13)));
+  EXPECT_EQ(s.ToVreg(function_node), s.ToVreg(call_instr->InputAt(14)));
   // Context.
-  EXPECT_EQ(s.ToVreg(context2), s.ToVreg(call_instr->InputAt(14)));
+  EXPECT_EQ(s.ToVreg(context2), s.ToVreg(call_instr->InputAt(15)));
   // Continuation.
 
   EXPECT_EQ(kArchRet, s[index++]->arch_opcode());

@@ -78,9 +78,7 @@ void PlatformEmbeddedFileWriterMac::SourceInfo(int fileid, const char* filename,
   fprintf(fp_, ".loc %d %d\n", fileid, line);
 }
 
-// TODO(mmarchini): investigate emitting size annotations for OS X
-void PlatformEmbeddedFileWriterMac::DeclareFunctionBegin(const char* name,
-                                                         uint32_t size) {
+void PlatformEmbeddedFileWriterMac::DeclareFunctionBegin(const char* name) {
   DeclareLabel(name);
 
   // TODO(mvstanton): Investigate the proper incantations to mark the label as
@@ -88,6 +86,10 @@ void PlatformEmbeddedFileWriterMac::DeclareFunctionBegin(const char* name,
 }
 
 void PlatformEmbeddedFileWriterMac::DeclareFunctionEnd(const char* name) {}
+
+int PlatformEmbeddedFileWriterMac::HexLiteral(uint64_t value) {
+  return fprintf(fp_, "0x%" PRIx64, value);
+}
 
 void PlatformEmbeddedFileWriterMac::FilePrologue() {}
 

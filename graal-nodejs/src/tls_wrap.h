@@ -26,7 +26,6 @@
 
 #include "node_crypto.h"  // SSLWrap
 
-#include "allocated_buffer.h"
 #include "async_wrap.h"
 #include "stream_wrap.h"
 #include "v8.h"
@@ -194,9 +193,9 @@ class TLSWrap : public AsyncWrap,
   // Waiting for ClearIn() to pass to SSL_write().
   AllocatedBuffer pending_cleartext_input_;
   size_t write_size_ = 0;
-  BaseObjectPtr<AsyncWrap> current_write_;
+  WriteWrap* current_write_ = nullptr;
   bool in_dowrite_ = false;
-  BaseObjectPtr<AsyncWrap> current_empty_write_;
+  WriteWrap* current_empty_write_ = nullptr;
   bool write_callback_scheduled_ = false;
   bool started_ = false;
   bool established_ = false;

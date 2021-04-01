@@ -40,15 +40,12 @@
  */
 package com.oracle.truffle.js.nodes.cast;
 
-import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.TruffleLanguage.ContextReference;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.CachedContext;
 import com.oracle.truffle.api.dsl.Fallback;
-import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
-import com.oracle.truffle.api.interop.InteropException;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.library.CachedLibrary;
@@ -65,13 +62,11 @@ import com.oracle.truffle.js.runtime.BigInt;
 import com.oracle.truffle.js.runtime.Boundaries;
 import com.oracle.truffle.js.runtime.Errors;
 import com.oracle.truffle.js.runtime.JSArguments;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.JSRealm;
 import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.SafeInteger;
 import com.oracle.truffle.js.runtime.Symbol;
-import com.oracle.truffle.js.runtime.builtins.JSDate;
 import com.oracle.truffle.js.runtime.objects.JSObject;
 import com.oracle.truffle.js.runtime.objects.Null;
 import com.oracle.truffle.js.runtime.objects.Undefined;
@@ -80,11 +75,7 @@ import com.oracle.truffle.js.runtime.objects.Undefined;
  * This implements ECMA 7.1.1 ToPrimitive.
  *
  */
-@ImportStatic({JSConfig.class})
 public abstract class JSToPrimitiveNode extends JavaScriptBaseNode {
-
-    @Child private OrdinaryToPrimitiveNode ordinaryToPrimitiveNode;
-    @Child private IsPrimitiveNode isPrimitiveNode;
 
     public enum Hint {
         None,
@@ -205,7 +196,7 @@ public abstract class JSToPrimitiveNode extends JavaScriptBaseNode {
         return hint == Hint.Number || hint == Hint.None;
     }
 
-    @Specialization(guards = "isForeignObject(object)", limit = "InteropLibraryLimit")
+    @Specialization(guards = "isForeignObject(object)", limit = "5")
     protected Object doTruffleJavaObject(Object object,
                     @CachedLibrary("object") InteropLibrary interop,
                     @CachedContext(JavaScriptLanguage.class) ContextReference<JSRealm> contextRef,
@@ -225,10 +216,8 @@ public abstract class JSToPrimitiveNode extends JavaScriptBaseNode {
                 return JSRuntime.doubleValueVirtual((Number) javaObject);
             } else if (JSGuards.isJavaArray(javaObject)) {
                 return JSRuntime.javaArrayToString(javaObject);
-            } else if (interop.isInstant(object)) {
-                return JSDate.getDateValueFromInstant(object, interop);
             } else {
-                return hostToPrimitive(object, interop, javaObject);
+                return JSRuntime.toJSNull(Boundaries.javaToString(javaObject));
             }
         }
         try {
@@ -248,65 +237,13 @@ public abstract class JSToPrimitiveNode extends JavaScriptBaseNode {
         } catch (UnsupportedMessageException e) {
             throw Errors.createTypeErrorUnboxException(object, e, this);
         }
-        Object result = ordinaryToPrimitive(realm.getContext(), object);
-        InteropLibrary resultInterop = InteropLibrary.getFactory().getUncached(result);
-        try {
-            if (resultInterop.isBoolean(result)) {
-                return resultInterop.asBoolean(result);
-            } else if (resultInterop.isString(result)) {
-                return resultInterop.asString(result);
-            } else if (resultInterop.isNumber(result)) {
-                if (resultInterop.fitsInInt(result)) {
-                    return resultInterop.asInt(result);
-                } else if (resultInterop.fitsInLong(result)) {
-                    return resultInterop.asLong(result);
-                } else if (resultInterop.fitsInDouble(result)) {
-                    return resultInterop.asDouble(result);
-                }
-            }
-        } catch (UnsupportedMessageException e) {
-            throw Errors.createTypeErrorUnboxException(result, e, this);
-        }
-        throw Errors.createTypeErrorCannotConvertToPrimitiveValue(this);
-    }
-
-    private Object hostToPrimitive(Object object, InteropLibrary interop, Object javaObject) {
-        if (isHintNumber()) {
-            if (interop.hasMembers(object) && interop.isMemberInvocable(object, JSRuntime.VALUE_OF)) {
-                Object result;
-                try {
-                    result = JSRuntime.importValue(interop.invokeMember(object, JSRuntime.VALUE_OF));
-                } catch (InteropException e) {
-                    result = null;
-                }
-                if (result != null && isPrimitive(result)) {
-                    return result;
-                }
-            }
-        }
-        return JSRuntime.toJSNull(Boundaries.javaToString(javaObject));
+        return JSRuntime.foreignToString(object);
     }
 
     @Fallback
     protected Object doFallback(Object value) {
         assert value != null;
         throw Errors.createTypeErrorCannotConvertToPrimitiveValue(this);
-    }
-
-    private Object ordinaryToPrimitive(JSContext context, Object object) {
-        if (ordinaryToPrimitiveNode == null) {
-            CompilerDirectives.transferToInterpreterAndInvalidate();
-            ordinaryToPrimitiveNode = insert(OrdinaryToPrimitiveNode.create(context, isHintString() ? Hint.String : Hint.Number));
-        }
-        return ordinaryToPrimitiveNode.execute(object);
-    }
-
-    private boolean isPrimitive(Object object) {
-        if (isPrimitiveNode == null) {
-            CompilerDirectives.transferToInterpreterAndInvalidate();
-            isPrimitiveNode = insert(IsPrimitiveNode.create());
-        }
-        return isPrimitiveNode.executeBoolean(object);
     }
 
     protected static PropertyNode createGetToPrimitive(DynamicObject object) {

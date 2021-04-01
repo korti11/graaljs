@@ -61,6 +61,7 @@ import com.oracle.truffle.js.runtime.array.TypedArray;
 import com.oracle.truffle.js.runtime.interop.InteropArray;
 import com.oracle.truffle.js.runtime.objects.JSObject;
 import com.oracle.truffle.js.runtime.objects.Undefined;
+import com.oracle.truffle.js.runtime.util.JSClassProfile;
 
 @ExportLibrary(InteropLibrary.class)
 public final class JSTypedArrayObject extends JSArrayBufferViewBase {
@@ -125,7 +126,7 @@ public final class JSTypedArrayObject extends JSArrayBufferViewBase {
         }
         Object result;
         if (readNode == null) {
-            result = JSObject.getOrDefault(target, index, target, Undefined.instance);
+            result = JSObject.getOrDefault(target, index, target, Undefined.instance, JSClassProfile.getUncached());
         } else {
             result = readNode.executeWithTargetAndIndexOrDefault(target, index, Undefined.instance);
         }
@@ -155,7 +156,7 @@ public final class JSTypedArrayObject extends JSArrayBufferViewBase {
         }
         Object importedValue = castValueNode.executeWithTarget(value);
         if (writeNode == null) {
-            JSObject.set(target, index, importedValue, true, null);
+            JSObject.set(target, index, importedValue, true);
         } else {
             writeNode.executeWithTargetAndIndexAndValue(target, index, importedValue);
         }

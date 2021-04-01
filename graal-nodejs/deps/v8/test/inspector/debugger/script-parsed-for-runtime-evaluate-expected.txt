@@ -12,7 +12,6 @@ Runtime.evaluate with valid expression
         isModule : false
         length : 29
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         startColumn : 0
         startLine : 0
@@ -31,7 +30,6 @@ Runtime.evaluate with syntax error
         isModule : false
         length : 39
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         startColumn : 0
         startLine : 0
@@ -51,7 +49,6 @@ Runtime.callFunctionOn with valid functionDeclaration
         isModule : false
         length : 18
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         startColumn : 0
         startLine : 0
@@ -70,7 +67,6 @@ Runtime.callFunctionOn with syntax error
         isModule : false
         length : 3
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         startColumn : 0
         startLine : 0
@@ -90,7 +86,6 @@ Runtime.compileScript with valid expression
         isModule : false
         length : 4
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         startColumn : 0
         startLine : 0
@@ -109,7 +104,6 @@ Runtime.compileScript with syntax error
         isModule : false
         length : 1
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         startColumn : 0
         startLine : 0
@@ -130,7 +124,6 @@ Runtime.evaluate compiled script with stack trace
         isModule : false
         length : 8
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         startColumn : 0
         startLine : 0
@@ -149,7 +142,6 @@ Runtime.evaluate compiled script with stack trace
         isModule : false
         length : 86
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         stackTrace : {
             callFrames : [
@@ -179,7 +171,6 @@ Runtime.evaluate compiled script with stack trace
         isModule : false
         length : 4
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         stackTrace : {
             callFrames : [
@@ -210,7 +201,6 @@ Runtime.evaluate compile script error with stack trace
         isModule : false
         length : 12
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         startColumn : 0
         startLine : 0
@@ -229,7 +219,6 @@ Runtime.evaluate compile script error with stack trace
         isModule : false
         length : 98
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         stackTrace : {
             callFrames : [
@@ -258,7 +247,6 @@ Runtime.evaluate compile script error with stack trace
         isModule : false
         length : 3
         scriptId : <scriptId>
-        scriptLanguage : JavaScript
         sourceMapURL : 
         stackTrace : {
             callFrames : [

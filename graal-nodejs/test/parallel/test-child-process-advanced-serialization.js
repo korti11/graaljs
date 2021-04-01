@@ -11,8 +11,7 @@ if (process.argv[2] !== 'child') {
     }, {
       code: 'ERR_INVALID_OPT_VALUE',
       message: `The value "${value}" is invalid ` +
-      'for option "options.serialization". ' +
-      "Must be one of: undefined, 'json', 'advanced'"
+        'for option "options.serialization"'
     });
   }
 

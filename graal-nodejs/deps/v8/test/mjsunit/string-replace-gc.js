@@ -25,22 +25,31 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Regression test for the r1513 fix.
-
-// Flags: --allow-natives-syntax --no-force-slow-path
+//
+// Regression test for the r1512 fix.
 
 var foo = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-assertEquals(39, foo.length);
 
-for (var i = 0; i < 12; i++) {
-  foo = foo + foo;
-}
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
+foo = foo + foo;
 
-foo = %FlattenString(foo);
+foo.replace(/[b]/, "c");  // Flatten foo.
 
 var moving_string = "b" + "c";
 
-var bar = foo.replace(/a/g, moving_string);
+var bar = foo.replace(/[a]/g, moving_string);
 
-// 39 * 2^12 * 2
-assertEquals(319488, bar.length);
+print(bar.length);

@@ -44,7 +44,6 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.UnknownIdentifierException;
 import com.oracle.truffle.api.interop.UnsupportedMessageException;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.objects.JSObject;
@@ -56,10 +55,10 @@ public abstract class JSPrimitive extends JSNonProxy implements PrototypeSupplie
 
     @TruffleBoundary
     @Override
-    public final Object getHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode) {
+    public final Object getHelper(DynamicObject store, Object thisObj, Object key) {
         assert this == JSNumber.INSTANCE || this == JSString.INSTANCE || this == JSBoolean.INSTANCE || this == JSBigInt.INSTANCE;
 
-        Object propertyValue = super.getHelper(store, thisObj, key, encapsulatingNode);
+        Object propertyValue = super.getHelper(store, thisObj, key);
 
         if (key instanceof String && allowJavaMembersFor(thisObj)) {
             JSContext context = JSObject.getJSContext(store);
@@ -85,7 +84,7 @@ public abstract class JSPrimitive extends JSNonProxy implements PrototypeSupplie
 
     @TruffleBoundary
     @Override
-    public Object getMethodHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode) {
+    public Object getMethodHelper(DynamicObject store, Object thisObj, Object key) {
         if (key instanceof String && allowJavaMembersFor(thisObj)) {
             JSContext context = JSObject.getJSContext(store);
             if (context.isOptionNashornCompatibilityMode() && context.getRealm().isJavaInteropEnabled()) {
@@ -98,7 +97,7 @@ public abstract class JSPrimitive extends JSNonProxy implements PrototypeSupplie
             }
         }
 
-        return super.getMethodHelper(store, thisObj, key, encapsulatingNode);
+        return super.getMethodHelper(store, thisObj, key);
     }
 
     private static Object getJavaMethod(Object thisObj, String name, JSContext context) {

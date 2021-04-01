@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -123,7 +123,7 @@ public final class JSFunction extends JSNonProxy {
         public Object get(DynamicObject store) {
             assert JSFunction.isJSFunction(store);
             if (JSFunction.isBoundFunction(store)) {
-                return ((JSFunctionObject.Bound) store).getBoundLength();
+                return getBoundFunctionLength(store);
             }
             return JSFunction.getLength(store);
         }
@@ -132,11 +132,19 @@ public final class JSFunction extends JSNonProxy {
             assert JSFunction.isJSFunction(store);
             if (JSFunction.isBoundFunction(store)) {
                 isBoundBranch.enter();
-                return ((JSFunctionObject.Bound) store).getBoundLength();
+                return getBoundFunctionLength(store);
             }
             return JSFunction.getLength(store);
         }
 
+        @TruffleBoundary
+        private int getBoundFunctionLength(DynamicObject store) {
+            if (JSFunction.isBoundFunction(store)) {
+                return Math.max(0, getBoundFunctionLength(JSFunction.getBoundTargetFunction(store)) - JSFunction.getBoundArguments(store).length);
+            } else {
+                return JSFunction.getLength(store);
+            }
+        }
     }
 
     public static final PropertyProxy LENGTH_PROXY = new FunctionLengthPropertyProxy();
@@ -146,20 +154,28 @@ public final class JSFunction extends JSNonProxy {
         public Object get(DynamicObject store) {
             assert JSFunction.isJSFunction(store);
             if (JSFunction.isBoundFunction(store)) {
-                return ((JSFunctionObject.Bound) store).getBoundName();
+                return getBoundFunctionName(store);
             }
             return JSFunction.getName(store);
         }
 
-        public Object getProfiled(DynamicObject store, BranchProfile isBoundBranch) {
+        public String getProfiled(DynamicObject store, BranchProfile isBoundBranch) {
             assert JSFunction.isJSFunction(store);
             if (JSFunction.isBoundFunction(store)) {
                 isBoundBranch.enter();
-                return ((JSFunctionObject.Bound) store).getBoundName();
+                return getBoundFunctionName(store);
             }
             return JSFunction.getName(store);
         }
 
+        @TruffleBoundary
+        private String getBoundFunctionName(DynamicObject store) {
+            if (JSFunction.isBoundFunction(store)) {
+                return "bound " + getBoundFunctionName(JSFunction.getBoundTargetFunction(store));
+            } else {
+                return JSFunction.getName(store);
+            }
+        }
     }
 
     public static final PropertyProxy NAME_PROXY = new FunctionNamePropertyProxy();

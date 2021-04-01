@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -147,6 +147,13 @@ public final class JSContextOptions {
     @CompilationFinal private Assumption regexpStaticResultCurrentAssumption = regexpStaticResultCyclicAssumption.getAssumption();
     @CompilationFinal private boolean regexpStaticResult;
 
+    public static final String ARRAY_SORT_INHERITED_NAME = JS_OPTION_PREFIX + "array-sort-inherited";
+    @Option(name = ARRAY_SORT_INHERITED_NAME, category = OptionCategory.USER, help = "Sort inherited keys in Array.protoype.sort.") //
+    public static final OptionKey<Boolean> ARRAY_SORT_INHERITED = new OptionKey<>(true);
+    private final CyclicAssumption arraySortInheritedCyclicAssumption = new CyclicAssumption("The " + ARRAY_SORT_INHERITED_NAME + " option is stable.");
+    @CompilationFinal private Assumption arraySortInheritedCurrentAssumption = arraySortInheritedCyclicAssumption.getAssumption();
+    @CompilationFinal private boolean arraySortInherited;
+
     public static final String SHARED_ARRAY_BUFFER_NAME = JS_OPTION_PREFIX + "shared-array-buffer";
     @Option(name = SHARED_ARRAY_BUFFER_NAME, category = OptionCategory.USER, help = "Enable ES2017 SharedArrayBuffer.") //
     public static final OptionKey<Boolean> SHARED_ARRAY_BUFFER = new OptionKey<>(true);
@@ -288,7 +295,7 @@ public final class JSContextOptions {
                             }
                             String[] options = value.split(",");
                             for (String s : options) {
-                                String[] builtin = s.split(":", 2);
+                                String[] builtin = s.split(":");
                                 if (builtin.length != 2) {
                                     throw new IllegalArgumentException("Unexpected builtin arguments: " + s);
                                 }
@@ -363,19 +370,10 @@ public final class JSContextOptions {
     public static final OptionKey<Boolean> SCRIPT_ENGINE_GLOBAL_SCOPE_IMPORT = new OptionKey<>(false);
     @CompilationFinal private boolean scriptEngineGlobalScopeImport;
 
-    public static final String FOREIGN_OBJECT_PROTOTYPE_NAME = JS_OPTION_PREFIX + "foreign-object-prototype";
-    @Option(name = FOREIGN_OBJECT_PROTOTYPE_NAME, category = OptionCategory.EXPERT, stability = OptionStability.STABLE, help = "Non-JS objects have prototype (Object/Function/Array.prototype) set.") //
+    public static final String FOREIGN_OBJECT_PROTOTYPE_NAME = JS_OPTION_PREFIX + "experimental-foreign-object-prototype";
+    @Option(name = FOREIGN_OBJECT_PROTOTYPE_NAME, category = OptionCategory.EXPERT, help = "Non-JS objects have prototype (Object/Function/Array.prototype) set.") //
     public static final OptionKey<Boolean> FOREIGN_OBJECT_PROTOTYPE = new OptionKey<>(false);
     @CompilationFinal private boolean hasForeignObjectPrototype;
-
-    public static final String EXPERIMENTAL_FOREIGN_OBJECT_PROTOTYPE_NAME = JS_OPTION_PREFIX + "experimental-foreign-object-prototype";
-    @Option(name = EXPERIMENTAL_FOREIGN_OBJECT_PROTOTYPE_NAME, category = OptionCategory.EXPERT, deprecated = true, help = "Non-JS objects have prototype (Object/Function/Array.prototype) set; deprecated old name.") //
-    protected static final OptionKey<Boolean> EXPERIMENTAL_FOREIGN_OBJECT_PROTOTYPE = new OptionKey<>(false);
-
-    public static final String FOREIGN_HASH_PROPERTIES_NAME = JS_OPTION_PREFIX + "foreign-hash-properties";
-    @Option(name = FOREIGN_HASH_PROPERTIES_NAME, category = OptionCategory.EXPERT, help = "Allow getting/setting non-JS hash entries using the `[]` and `.` operators.") //
-    public static final OptionKey<Boolean> FOREIGN_HASH_PROPERTIES = new OptionKey<>(true);
-    @CompilationFinal private boolean hasForeignHashProperties;
 
     // limit originally from TestV8 regress-1122.js, regress-605470.js
     public static final String FUNCTION_ARGUMENTS_LIMIT_NAME = JS_OPTION_PREFIX + "function-arguments-limit";
@@ -479,22 +477,6 @@ public final class JSContextOptions {
     public static final OptionKey<Integer> FUNCTION_CACHE_LIMIT = new OptionKey<>(JSConfig.FunctionCacheLimit);
     @CompilationFinal private int functionCacheLimit;
 
-    public static final String TOP_LEVEL_AWAIT_NAME = JS_OPTION_PREFIX + "top-level-await";
-    @Option(name = TOP_LEVEL_AWAIT_NAME, category = OptionCategory.EXPERT, help = "Enable top-level-await.")
-    // defaulting to ecmascript-version>=2022
-    protected static final OptionKey<Boolean> TOP_LEVEL_AWAIT = new OptionKey<>(false);
-    @CompilationFinal private boolean topLevelAwait;
-
-    public static final String USE_UTC_FOR_LEGACY_DATES_NAME = JS_OPTION_PREFIX + "use-utc-for-legacy-dates";
-    @Option(name = USE_UTC_FOR_LEGACY_DATES_NAME, category = OptionCategory.EXPERT, stability = OptionStability.STABLE, help = "Determines what time zone (UTC or local time zone) should be used when UTC offset is absent in a parsed date.") //
-    public static final OptionKey<Boolean> USE_UTC_FOR_LEGACY_DATES = new OptionKey<>(true);
-    @CompilationFinal private boolean useUTCForLegacyDates;
-
-    public static final String WEBASSEMBLY_NAME = JS_OPTION_PREFIX + "webassembly";
-    @Option(name = WEBASSEMBLY_NAME, category = OptionCategory.EXPERT, help = "Enable WebAssembly JavaScript API.") //
-    public static final OptionKey<Boolean> WEBASSEMBLY = new OptionKey<>(false);
-    @CompilationFinal private boolean webAssembly;
-
     JSContextOptions(JSParserOptions parserOptions, OptionValues optionValues) {
         this.parserOptions = parserOptions;
         this.optionValues = optionValues;
@@ -529,7 +511,11 @@ public final class JSContextOptions {
             regexpStaticResultCyclicAssumption.invalidate(msg);
             regexpStaticResultCurrentAssumption = regexpStaticResultCyclicAssumption.getAssumption();
         });
-        this.regexpMatchIndices = REGEXP_MATCH_INDICES.hasBeenSet(optionValues) ? readBooleanOption(REGEXP_MATCH_INDICES) : getEcmaScriptVersion() >= JSConfig.ECMAScript2022;
+        this.regexpMatchIndices = REGEXP_MATCH_INDICES.hasBeenSet(optionValues) ? readBooleanOption(REGEXP_MATCH_INDICES) : getEcmaScriptVersion() >= JSConfig.ECMAScript2021;
+        this.arraySortInherited = patchBooleanOption(ARRAY_SORT_INHERITED, ARRAY_SORT_INHERITED_NAME, arraySortInherited, msg -> {
+            arraySortInheritedCyclicAssumption.invalidate(msg);
+            arraySortInheritedCurrentAssumption = arraySortInheritedCyclicAssumption.getAssumption();
+        });
         this.sharedArrayBuffer = readBooleanOption(SHARED_ARRAY_BUFFER);
         this.v8CompatibilityMode = patchBooleanOption(V8_COMPATIBILITY_MODE, V8_COMPATIBILITY_MODE_NAME, v8CompatibilityMode, msg -> {
             v8CompatibilityModeCyclicAssumption.invalidate(msg);
@@ -556,8 +542,7 @@ public final class JSContextOptions {
         this.regexStepExecution = readBooleanOption(REGEX_STEP_EXECUTION);
         this.regexAlwaysEager = readBooleanOption(REGEX_ALWAYS_EAGER);
         this.scriptEngineGlobalScopeImport = readBooleanOption(SCRIPT_ENGINE_GLOBAL_SCOPE_IMPORT);
-        this.hasForeignObjectPrototype = readBooleanOption(FOREIGN_OBJECT_PROTOTYPE) || readBooleanOption(EXPERIMENTAL_FOREIGN_OBJECT_PROTOTYPE);
-        this.hasForeignHashProperties = readBooleanOption(FOREIGN_HASH_PROPERTIES);
+        this.hasForeignObjectPrototype = readBooleanOption(FOREIGN_OBJECT_PROTOTYPE);
         this.functionArgumentsLimit = readLongOption(FUNCTION_ARGUMENTS_LIMIT);
         this.test262Mode = readBooleanOption(TEST262_MODE);
         this.testV8Mode = readBooleanOption(TESTV8_MODE);
@@ -575,9 +560,6 @@ public final class JSContextOptions {
         this.maxApplyArgumentLength = readIntegerOption(MAX_APPLY_ARGUMENT_LENGTH);
         this.maxPrototypeChainLength = readIntegerOption(MAX_PROTOTYPE_CHAIN_LENGTH);
         this.asyncStackTraces = readBooleanOption(ASYNC_STACK_TRACES);
-        this.topLevelAwait = TOP_LEVEL_AWAIT.hasBeenSet(optionValues) ? readBooleanOption(TOP_LEVEL_AWAIT) : getEcmaScriptVersion() >= JSConfig.ECMAScript2022;
-        this.useUTCForLegacyDates = USE_UTC_FOR_LEGACY_DATES.hasBeenSet(optionValues) ? readBooleanOption(USE_UTC_FOR_LEGACY_DATES) : !v8CompatibilityMode;
-        this.webAssembly = readBooleanOption(WEBASSEMBLY);
 
         this.propertyCacheLimit = readIntegerOption(PROPERTY_CACHE_LIMIT);
         this.functionCacheLimit = readIntegerOption(FUNCTION_CACHE_LIMIT);
@@ -654,6 +636,14 @@ public final class JSContextOptions {
         return regexpStaticResult;
     }
 
+    public boolean isArraySortInherited() {
+        try {
+            arraySortInheritedCurrentAssumption.check();
+        } catch (InvalidAssumptionException e) {
+        }
+        return arraySortInherited;
+    }
+
     public boolean isSharedArrayBuffer() {
         if (getEcmaScriptVersion() < JSConfig.ECMAScript2017) {
             return false;
@@ -720,10 +710,6 @@ public final class JSContextOptions {
         return awaitOptimization;
     }
 
-    public boolean isTopLevelAwait() {
-        return topLevelAwait;
-    }
-
     public boolean isDisableEval() {
         return disableEval;
     }
@@ -750,10 +736,6 @@ public final class JSContextOptions {
 
     public boolean hasForeignObjectPrototype() {
         return hasForeignObjectPrototype;
-    }
-
-    public boolean hasForeignHashProperties() {
-        return hasForeignHashProperties;
     }
 
     public boolean isGlobalProperty() {
@@ -928,14 +910,6 @@ public final class JSContextOptions {
         return asyncStackTraces;
     }
 
-    public boolean shouldUseUTCForLegacyDates() {
-        return useUTCForLegacyDates;
-    }
-
-    public boolean isWebAssembly() {
-        return webAssembly;
-    }
-
     @Override
     public int hashCode() {
         int hash = 5;
@@ -945,6 +919,7 @@ public final class JSContextOptions {
         hash = 53 * hash + (this.intl402 ? 1 : 0);
         hash = 53 * hash + (this.regexpMatchIndices ? 1 : 0);
         hash = 53 * hash + (this.regexpStaticResult ? 1 : 0);
+        hash = 53 * hash + (this.arraySortInherited ? 1 : 0);
         hash = 53 * hash + (this.sharedArrayBuffer ? 1 : 0);
         hash = 53 * hash + (this.v8CompatibilityMode ? 1 : 0);
         hash = 53 * hash + (this.v8RealmBuiltin ? 1 : 0);
@@ -963,7 +938,6 @@ public final class JSContextOptions {
         hash = 53 * hash + (this.regexAlwaysEager ? 1 : 0);
         hash = 53 * hash + (this.scriptEngineGlobalScopeImport ? 1 : 0);
         hash = 53 * hash + (this.hasForeignObjectPrototype ? 1 : 0);
-        hash = 53 * hash + (this.hasForeignHashProperties ? 1 : 0);
         hash = 53 * hash + (int) this.functionArgumentsLimit;
         hash = 53 * hash + (this.test262Mode ? 1 : 0);
         hash = 53 * hash + (this.testV8Mode ? 1 : 0);
@@ -983,9 +957,6 @@ public final class JSContextOptions {
         hash = 53 * hash + this.maxPrototypeChainLength;
         hash = 53 * hash + this.propertyCacheLimit;
         hash = 53 * hash + this.functionCacheLimit;
-        hash = 53 * hash + (this.topLevelAwait ? 1 : 0);
-        hash = 53 * hash + (this.useUTCForLegacyDates ? 1 : 0);
-        hash = 53 * hash + (this.webAssembly ? 1 : 0);
         return hash;
     }
 
@@ -1014,6 +985,9 @@ public final class JSContextOptions {
             return false;
         }
         if (this.regexpStaticResult != other.regexpStaticResult) {
+            return false;
+        }
+        if (this.arraySortInherited != other.arraySortInherited) {
             return false;
         }
         if (this.sharedArrayBuffer != other.sharedArrayBuffer) {
@@ -1068,9 +1042,6 @@ public final class JSContextOptions {
             return false;
         }
         if (this.hasForeignObjectPrototype != other.hasForeignObjectPrototype) {
-            return false;
-        }
-        if (this.hasForeignHashProperties != other.hasForeignHashProperties) {
             return false;
         }
         if (this.functionArgumentsLimit != other.functionArgumentsLimit) {
@@ -1128,15 +1099,6 @@ public final class JSContextOptions {
             return false;
         }
         if (this.functionCacheLimit != other.functionCacheLimit) {
-            return false;
-        }
-        if (this.topLevelAwait != other.topLevelAwait) {
-            return false;
-        }
-        if (this.useUTCForLegacyDates != other.useUTCForLegacyDates) {
-            return false;
-        }
-        if (this.webAssembly != other.webAssembly) {
             return false;
         }
         return Objects.equals(this.parserOptions, other.parserOptions);

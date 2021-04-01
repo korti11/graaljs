@@ -22,15 +22,14 @@ class TurboAssemblerTest : public TestWithIsolate {};
 
 TEST_F(TurboAssemblerTest, TestHardAbort) {
   auto buffer = AllocateAssemblerBuffer();
-  TurboAssembler tasm(isolate(), AssemblerOptions{}, CodeObjectRequired::kNo,
+  TurboAssembler tasm(nullptr, AssemblerOptions{}, CodeObjectRequired::kNo,
                       buffer->CreateView());
-  __ set_root_array_available(false);
   __ set_abort_hard(true);
 
   __ Abort(AbortReason::kNoReason);
 
   CodeDesc desc;
-  tasm.GetCode(isolate(), &desc);
+  tasm.GetCode(nullptr, &desc);
   buffer->MakeExecutable();
   // We need an isolate here to execute in the simulator.
   auto f = GeneratedCode<void>::FromBuffer(isolate(), buffer->start());
@@ -40,9 +39,8 @@ TEST_F(TurboAssemblerTest, TestHardAbort) {
 
 TEST_F(TurboAssemblerTest, TestCheck) {
   auto buffer = AllocateAssemblerBuffer();
-  TurboAssembler tasm(isolate(), AssemblerOptions{}, CodeObjectRequired::kNo,
+  TurboAssembler tasm(nullptr, AssemblerOptions{}, CodeObjectRequired::kNo,
                       buffer->CreateView());
-  __ set_root_array_available(false);
   __ set_abort_hard(true);
 
   // Fail if the first parameter (in {a0}) is 17.
@@ -50,7 +48,7 @@ TEST_F(TurboAssemblerTest, TestCheck) {
   __ Ret();
 
   CodeDesc desc;
-  tasm.GetCode(isolate(), &desc);
+  tasm.GetCode(nullptr, &desc);
   buffer->MakeExecutable();
   // We need an isolate here to execute in the simulator.
   auto f = GeneratedCode<void, int>::FromBuffer(isolate(), buffer->start());

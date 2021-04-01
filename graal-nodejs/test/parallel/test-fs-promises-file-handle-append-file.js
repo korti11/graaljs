@@ -22,8 +22,6 @@ async function validateAppendBuffer() {
   await fileHandle.appendFile(buffer);
   const appendedFileData = fs.readFileSync(filePath);
   assert.deepStrictEqual(appendedFileData, buffer);
-
-  await fileHandle.close();
 }
 
 async function validateAppendString() {
@@ -35,8 +33,6 @@ async function validateAppendString() {
   const stringAsBuffer = Buffer.from(string, 'utf8');
   const appendedFileData = fs.readFileSync(filePath);
   assert.deepStrictEqual(appendedFileData, stringAsBuffer);
-
-  await fileHandle.close();
 }
 
 validateAppendBuffer()

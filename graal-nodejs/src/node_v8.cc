@@ -20,15 +20,14 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "node.h"
-#include "base_object-inl.h"
 #include "env-inl.h"
-#include "memory_tracker-inl.h"
 #include "util-inl.h"
 #include "v8.h"
 
 namespace node {
 
 using v8::Array;
+using v8::ArrayBuffer;
 using v8::Context;
 using v8::FunctionCallbackInfo;
 using v8::HeapCodeStatistics;
@@ -37,6 +36,7 @@ using v8::HeapStatistics;
 using v8::Integer;
 using v8::Isolate;
 using v8::Local;
+using v8::NewStringType;
 using v8::Object;
 using v8::ScriptCompiler;
 using v8::String;
@@ -59,7 +59,7 @@ using v8::Value;
   V(10, number_of_detached_contexts, kNumberOfDetachedContextsIndex)
 
 #define V(a, b, c) +1
-static constexpr size_t kHeapStatisticsPropertiesCount =
+static const size_t kHeapStatisticsPropertiesCount =
     HEAP_STATISTICS_PROPERTIES(V);
 #undef V
 
@@ -71,49 +71,20 @@ static constexpr size_t kHeapStatisticsPropertiesCount =
   V(3, physical_space_size, kPhysicalSpaceSizeIndex)
 
 #define V(a, b, c) +1
-static constexpr size_t kHeapSpaceStatisticsPropertiesCount =
+static const size_t kHeapSpaceStatisticsPropertiesCount =
     HEAP_SPACE_STATISTICS_PROPERTIES(V);
 #undef V
 
-#define HEAP_CODE_STATISTICS_PROPERTIES(V)                                     \
-  V(0, code_and_metadata_size, kCodeAndMetadataSizeIndex)                      \
-  V(1, bytecode_and_metadata_size, kBytecodeAndMetadataSizeIndex)              \
+
+#define HEAP_CODE_STATISTICS_PROPERTIES(V)                                    \
+  V(0, code_and_metadata_size, kCodeAndMetadataSizeIndex)                    \
+  V(1, bytecode_and_metadata_size, kBytecodeAndMetadataSizeIndex)             \
   V(2, external_script_source_size, kExternalScriptSourceSizeIndex)
 
 #define V(a, b, c) +1
 static const size_t kHeapCodeStatisticsPropertiesCount =
     HEAP_CODE_STATISTICS_PROPERTIES(V);
 #undef V
-
-class BindingData : public BaseObject {
- public:
-  BindingData(Environment* env, Local<Object> obj)
-      : BaseObject(env, obj),
-        heap_statistics_buffer(env->isolate(), kHeapStatisticsPropertiesCount),
-        heap_space_statistics_buffer(env->isolate(),
-                                     kHeapSpaceStatisticsPropertiesCount),
-        heap_code_statistics_buffer(env->isolate(),
-                                    kHeapCodeStatisticsPropertiesCount) {}
-
-  static constexpr FastStringKey binding_data_name { "v8" };
-
-  AliasedFloat64Array heap_statistics_buffer;
-  AliasedFloat64Array heap_space_statistics_buffer;
-  AliasedFloat64Array heap_code_statistics_buffer;
-
-  void MemoryInfo(MemoryTracker* tracker) const override {
-    tracker->TrackField("heap_statistics_buffer", heap_statistics_buffer);
-    tracker->TrackField("heap_space_statistics_buffer",
-                        heap_space_statistics_buffer);
-    tracker->TrackField("heap_code_statistics_buffer",
-                        heap_code_statistics_buffer);
-  }
-  SET_SELF_SIZE(BindingData)
-  SET_MEMORY_INFO_NAME(BindingData)
-};
-
-// TODO(addaleax): Remove once we're on C++17.
-constexpr FastStringKey BindingData::binding_data_name;
 
 void CachedDataVersionTag(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
@@ -123,11 +94,12 @@ void CachedDataVersionTag(const FunctionCallbackInfo<Value>& args) {
   args.GetReturnValue().Set(result);
 }
 
-void UpdateHeapStatisticsBuffer(const FunctionCallbackInfo<Value>& args) {
-  BindingData* data = Environment::GetBindingData<BindingData>(args);
+
+void UpdateHeapStatisticsArrayBuffer(const FunctionCallbackInfo<Value>& args) {
+  Environment* env = Environment::GetCurrent(args);
   HeapStatistics s;
-  args.GetIsolate()->GetHeapStatistics(&s);
-  AliasedFloat64Array& buffer = data->heap_statistics_buffer;
+  env->isolate()->GetHeapStatistics(&s);
+  double* const buffer = env->heap_statistics_buffer();
 #define V(index, name, _) buffer[index] = static_cast<double>(s.name());
   HEAP_STATISTICS_PROPERTIES(V)
 #undef V
@@ -135,26 +107,29 @@ void UpdateHeapStatisticsBuffer(const FunctionCallbackInfo<Value>& args) {
 
 
 void UpdateHeapSpaceStatisticsBuffer(const FunctionCallbackInfo<Value>& args) {
-  BindingData* data = Environment::GetBindingData<BindingData>(args);
+  Environment* env = Environment::GetCurrent(args);
   HeapSpaceStatistics s;
-  Isolate* const isolate = args.GetIsolate();
-  CHECK(args[0]->IsUint32());
-  size_t space_index = static_cast<size_t>(args[0].As<v8::Uint32>()->Value());
-  isolate->GetHeapSpaceStatistics(&s, space_index);
+  Isolate* const isolate = env->isolate();
+  double* buffer = env->heap_space_statistics_buffer();
+  size_t number_of_heap_spaces = env->isolate()->NumberOfHeapSpaces();
 
-  AliasedFloat64Array& buffer = data->heap_space_statistics_buffer;
-
-#define V(index, name, _) buffer[index] = static_cast<double>(s.name());
-  HEAP_SPACE_STATISTICS_PROPERTIES(V)
+  for (size_t i = 0; i < number_of_heap_spaces; i++) {
+    isolate->GetHeapSpaceStatistics(&s, i);
+    size_t const property_offset = i * kHeapSpaceStatisticsPropertiesCount;
+#define V(index, name, _) buffer[property_offset + index] = \
+                              static_cast<double>(s.name());
+      HEAP_SPACE_STATISTICS_PROPERTIES(V)
 #undef V
+  }
 }
 
-void UpdateHeapCodeStatisticsBuffer(const FunctionCallbackInfo<Value>& args) {
-  BindingData* data = Environment::GetBindingData<BindingData>(args);
-  HeapCodeStatistics s;
-  args.GetIsolate()->GetHeapCodeAndMetadataStatistics(&s);
-  AliasedFloat64Array& buffer = data->heap_code_statistics_buffer;
 
+void UpdateHeapCodeStatisticsArrayBuffer(
+    const FunctionCallbackInfo<Value>& args) {
+  Environment* env = Environment::GetCurrent(args);
+  HeapCodeStatistics s;
+  env->isolate()->GetHeapCodeAndMetadataStatistics(&s);
+  double* const buffer = env->heap_code_statistics_buffer();
 #define V(index, name, _) buffer[index] = static_cast<double>(s.name());
   HEAP_CODE_STATISTICS_PROPERTIES(V)
 #undef V
@@ -164,7 +139,7 @@ void UpdateHeapCodeStatisticsBuffer(const FunctionCallbackInfo<Value>& args) {
 void SetFlagsFromString(const FunctionCallbackInfo<Value>& args) {
   CHECK(args[0]->IsString());
   String::Utf8Value flags(args.GetIsolate(), args[0]);
-  V8::SetFlagsFromString(*flags, static_cast<size_t>(flags.length()));
+  V8::SetFlagsFromString(*flags, flags.length());
 }
 
 
@@ -173,22 +148,26 @@ void Initialize(Local<Object> target,
                 Local<Context> context,
                 void* priv) {
   Environment* env = Environment::GetCurrent(context);
-  BindingData* const binding_data =
-      env->AddBindingData<BindingData>(context, target);
-  if (binding_data == nullptr) return;
 
   env->SetMethodNoSideEffect(target, "cachedDataVersionTag",
                              CachedDataVersionTag);
 
   // Export symbols used by v8.getHeapStatistics()
-  env->SetMethod(
-      target, "updateHeapStatisticsBuffer", UpdateHeapStatisticsBuffer);
+  env->SetMethod(target,
+                 "updateHeapStatisticsArrayBuffer",
+                 UpdateHeapStatisticsArrayBuffer);
 
-  target
-      ->Set(env->context(),
-            FIXED_ONE_BYTE_STRING(env->isolate(), "heapStatisticsBuffer"),
-            binding_data->heap_statistics_buffer.GetJSArray())
-      .Check();
+  env->set_heap_statistics_buffer(new double[kHeapStatisticsPropertiesCount]);
+
+  const size_t heap_statistics_buffer_byte_length =
+      sizeof(*env->heap_statistics_buffer()) * kHeapStatisticsPropertiesCount;
+
+  target->Set(env->context(),
+              FIXED_ONE_BYTE_STRING(env->isolate(),
+                                    "heapStatisticsArrayBuffer"),
+              ArrayBuffer::New(env->isolate(),
+                               env->heap_statistics_buffer(),
+                               heap_statistics_buffer_byte_length)).Check();
 
 #define V(i, _, name)                                                         \
   target->Set(env->context(),                                                 \
@@ -199,14 +178,24 @@ void Initialize(Local<Object> target,
 #undef V
 
   // Export symbols used by v8.getHeapCodeStatistics()
-  env->SetMethod(
-      target, "updateHeapCodeStatisticsBuffer", UpdateHeapCodeStatisticsBuffer);
+  env->SetMethod(target,
+                 "updateHeapCodeStatisticsArrayBuffer",
+                 UpdateHeapCodeStatisticsArrayBuffer);
 
-  target
-      ->Set(env->context(),
-            FIXED_ONE_BYTE_STRING(env->isolate(), "heapCodeStatisticsBuffer"),
-            binding_data->heap_code_statistics_buffer.GetJSArray())
-      .Check();
+  env->set_heap_code_statistics_buffer(
+    new double[kHeapCodeStatisticsPropertiesCount]);
+
+  const size_t heap_code_statistics_buffer_byte_length =
+      sizeof(*env->heap_code_statistics_buffer())
+      * kHeapCodeStatisticsPropertiesCount;
+
+  target->Set(env->context(),
+              FIXED_ONE_BYTE_STRING(env->isolate(),
+                                    "heapCodeStatisticsArrayBuffer"),
+              ArrayBuffer::New(env->isolate(),
+                               env->heap_code_statistics_buffer(),
+                               heap_code_statistics_buffer_byte_length))
+  .Check();
 
 #define V(i, _, name)                                                         \
   target->Set(env->context(),                                                 \
@@ -216,6 +205,14 @@ void Initialize(Local<Object> target,
   HEAP_CODE_STATISTICS_PROPERTIES(V)
 #undef V
 
+  // Export symbols used by v8.getHeapSpaceStatistics()
+  target->Set(env->context(),
+              FIXED_ONE_BYTE_STRING(env->isolate(),
+                                    "kHeapSpaceStatisticsPropertiesCount"),
+              Uint32::NewFromUnsigned(env->isolate(),
+                                      kHeapSpaceStatisticsPropertiesCount))
+              .Check();
+
   size_t number_of_heap_spaces = env->isolate()->NumberOfHeapSpaces();
 
   // Heap space names are extracted once and exposed to JavaScript to
@@ -224,7 +221,9 @@ void Initialize(Local<Object> target,
   MaybeStackBuffer<Local<Value>, 16> heap_spaces(number_of_heap_spaces);
   for (size_t i = 0; i < number_of_heap_spaces; i++) {
     env->isolate()->GetHeapSpaceStatistics(&s, i);
-    heap_spaces[i] = String::NewFromUtf8(env->isolate(), s.space_name())
+    heap_spaces[i] = String::NewFromUtf8(env->isolate(),
+                                         s.space_name(),
+                                         NewStringType::kNormal)
                                              .ToLocalChecked();
   }
   target->Set(env->context(),
@@ -234,15 +233,24 @@ void Initialize(Local<Object> target,
                          number_of_heap_spaces)).Check();
 
   env->SetMethod(target,
-                 "updateHeapSpaceStatisticsBuffer",
+                 "updateHeapSpaceStatisticsArrayBuffer",
                  UpdateHeapSpaceStatisticsBuffer);
 
-  target
-      ->Set(env->context(),
-            FIXED_ONE_BYTE_STRING(env->isolate(),
-                                  "heapSpaceStatisticsBuffer"),
-            binding_data->heap_space_statistics_buffer.GetJSArray())
-      .Check();
+  env->set_heap_space_statistics_buffer(
+    new double[kHeapSpaceStatisticsPropertiesCount * number_of_heap_spaces]);
+
+  const size_t heap_space_statistics_buffer_byte_length =
+      sizeof(*env->heap_space_statistics_buffer()) *
+      kHeapSpaceStatisticsPropertiesCount *
+      number_of_heap_spaces;
+
+  target->Set(env->context(),
+              FIXED_ONE_BYTE_STRING(env->isolate(),
+                                    "heapSpaceStatisticsArrayBuffer"),
+              ArrayBuffer::New(env->isolate(),
+                               env->heap_space_statistics_buffer(),
+                               heap_space_statistics_buffer_byte_length))
+              .Check();
 
 #define V(i, _, name)                                                         \
   target->Set(env->context(),                                                 \

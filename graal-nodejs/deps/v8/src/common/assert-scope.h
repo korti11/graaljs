@@ -28,6 +28,7 @@ enum PerThreadAssertType {
   HEAP_ALLOCATION_ASSERT,
   HANDLE_ALLOCATION_ASSERT,
   HANDLE_DEREFERENCE_ASSERT,
+  DEFERRED_HANDLE_DEREFERENCE_ASSERT,
   CODE_DEPENDENCY_CHANGE_ASSERT,
   LAST_PER_THREAD_ASSERT_TYPE
 };
@@ -144,11 +145,19 @@ using DisallowHandleDereference =
 using AllowHandleDereference =
     PerThreadAssertScopeDebugOnly<HANDLE_DEREFERENCE_ASSERT, true>;
 
-// Scope to document where we do not expect code dependencies to change.
+// Scope to document where we do not expect deferred handles to be dereferenced.
+using DisallowDeferredHandleDereference =
+    PerThreadAssertScopeDebugOnly<DEFERRED_HANDLE_DEREFERENCE_ASSERT, false>;
+
+// Scope to introduce an exception to DisallowDeferredHandleDereference.
+using AllowDeferredHandleDereference =
+    PerThreadAssertScopeDebugOnly<DEFERRED_HANDLE_DEREFERENCE_ASSERT, true>;
+
+// Scope to document where we do not expect deferred handles to be dereferenced.
 using DisallowCodeDependencyChange =
     PerThreadAssertScopeDebugOnly<CODE_DEPENDENCY_CHANGE_ASSERT, false>;
 
-// Scope to introduce an exception to DisallowCodeDependencyChange.
+// Scope to introduce an exception to DisallowDeferredHandleDereference.
 using AllowCodeDependencyChange =
     PerThreadAssertScopeDebugOnly<CODE_DEPENDENCY_CHANGE_ASSERT, true>;
 
@@ -234,6 +243,10 @@ extern template class PerThreadAssertScope<HANDLE_ALLOCATION_ASSERT, false>;
 extern template class PerThreadAssertScope<HANDLE_ALLOCATION_ASSERT, true>;
 extern template class PerThreadAssertScope<HANDLE_DEREFERENCE_ASSERT, false>;
 extern template class PerThreadAssertScope<HANDLE_DEREFERENCE_ASSERT, true>;
+extern template class PerThreadAssertScope<DEFERRED_HANDLE_DEREFERENCE_ASSERT,
+                                           false>;
+extern template class PerThreadAssertScope<DEFERRED_HANDLE_DEREFERENCE_ASSERT,
+                                           true>;
 extern template class PerThreadAssertScope<CODE_DEPENDENCY_CHANGE_ASSERT,
                                            false>;
 extern template class PerThreadAssertScope<CODE_DEPENDENCY_CHANGE_ASSERT, true>;

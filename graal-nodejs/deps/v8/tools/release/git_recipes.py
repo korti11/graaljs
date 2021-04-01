@@ -227,6 +227,7 @@ class GitRecipesMixin(object):
       args += ["--cc", Quoted(cc)]
     if message_file:
       args += ["--message-file", Quoted(message_file)]
+    args += ["--gerrit"]
     # TODO(machenbach): Check output in forced mode. Verify that all required
     # base files were uploaded, if not retry.
     self.Git(MakeArgs(args), pipe=False, **kwargs)

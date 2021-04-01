@@ -7,7 +7,6 @@ const {
   prepareMainThreadExecution
 } = require('internal/bootstrap/pre_execution');
 
-const esmLoader = require('internal/process/esm_loader');
 const {
   evalScript
 } = require('internal/process/execution');
@@ -33,33 +32,31 @@ if (process.env.NODE_REPL_EXTERNAL_MODULE) {
     process.exit(1);
   }
 
-  esmLoader.loadESM(() => {
-    console.log(`Welcome to Node.js ${process.version}.\n` +
-      'Type ".help" for more information.');
+  console.log(`Welcome to Node.js ${process.version}.\n` +
+    'Type ".help" for more information.');
 
-    const cliRepl = require('internal/repl');
-    cliRepl.createInternalRepl(process.env, (err, repl) => {
-      if (err) {
-        throw err;
-      }
-      repl.on('exit', () => {
-        if (repl._flushing) {
-          repl.pause();
-          return repl.once('flushHistory', () => {
-            process.exit();
-          });
-        }
-        process.exit();
-      });
-    });
-
-    // If user passed '-e' or '--eval' along with `-i` or `--interactive`,
-    // evaluate the code in the current context.
-    if (getOptionValue('[has_eval_string]')) {
-      evalScript('[eval]',
-                 getOptionValue('--eval'),
-                 getOptionValue('--inspect-brk'),
-                 getOptionValue('--print'));
+  const cliRepl = require('internal/repl');
+  cliRepl.createInternalRepl(process.env, (err, repl) => {
+    if (err) {
+      throw err;
     }
+    repl.on('exit', () => {
+      if (repl._flushing) {
+        repl.pause();
+        return repl.once('flushHistory', () => {
+          process.exit();
+        });
+      }
+      process.exit();
+    });
   });
+
+  // If user passed '-e' or '--eval' along with `-i` or `--interactive`,
+  // evaluate the code in the current context.
+  if (getOptionValue('[has_eval_string]')) {
+    evalScript('[eval]',
+               getOptionValue('--eval'),
+               getOptionValue('--inspect-brk'),
+               getOptionValue('--print'));
+  }
 }

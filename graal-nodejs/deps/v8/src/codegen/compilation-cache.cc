@@ -28,7 +28,7 @@ CompilationCache::CompilationCache(Isolate* isolate)
       eval_global_(isolate),
       eval_contextual_(isolate),
       reg_exp_(isolate, kRegExpGenerations),
-      enabled_script_and_eval_(true) {
+      enabled_(true) {
   CompilationSubCache* subcaches[kSubCacheCount] = {
       &script_, &eval_global_, &eval_contextual_, &reg_exp_};
   for (int i = 0; i < kSubCacheCount; ++i) {
@@ -254,7 +254,7 @@ void CompilationCacheRegExp::Put(Handle<String> source, JSRegExp::Flags flags,
 }
 
 void CompilationCache::Remove(Handle<SharedFunctionInfo> function_info) {
-  if (!IsEnabledScriptAndEval()) return;
+  if (!IsEnabled()) return;
 
   eval_global_.Remove(function_info);
   eval_contextual_.Remove(function_info);
@@ -265,7 +265,7 @@ MaybeHandle<SharedFunctionInfo> CompilationCache::LookupScript(
     Handle<String> source, MaybeHandle<Object> name, int line_offset,
     int column_offset, ScriptOriginOptions resource_options,
     Handle<Context> native_context, LanguageMode language_mode) {
-  if (!IsEnabledScriptAndEval()) return MaybeHandle<SharedFunctionInfo>();
+  if (!IsEnabled()) return MaybeHandle<SharedFunctionInfo>();
 
   return script_.Lookup(source, name, line_offset, column_offset,
                         resource_options, native_context, language_mode);
@@ -277,7 +277,7 @@ InfoCellPair CompilationCache::LookupEval(Handle<String> source,
                                           LanguageMode language_mode,
                                           int position) {
   InfoCellPair result;
-  if (!IsEnabledScriptAndEval()) return result;
+  if (!IsEnabled()) return result;
 
   const char* cache_type;
 
@@ -303,6 +303,8 @@ InfoCellPair CompilationCache::LookupEval(Handle<String> source,
 
 MaybeHandle<FixedArray> CompilationCache::LookupRegExp(Handle<String> source,
                                                        JSRegExp::Flags flags) {
+  if (!IsEnabled()) return MaybeHandle<FixedArray>();
+
   return reg_exp_.Lookup(source, flags);
 }
 
@@ -310,7 +312,7 @@ void CompilationCache::PutScript(Handle<String> source,
                                  Handle<Context> native_context,
                                  LanguageMode language_mode,
                                  Handle<SharedFunctionInfo> function_info) {
-  if (!IsEnabledScriptAndEval()) return;
+  if (!IsEnabled()) return;
   LOG(isolate(), CompilationCacheEvent("put", "script", *function_info));
 
   script_.Put(source, native_context, language_mode, function_info);
@@ -322,7 +324,7 @@ void CompilationCache::PutEval(Handle<String> source,
                                Handle<SharedFunctionInfo> function_info,
                                Handle<FeedbackCell> feedback_cell,
                                int position) {
-  if (!IsEnabledScriptAndEval()) return;
+  if (!IsEnabled()) return;
 
   const char* cache_type;
   HandleScope scope(isolate());
@@ -342,6 +344,8 @@ void CompilationCache::PutEval(Handle<String> source,
 
 void CompilationCache::PutRegExp(Handle<String> source, JSRegExp::Flags flags,
                                  Handle<FixedArray> data) {
+  if (!IsEnabled()) return;
+
   reg_exp_.Put(source, flags, data);
 }
 
@@ -363,12 +367,10 @@ void CompilationCache::MarkCompactPrologue() {
   }
 }
 
-void CompilationCache::EnableScriptAndEval() {
-  enabled_script_and_eval_ = true;
-}
+void CompilationCache::Enable() { enabled_ = true; }
 
-void CompilationCache::DisableScriptAndEval() {
-  enabled_script_and_eval_ = false;
+void CompilationCache::Disable() {
+  enabled_ = false;
   Clear();
 }
 

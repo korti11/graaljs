@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -41,44 +41,32 @@
 package com.oracle.truffle.js.nodes.interop;
 
 import com.oracle.truffle.api.dsl.CachedContext;
-import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.js.lang.JavaScriptLanguage;
 import com.oracle.truffle.js.nodes.JavaScriptBaseNode;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSRealm;
 
 /**
  * Node that returns a suitable prototype for a foreign object.
  */
-@ImportStatic({JSConfig.class})
 public abstract class ForeignObjectPrototypeNode extends JavaScriptBaseNode {
 
     public abstract DynamicObject executeDynamicObject(Object truffleObject);
 
-    @Specialization(limit = "InteropLibraryLimit")
+    @Specialization(limit = "3")
     public DynamicObject doTruffleObject(Object truffleObject,
                     @CachedContext(JavaScriptLanguage.class) JSRealm realm,
                     @CachedLibrary("truffleObject") InteropLibrary interop) {
+        assert realm.getContext().getContextOptions().hasForeignObjectPrototype();
         if (interop.hasArrayElements(truffleObject)) {
             return realm.getArrayPrototype();
         } else if (interop.isExecutable(truffleObject) || interop.isInstantiable(truffleObject)) {
             return realm.getFunctionPrototype();
         } else if (interop.isInstant(truffleObject)) {
             return realm.getDatePrototype();
-        } else if (interop.hasHashEntries(truffleObject)) {
-            return realm.getMapPrototype();
-        } else if (interop.hasIterator(truffleObject)) {
-            return realm.getForeignIterablePrototype();
-        } else if (interop.isString(truffleObject)) {
-            return realm.getStringPrototype();
-        } else if (interop.isNumber(truffleObject)) {
-            return realm.getNumberPrototype();
-        } else if (interop.isBoolean(truffleObject)) {
-            return realm.getBooleanPrototype();
         } else {
             return realm.getObjectPrototype();
         }

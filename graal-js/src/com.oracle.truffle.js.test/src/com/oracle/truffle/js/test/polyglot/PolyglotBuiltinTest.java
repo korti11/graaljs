@@ -50,7 +50,6 @@ import org.graalvm.polyglot.PolyglotAccess;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
-import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.junit.Test;
 
 import com.oracle.truffle.js.lang.JavaScriptLanguage;
@@ -81,7 +80,6 @@ public class PolyglotBuiltinTest extends JSTest {
             if (arg != null) {
                 context.getBindings("js").putMember("arg", arg);
             }
-            addTestPolyglotBuiltins(context);
             Value result = context.eval(Source.newBuilder(JavaScriptLanguage.ID, sourceCode, "polyglot-test").buildLiteral());
             assertTrue(failedMessage == null);
             return result.asString();
@@ -90,12 +88,6 @@ public class PolyglotBuiltinTest extends JSTest {
             assertTrue(ex.getMessage().contains(failedMessage));
             return "FAILED_AS_EXPECTED";
         }
-    }
-
-    public static void addTestPolyglotBuiltins(Context context) {
-        Value polyglotObject = context.getBindings("js").getMember("Polyglot");
-        polyglotObject.putMember("createForeignObject", (ProxyExecutable) (args) -> new ForeignTestMap());
-        polyglotObject.putMember("createForeignDynamicObject", (ProxyExecutable) (args) -> new ForeignDynamicObject());
     }
 
     @Test
@@ -226,8 +218,8 @@ public class PolyglotBuiltinTest extends JSTest {
 
     @Test
     public void testCreateForeignObject() {
-        assertEquals("[object Object]", test("''+Polyglot.createForeignObject();"));
-        assertEquals("[object Object]", test("''+Polyglot.createForeignDynamicObject();"));
+        assertEquals("{}", test("''+Polyglot.createForeignObject();"));
+        assertEquals("{}", test("''+Polyglot.createForeignDynamicObject();"));
     }
 
     @Test

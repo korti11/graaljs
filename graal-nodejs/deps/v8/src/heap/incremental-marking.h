@@ -26,17 +26,23 @@ enum class StepResult {
   kWaitingForFinalization
 };
 
-class V8_EXPORT_PRIVATE IncrementalMarking final {
+class V8_EXPORT_PRIVATE IncrementalMarking {
  public:
-  enum State : uint8_t { STOPPED, SWEEPING, MARKING, COMPLETE };
+  enum State { STOPPED, SWEEPING, MARKING, COMPLETE };
 
   enum CompletionAction { GC_VIA_STACK_GUARD, NO_GC_VIA_STACK_GUARD };
 
+  enum ForceCompletionAction { FORCE_COMPLETION, DO_NOT_FORCE_COMPLETION };
+
   enum GCRequestType { NONE, COMPLETE_MARKING, FINALIZATION };
 
-  using MarkingState = MarkCompactCollector::MarkingState;
-  using AtomicMarkingState = MarkCompactCollector::AtomicMarkingState;
-  using NonAtomicMarkingState = MarkCompactCollector::NonAtomicMarkingState;
+#ifdef V8_CONCURRENT_MARKING
+  using MarkingState = IncrementalMarkingState;
+#else
+  using MarkingState = MajorNonAtomicMarkingState;
+#endif  // V8_CONCURRENT_MARKING
+  using AtomicMarkingState = MajorAtomicMarkingState;
+  using NonAtomicMarkingState = MajorNonAtomicMarkingState;
 
   class PauseBlackAllocationScope {
    public:
@@ -86,7 +92,9 @@ class V8_EXPORT_PRIVATE IncrementalMarking final {
   static const AccessMode kAtomicity = AccessMode::NON_ATOMIC;
 #endif
 
-  IncrementalMarking(Heap* heap, WeakObjects* weak_objects);
+  IncrementalMarking(Heap* heap,
+                     MarkCompactCollector::MarkingWorklist* marking_worklist,
+                     WeakObjects* weak_objects);
 
   MarkingState* marking_state() { return &marking_state_; }
 
@@ -104,6 +112,9 @@ class V8_EXPORT_PRIVATE IncrementalMarking final {
     DCHECK(state_ == STOPPED || FLAG_incremental_marking);
     return state_;
   }
+
+  bool should_hurry() const { return should_hurry_; }
+  void set_should_hurry(bool val) { should_hurry_ = val; }
 
   bool finalize_marking_completed() const {
     return finalize_marking_completed_;
@@ -169,11 +180,11 @@ class V8_EXPORT_PRIVATE IncrementalMarking final {
 
   void FinalizeSweeping();
 
-  StepResult Step(double max_step_size_in_ms, CompletionAction action,
-                  StepOrigin step_origin);
+  StepResult V8Step(double max_step_size_in_ms, CompletionAction action,
+                    StepOrigin step_origin);
 
   bool ShouldDoEmbedderStep();
-  StepResult EmbedderStep(double expected_duration_ms, double* duration_ms);
+  StepResult EmbedderStep(double duration);
 
   V8_INLINE void RestartIfNotMarking();
 
@@ -193,6 +204,12 @@ class V8_EXPORT_PRIVATE IncrementalMarking final {
   template <typename TSlot>
   V8_INLINE void RecordWrite(HeapObject obj, TSlot slot,
                              typename TSlot::TObject value);
+  void RevisitObject(HeapObject obj);
+  // Ensures that all descriptors int range [0, number_of_own_descripts)
+  // are visited.
+  void VisitDescriptors(HeapObject host, DescriptorArray array,
+                        int number_of_own_descriptors);
+
   void RecordWriteSlow(HeapObject obj, HeapObjectSlot slot, HeapObject value);
   void RecordWriteIntoCode(Code host, RelocInfo* rinfo, HeapObject value);
 
@@ -223,8 +240,8 @@ class V8_EXPORT_PRIVATE IncrementalMarking final {
     }
   }
 
-  MarkingWorklists* marking_worklists() const {
-    return collector_->marking_worklists();
+  MarkCompactCollector::MarkingWorklist* marking_worklist() const {
+    return marking_worklist_;
   }
 
   void Deactivate();
@@ -268,6 +285,13 @@ class V8_EXPORT_PRIVATE IncrementalMarking final {
   void DeactivateIncrementalWriteBarrierForSpace(NewSpace* space);
   void DeactivateIncrementalWriteBarrier();
 
+  V8_INLINE intptr_t ProcessMarkingWorklist(
+      intptr_t bytes_to_process,
+      ForceCompletionAction completion = DO_NOT_FORCE_COMPLETION);
+
+  // Visits the object and returns its size.
+  V8_INLINE int VisitObject(Map map, HeapObject obj);
+
   // Updates scheduled_bytes_to_mark_ to ensure marking progress based on
   // time.
   void ScheduleBytesToMarkBasedOnTime(double time_ms);
@@ -298,37 +322,32 @@ class V8_EXPORT_PRIVATE IncrementalMarking final {
     heap_->SetIsMarkingFlag(s >= MARKING);
   }
 
-  double CurrentTimeToMarkingTask() const;
-
   Heap* const heap_;
-  MarkCompactCollector* const collector_;
+  MarkCompactCollector::MarkingWorklist* const marking_worklist_;
   WeakObjects* weak_objects_;
 
-  double start_time_ms_ = 0.0;
-  double time_to_force_completion_ = 0.0;
-  size_t initial_old_generation_size_ = 0;
-  size_t old_generation_allocation_counter_ = 0;
-  size_t bytes_marked_ = 0;
-  size_t scheduled_bytes_to_mark_ = 0;
-  double schedule_update_time_ms_ = 0.0;
+  double start_time_ms_;
+  size_t initial_old_generation_size_;
+  size_t old_generation_allocation_counter_;
+  size_t bytes_marked_;
+  size_t scheduled_bytes_to_mark_;
+  double schedule_update_time_ms_;
   // A sample of concurrent_marking()->TotalMarkedBytes() at the last
   // incremental marking step. It is used for updating
   // bytes_marked_ahead_of_schedule_ with contribution of concurrent marking.
-  size_t bytes_marked_concurrently_ = 0;
+  size_t bytes_marked_concurrently_;
 
   // Must use SetState() above to update state_
-  // Atomic since main thread can complete marking (= changing state), while a
-  // background thread's slow allocation path will check whether incremental
-  // marking is currently running.
-  std::atomic<State> state_;
+  State state_;
 
-  bool is_compacting_ = false;
-  bool was_activated_ = false;
-  bool black_allocation_ = false;
-  bool finalize_marking_completed_ = false;
+  bool is_compacting_;
+  bool should_hurry_;
+  bool was_activated_;
+  bool black_allocation_;
+  bool finalize_marking_completed_;
   IncrementalMarkingJob incremental_marking_job_;
 
-  std::atomic<GCRequestType> request_type_{NONE};
+  GCRequestType request_type_;
 
   Observer new_generation_observer_;
   Observer old_generation_observer_;

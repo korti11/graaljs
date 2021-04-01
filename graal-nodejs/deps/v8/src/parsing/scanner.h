@@ -8,14 +8,11 @@
 #define V8_PARSING_SCANNER_H_
 
 #include <algorithm>
-#include <memory>
 
-#include "include/v8.h"
 #include "src/base/logging.h"
 #include "src/common/globals.h"
 #include "src/common/message-template.h"
 #include "src/parsing/literal-buffer.h"
-#include "src/parsing/parse-info.h"
 #include "src/parsing/token.h"
 #include "src/strings/char-predicates.h"
 #include "src/strings/unicode.h"
@@ -258,7 +255,7 @@ class V8_EXPORT_PRIVATE Scanner {
     Location() : beg_pos(0), end_pos(0) { }
 
     int length() const { return end_pos - beg_pos; }
-    bool IsValid() const { return base::IsInRange(beg_pos, 0, end_pos); }
+    bool IsValid() const { return IsInRange(beg_pos, 0, end_pos); }
 
     static Location invalid() { return Location(-1, 0); }
 
@@ -270,7 +267,7 @@ class V8_EXPORT_PRIVATE Scanner {
   static const int kNoOctalLocation = -1;
   static const uc32 kEndOfInput = Utf16CharacterStream::kEndOfInput;
 
-  explicit Scanner(Utf16CharacterStream* source, UnoptimizedCompileFlags flags);
+  explicit Scanner(Utf16CharacterStream* source, bool is_module);
 
   void Initialize();
 
@@ -404,12 +401,22 @@ class V8_EXPORT_PRIVATE Scanner {
     return ScanTemplateSpan();
   }
 
-  template <typename LocalIsolate>
-  Handle<String> SourceUrl(LocalIsolate* isolate) const;
-  template <typename LocalIsolate>
-  Handle<String> SourceMappingUrl(LocalIsolate* isolate) const;
+  Handle<String> SourceUrl(Isolate* isolate) const;
+  Handle<String> SourceMappingUrl(Isolate* isolate) const;
 
   bool FoundHtmlComment() const { return found_html_comment_; }
+
+  bool allow_harmony_optional_chaining() const {
+    return allow_harmony_optional_chaining_;
+  }
+
+  void set_allow_harmony_optional_chaining(bool allow) {
+    allow_harmony_optional_chaining_ = allow;
+  }
+
+  bool allow_harmony_nullish() const { return allow_harmony_nullish_; }
+
+  void set_allow_harmony_nullish(bool allow) { allow_harmony_nullish_ = allow; }
 
   const Utf16CharacterStream* stream() const { return source_; }
 
@@ -433,15 +440,14 @@ class V8_EXPORT_PRIVATE Scanner {
 #ifdef DEBUG
     bool CanAccessLiteral() const {
       return token == Token::PRIVATE_NAME || token == Token::ILLEGAL ||
-             token == Token::ESCAPED_KEYWORD || token == Token::UNINITIALIZED ||
-             token == Token::REGEXP_LITERAL ||
-             base::IsInRange(token, Token::NUMBER, Token::STRING) ||
+             token == Token::UNINITIALIZED || token == Token::REGEXP_LITERAL ||
+             IsInRange(token, Token::NUMBER, Token::STRING) ||
              Token::IsAnyIdentifier(token) || Token::IsKeyword(token) ||
-             base::IsInRange(token, Token::TEMPLATE_SPAN, Token::TEMPLATE_TAIL);
+             IsInRange(token, Token::TEMPLATE_SPAN, Token::TEMPLATE_TAIL);
     }
     bool CanAccessRawLiteral() const {
       return token == Token::ILLEGAL || token == Token::UNINITIALIZED ||
-             base::IsInRange(token, Token::TEMPLATE_SPAN, Token::TEMPLATE_TAIL);
+             IsInRange(token, Token::TEMPLATE_SPAN, Token::TEMPLATE_TAIL);
     }
 #endif  // DEBUG
   };
@@ -456,11 +462,11 @@ class V8_EXPORT_PRIVATE Scanner {
   };
 
   inline bool IsValidBigIntKind(NumberKind kind) {
-    return base::IsInRange(kind, BINARY, DECIMAL);
+    return IsInRange(kind, BINARY, DECIMAL);
   }
 
   inline bool IsDecimalNumberKind(NumberKind kind) {
-    return base::IsInRange(kind, DECIMAL, DECIMAL_WITH_LEADING_ZERO);
+    return IsInRange(kind, DECIMAL, DECIMAL_WITH_LEADING_ZERO);
   }
 
   static const int kCharacterLookaheadBufferSize = 1;
@@ -576,18 +582,15 @@ class V8_EXPORT_PRIVATE Scanner {
   // token as a one-byte literal. E.g. Token::FUNCTION pretends to have a
   // literal "function".
   Vector<const uint8_t> literal_one_byte_string() const {
-    DCHECK(current().CanAccessLiteral() || Token::IsKeyword(current().token) ||
-           current().token == Token::ESCAPED_KEYWORD);
+    DCHECK(current().CanAccessLiteral() || Token::IsKeyword(current().token));
     return current().literal_chars.one_byte_literal();
   }
   Vector<const uint16_t> literal_two_byte_string() const {
-    DCHECK(current().CanAccessLiteral() || Token::IsKeyword(current().token) ||
-           current().token == Token::ESCAPED_KEYWORD);
+    DCHECK(current().CanAccessLiteral() || Token::IsKeyword(current().token));
     return current().literal_chars.two_byte_literal();
   }
   bool is_literal_one_byte() const {
-    DCHECK(current().CanAccessLiteral() || Token::IsKeyword(current().token) ||
-           current().token == Token::ESCAPED_KEYWORD);
+    DCHECK(current().CanAccessLiteral() || Token::IsKeyword(current().token));
     return current().literal_chars.is_one_byte();
   }
   // Returns the literal string for the next token (the token that
@@ -704,8 +707,6 @@ class V8_EXPORT_PRIVATE Scanner {
   const TokenDesc& next() const { return *next_; }
   const TokenDesc& next_next() const { return *next_next_; }
 
-  UnoptimizedCompileFlags flags_;
-
   TokenDesc* current_;    // desc for current token (as returned by Next())
   TokenDesc* next_;       // desc for next token (one token look-ahead)
   TokenDesc* next_next_;  // desc for the token after next (after PeakAhead())
@@ -720,6 +721,12 @@ class V8_EXPORT_PRIVATE Scanner {
 
   // Whether this scanner encountered an HTML comment.
   bool found_html_comment_;
+
+  // Harmony flags to allow ESNext features.
+  bool allow_harmony_optional_chaining_;
+  bool allow_harmony_nullish_;
+
+  const bool is_module_;
 
   // Values parsed from magic comments.
   LiteralBuffer source_url_;

@@ -43,7 +43,6 @@ package com.oracle.truffle.js.nodes.access;
 import java.util.Set;
 
 import com.oracle.truffle.api.dsl.Cached;
-import com.oracle.truffle.api.dsl.GenerateUncached;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.Tag;
@@ -61,7 +60,6 @@ import com.oracle.truffle.js.runtime.objects.JSShape;
 import com.oracle.truffle.js.runtime.objects.Null;
 import com.oracle.truffle.js.runtime.util.JSClassProfile;
 
-@GenerateUncached
 public abstract class GetPrototypeNode extends JavaScriptBaseNode {
     static final int MAX_SHAPE_COUNT = 2;
 
@@ -103,7 +101,7 @@ public abstract class GetPrototypeNode extends JavaScriptBaseNode {
     }
 
     @Specialization(guards = {"obj.getShape() == shape", "prototypeProperty != null"}, limit = "MAX_SHAPE_COUNT")
-    static DynamicObject doCachedShape(DynamicObject obj,
+    public DynamicObject doCachedShape(DynamicObject obj,
                     @Cached("obj.getShape()") Shape shape,
                     @Cached("getPrototypeProperty(shape)") Property prototypeProperty) {
         assert !JSGuards.isJSProxy(obj);
@@ -111,18 +109,18 @@ public abstract class GetPrototypeNode extends JavaScriptBaseNode {
     }
 
     @Specialization(guards = "!isJSProxy(obj)", replaces = "doCachedShape")
-    static DynamicObject doGeneric(DynamicObject obj) {
+    public DynamicObject doGeneric(DynamicObject obj) {
         return JSObjectUtil.getPrototype(obj);
     }
 
     @Specialization(guards = "isJSProxy(obj)")
-    static DynamicObject doProxy(DynamicObject obj,
+    public DynamicObject doProxy(DynamicObject obj,
                     @Cached("create()") JSClassProfile jsclassProfile) {
         return JSObject.getPrototype(obj, jsclassProfile);
     }
 
     @Specialization(guards = "!isDynamicObject(obj)")
-    static DynamicObject doNotObject(@SuppressWarnings("unused") Object obj) {
+    public DynamicObject doNotObject(@SuppressWarnings("unused") Object obj) {
         return Null.instance;
     }
 }

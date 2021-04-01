@@ -84,10 +84,12 @@ void CpuFeatures::ProbeImpl(bool cross_compile) {
   // Probe for additional features at runtime.
   base::CPU cpu;
   if (cpu.has_fpu()) supported_ |= 1u << FPU;
+#if defined(_MIPS_ARCH_MIPS64R6)
 #if defined(_MIPS_MSA)
   supported_ |= 1u << MIPS_SIMD;
 #else
   if (cpu.has_msa()) supported_ |= 1u << MIPS_SIMD;
+#endif
 #endif
 #endif
 }
@@ -205,8 +207,8 @@ void Assembler::AllocateAndInstallRequestedHeapObjects(Isolate* isolate) {
     Handle<HeapObject> object;
     switch (request.kind()) {
       case HeapObjectRequest::kHeapNumber:
-        object = isolate->factory()->NewHeapNumber<AllocationType::kOld>(
-            request.heap_number());
+        object = isolate->factory()->NewHeapNumber(request.heap_number(),
+                                                   AllocationType::kOld);
         break;
       case HeapObjectRequest::kStringConstant:
         const StringConstantBase* str = request.string();
@@ -259,9 +261,6 @@ Assembler::Assembler(const AssemblerOptions& options,
                      std::unique_ptr<AssemblerBuffer> buffer)
     : AssemblerBase(options, std::move(buffer)),
       scratch_register_list_(at.bit()) {
-  if (CpuFeatures::IsSupported(MIPS_SIMD)) {
-    EnableCpuFeature(MIPS_SIMD);
-  }
   reloc_info_writer.Reposition(buffer_start_ + buffer_->size(), pc_);
 
   last_trampoline_pool_end_ = 0;
@@ -1170,7 +1169,7 @@ void Assembler::GenInstrJump(Opcode opcode, uint32_t address) {
 // MSA instructions
 void Assembler::GenInstrMsaI8(SecondaryField operation, uint32_t imm8,
                               MSARegister ws, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(ws.is_valid() && wd.is_valid() && is_uint8(imm8));
   Instr instr = MSA | operation | ((imm8 & kImm8Mask) << kWtShift) |
                 (ws.code() << kWsShift) | (wd.code() << kWdShift);
@@ -1179,7 +1178,7 @@ void Assembler::GenInstrMsaI8(SecondaryField operation, uint32_t imm8,
 
 void Assembler::GenInstrMsaI5(SecondaryField operation, SecondaryField df,
                               int32_t imm5, MSARegister ws, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(ws.is_valid() && wd.is_valid());
   DCHECK((operation == MAXI_S) || (operation == MINI_S) ||
                  (operation == CEQI) || (operation == CLTI_S) ||
@@ -1193,7 +1192,7 @@ void Assembler::GenInstrMsaI5(SecondaryField operation, SecondaryField df,
 
 void Assembler::GenInstrMsaBit(SecondaryField operation, SecondaryField df,
                                uint32_t m, MSARegister ws, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(ws.is_valid() && wd.is_valid() && is_valid_msa_df_m(df, m));
   Instr instr = MSA | operation | df | (m << kWtShift) |
                 (ws.code() << kWsShift) | (wd.code() << kWdShift);
@@ -1202,7 +1201,7 @@ void Assembler::GenInstrMsaBit(SecondaryField operation, SecondaryField df,
 
 void Assembler::GenInstrMsaI10(SecondaryField operation, SecondaryField df,
                                int32_t imm10, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(wd.is_valid() && is_int10(imm10));
   Instr instr = MSA | operation | df | ((imm10 & kImm10Mask) << kWsShift) |
                 (wd.code() << kWdShift);
@@ -1212,7 +1211,7 @@ void Assembler::GenInstrMsaI10(SecondaryField operation, SecondaryField df,
 template <typename RegType>
 void Assembler::GenInstrMsa3R(SecondaryField operation, SecondaryField df,
                               RegType t, MSARegister ws, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(t.is_valid() && ws.is_valid() && wd.is_valid());
   Instr instr = MSA | operation | df | (t.code() << kWtShift) |
                 (ws.code() << kWsShift) | (wd.code() << kWdShift);
@@ -1222,7 +1221,7 @@ void Assembler::GenInstrMsa3R(SecondaryField operation, SecondaryField df,
 template <typename DstType, typename SrcType>
 void Assembler::GenInstrMsaElm(SecondaryField operation, SecondaryField df,
                                uint32_t n, SrcType src, DstType dst) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(src.is_valid() && dst.is_valid() && is_valid_msa_df_n(df, n));
   Instr instr = MSA | operation | df | (n << kWtShift) |
                 (src.code() << kWsShift) | (dst.code() << kWdShift) |
@@ -1232,7 +1231,7 @@ void Assembler::GenInstrMsaElm(SecondaryField operation, SecondaryField df,
 
 void Assembler::GenInstrMsa3RF(SecondaryField operation, uint32_t df,
                                MSARegister wt, MSARegister ws, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(wt.is_valid() && ws.is_valid() && wd.is_valid());
   DCHECK_LT(df, 2);
   Instr instr = MSA | operation | (df << 21) | (wt.code() << kWtShift) |
@@ -1242,7 +1241,7 @@ void Assembler::GenInstrMsa3RF(SecondaryField operation, uint32_t df,
 
 void Assembler::GenInstrMsaVec(SecondaryField operation, MSARegister wt,
                                MSARegister ws, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(wt.is_valid() && ws.is_valid() && wd.is_valid());
   Instr instr = MSA | operation | (wt.code() << kWtShift) |
                 (ws.code() << kWsShift) | (wd.code() << kWdShift) |
@@ -1252,7 +1251,7 @@ void Assembler::GenInstrMsaVec(SecondaryField operation, MSARegister wt,
 
 void Assembler::GenInstrMsaMI10(SecondaryField operation, int32_t s10,
                                 Register rs, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(rs.is_valid() && wd.is_valid() && is_int10(s10));
   Instr instr = MSA | operation | ((s10 & kImm10Mask) << kWtShift) |
                 (rs.code() << kWsShift) | (wd.code() << kWdShift);
@@ -1261,7 +1260,7 @@ void Assembler::GenInstrMsaMI10(SecondaryField operation, int32_t s10,
 
 void Assembler::GenInstrMsa2R(SecondaryField operation, SecondaryField df,
                               MSARegister ws, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(ws.is_valid() && wd.is_valid());
   Instr instr = MSA | MSA_2R_FORMAT | operation | df | (ws.code() << kWsShift) |
                 (wd.code() << kWdShift) | MSA_VEC_2R_2RF_MINOR;
@@ -1270,7 +1269,7 @@ void Assembler::GenInstrMsa2R(SecondaryField operation, SecondaryField df,
 
 void Assembler::GenInstrMsa2RF(SecondaryField operation, SecondaryField df,
                                MSARegister ws, MSARegister wd) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(ws.is_valid() && wd.is_valid());
   Instr instr = MSA | MSA_2RF_FORMAT | operation | df |
                 (ws.code() << kWsShift) | (wd.code() << kWdShift) |
@@ -1280,7 +1279,7 @@ void Assembler::GenInstrMsa2RF(SecondaryField operation, SecondaryField df,
 
 void Assembler::GenInstrMsaBranch(SecondaryField operation, MSARegister wt,
                                   int32_t offset16) {
-  DCHECK(IsEnabled(MIPS_SIMD));
+  DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));
   DCHECK(wt.is_valid() && is_int16(offset16));
   BlockTrampolinePoolScope block_trampoline_pool(this);
   Instr instr =
@@ -1997,7 +1996,7 @@ void Assembler::dlsa(Register rd, Register rt, Register rs, uint8_t sa) {
 
 // ------------Memory-instructions-------------
 
-void Assembler::AdjustBaseAndOffset(MemOperand* src,
+void Assembler::AdjustBaseAndOffset(MemOperand& src,
                                     OffsetAccessType access_type,
                                     int second_access_add_to_offset) {
   // This method is used to adjust the base register and offset pair
@@ -2010,25 +2009,25 @@ void Assembler::AdjustBaseAndOffset(MemOperand* src,
   // pointer register).
   // We preserve the "alignment" of 'offset' by adjusting it by a multiple of 8.
 
-  bool doubleword_aligned = (src->offset() & (kDoubleSize - 1)) == 0;
+  bool doubleword_aligned = (src.offset() & (kDoubleSize - 1)) == 0;
   bool two_accesses = static_cast<bool>(access_type) || !doubleword_aligned;
   DCHECK_LE(second_access_add_to_offset, 7);  // Must be <= 7.
 
   // is_int16 must be passed a signed value, hence the static cast below.
-  if (is_int16(src->offset()) &&
+  if (is_int16(src.offset()) &&
       (!two_accesses || is_int16(static_cast<int32_t>(
-                            src->offset() + second_access_add_to_offset)))) {
+                            src.offset() + second_access_add_to_offset)))) {
     // Nothing to do: 'offset' (and, if needed, 'offset + 4', or other specified
     // value) fits into int16_t.
     return;
   }
 
-  DCHECK(src->rm() !=
+  DCHECK(src.rm() !=
          at);  // Must not overwrite the register 'base' while loading 'offset'.
 
 #ifdef DEBUG
   // Remember the "(mis)alignment" of 'offset', it will be checked at the end.
-  uint32_t misalignment = src->offset() & (kDoubleSize - 1);
+  uint32_t misalignment = src.offset() & (kDoubleSize - 1);
 #endif
 
   // Do not load the whole 32-bit 'offset' if it can be represented as
@@ -2043,13 +2042,13 @@ void Assembler::AdjustBaseAndOffset(MemOperand* src,
 
   UseScratchRegisterScope temps(this);
   Register scratch = temps.Acquire();
-  if (0 <= src->offset() && src->offset() <= kMaxOffsetForSimpleAdjustment) {
-    daddiu(scratch, src->rm(), kMinOffsetForSimpleAdjustment);
-    src->offset_ -= kMinOffsetForSimpleAdjustment;
-  } else if (-kMaxOffsetForSimpleAdjustment <= src->offset() &&
-             src->offset() < 0) {
-    daddiu(scratch, src->rm(), -kMinOffsetForSimpleAdjustment);
-    src->offset_ += kMinOffsetForSimpleAdjustment;
+  if (0 <= src.offset() && src.offset() <= kMaxOffsetForSimpleAdjustment) {
+    daddiu(scratch, src.rm(), kMinOffsetForSimpleAdjustment);
+    src.offset_ -= kMinOffsetForSimpleAdjustment;
+  } else if (-kMaxOffsetForSimpleAdjustment <= src.offset() &&
+             src.offset() < 0) {
+    daddiu(scratch, src.rm(), -kMinOffsetForSimpleAdjustment);
+    src.offset_ += kMinOffsetForSimpleAdjustment;
   } else if (kArchVariant == kMips64r6) {
     // On r6 take advantage of the daui instruction, e.g.:
     //    daui   at, base, offset_high
@@ -2061,9 +2060,9 @@ void Assembler::AdjustBaseAndOffset(MemOperand* src,
     //    daddiu at, at, 8
     //    lw     reg_lo, (offset_low-8)(at)
     //    lw     reg_hi, (offset_low-4)(at)
-    int16_t offset_low = static_cast<uint16_t>(src->offset());
+    int16_t offset_low = static_cast<uint16_t>(src.offset());
     int32_t offset_low32 = offset_low;
-    int16_t offset_high = static_cast<uint16_t>(src->offset() >> 16);
+    int16_t offset_high = static_cast<uint16_t>(src.offset() >> 16);
     bool increment_hi16 = offset_low < 0;
     bool overflow_hi16 = false;
 
@@ -2071,7 +2070,7 @@ void Assembler::AdjustBaseAndOffset(MemOperand* src,
       offset_high++;
       overflow_hi16 = (offset_high == -32768);
     }
-    daui(scratch, src->rm(), static_cast<uint16_t>(offset_high));
+    daui(scratch, src.rm(), static_cast<uint16_t>(offset_high));
 
     if (overflow_hi16) {
       dahi(scratch, 1);
@@ -2085,7 +2084,7 @@ void Assembler::AdjustBaseAndOffset(MemOperand* src,
       offset_low32 -= kDoubleSize;
     }
 
-    src->offset_ = offset_low32;
+    src.offset_ = offset_low32;
   } else {
     // Do not load the whole 32-bit 'offset' if it can be represented as
     // a sum of three 16-bit signed offsets. This can save an instruction.
@@ -2096,33 +2095,33 @@ void Assembler::AdjustBaseAndOffset(MemOperand* src,
         2 * kMinOffsetForSimpleAdjustment;
     constexpr int32_t kMaxOffsetForMediumAdjustment =
         3 * kMinOffsetForSimpleAdjustment;
-    if (0 <= src->offset() && src->offset() <= kMaxOffsetForMediumAdjustment) {
-      daddiu(scratch, src->rm(), kMinOffsetForMediumAdjustment / 2);
+    if (0 <= src.offset() && src.offset() <= kMaxOffsetForMediumAdjustment) {
+      daddiu(scratch, src.rm(), kMinOffsetForMediumAdjustment / 2);
       daddiu(scratch, scratch, kMinOffsetForMediumAdjustment / 2);
-      src->offset_ -= kMinOffsetForMediumAdjustment;
-    } else if (-kMaxOffsetForMediumAdjustment <= src->offset() &&
-               src->offset() < 0) {
-      daddiu(scratch, src->rm(), -kMinOffsetForMediumAdjustment / 2);
+      src.offset_ -= kMinOffsetForMediumAdjustment;
+    } else if (-kMaxOffsetForMediumAdjustment <= src.offset() &&
+               src.offset() < 0) {
+      daddiu(scratch, src.rm(), -kMinOffsetForMediumAdjustment / 2);
       daddiu(scratch, scratch, -kMinOffsetForMediumAdjustment / 2);
-      src->offset_ += kMinOffsetForMediumAdjustment;
+      src.offset_ += kMinOffsetForMediumAdjustment;
     } else {
       // Now that all shorter options have been exhausted, load the full 32-bit
       // offset.
-      int32_t loaded_offset = RoundDown(src->offset(), kDoubleSize);
+      int32_t loaded_offset = RoundDown(src.offset(), kDoubleSize);
       lui(scratch, (loaded_offset >> kLuiShift) & kImm16Mask);
       ori(scratch, scratch, loaded_offset & kImm16Mask);  // Load 32-bit offset.
-      daddu(scratch, scratch, src->rm());
-      src->offset_ -= loaded_offset;
+      daddu(scratch, scratch, src.rm());
+      src.offset_ -= loaded_offset;
     }
   }
-  src->rm_ = scratch;
+  src.rm_ = scratch;
 
-  DCHECK(is_int16(src->offset()));
+  DCHECK(is_int16(src.offset()));
   if (two_accesses) {
     DCHECK(is_int16(
-        static_cast<int32_t>(src->offset() + second_access_add_to_offset)));
+        static_cast<int32_t>(src.offset() + second_access_add_to_offset)));
   }
-  DCHECK(misalignment == (src->offset() & (kDoubleSize - 1)));
+  DCHECK(misalignment == (src.offset() & (kDoubleSize - 1)));
 }
 
 void Assembler::lb(Register rd, const MemOperand& rs) {
@@ -3158,29 +3157,28 @@ MSA_BRANCH_LIST(MSA_BRANCH)
 #undef MSA_BRANCH_LIST
 
 #define MSA_LD_ST_LIST(V) \
-  V(ld_b, LD_B, 1)        \
-  V(ld_h, LD_H, 2)        \
-  V(ld_w, LD_W, 4)        \
-  V(ld_d, LD_D, 8)        \
-  V(st_b, ST_B, 1)        \
-  V(st_h, ST_H, 2)        \
-  V(st_w, ST_W, 4)        \
-  V(st_d, ST_D, 8)
+  V(ld_b, LD_B)           \
+  V(ld_h, LD_H)           \
+  V(ld_w, LD_W)           \
+  V(ld_d, LD_D)           \
+  V(st_b, ST_B)           \
+  V(st_h, ST_H)           \
+  V(st_w, ST_W)           \
+  V(st_d, ST_D)
 
-#define MSA_LD_ST(name, opcode, b)                                   \
-  void Assembler::name(MSARegister wd, const MemOperand& rs) {       \
-    MemOperand source = rs;                                          \
-    AdjustBaseAndOffset(&source);                                    \
-    if (is_int10(source.offset())) {                                 \
-      DCHECK_EQ(source.offset() % b, 0);                             \
-      GenInstrMsaMI10(opcode, source.offset() / b, source.rm(), wd); \
-    } else {                                                         \
-      UseScratchRegisterScope temps(this);                           \
-      Register scratch = temps.Acquire();                            \
-      DCHECK_NE(rs.rm(), scratch);                                   \
-      daddiu(scratch, source.rm(), source.offset());                 \
-      GenInstrMsaMI10(opcode, 0, scratch, wd);                       \
-    }                                                                \
+#define MSA_LD_ST(name, opcode)                                  \
+  void Assembler::name(MSARegister wd, const MemOperand& rs) {   \
+    MemOperand source = rs;                                      \
+    AdjustBaseAndOffset(source);                                 \
+    if (is_int10(source.offset())) {                             \
+      GenInstrMsaMI10(opcode, source.offset(), source.rm(), wd); \
+    } else {                                                     \
+      UseScratchRegisterScope temps(this);                       \
+      Register scratch = temps.Acquire();                        \
+      DCHECK(rs.rm() != scratch);                                \
+      daddiu(scratch, source.rm(), source.offset());             \
+      GenInstrMsaMI10(opcode, 0, scratch, wd);                   \
+    }                                                            \
   }
 
 MSA_LD_ST_LIST(MSA_LD_ST)
@@ -3293,7 +3291,7 @@ MSA_2R_LIST(MSA_2R)
 
 #define MSA_FILL(format)                                              \
   void Assembler::fill_##format(MSARegister wd, Register rs) {        \
-    DCHECK(IsEnabled(MIPS_SIMD));                                     \
+    DCHECK((kArchVariant == kMips64r6) && IsEnabled(MIPS_SIMD));      \
     DCHECK(rs.is_valid() && wd.is_valid());                           \
     Instr instr = MSA | MSA_2R_FORMAT | FILL | MSA_2R_DF_##format |   \
                   (rs.code() << kWsShift) | (wd.code() << kWdShift) | \

@@ -13,11 +13,7 @@ const tmpdir = require('../common/tmpdir');
 const assert = require('assert');
 const tmpDir = tmpdir.path;
 
-async function read(fileHandle, buffer, offset, length, position) {
-  return useConf ?
-    fileHandle.read({ buffer, offset, length, position }) :
-    fileHandle.read(buffer, offset, length, position);
-}
+tmpdir.refresh();
 
 async function validateRead() {
   const filePath = path.resolve(tmpDir, 'tmp-read-file.txt');
@@ -27,11 +23,9 @@ async function validateRead() {
   const fd = fs.openSync(filePath, 'w+');
   fs.writeSync(fd, buffer, 0, buffer.length);
   fs.closeSync(fd);
-  const readAsyncHandle = await read(fileHandle, Buffer.alloc(11), 0, 11, 0);
+  const readAsyncHandle = await fileHandle.read(Buffer.alloc(11), 0, 11, 0);
   assert.deepStrictEqual(buffer.length, readAsyncHandle.bytesRead);
   assert.deepStrictEqual(buffer, readAsyncHandle.buffer);
-
-  await fileHandle.close();
 }
 
 async function validateEmptyRead() {
@@ -42,10 +36,8 @@ async function validateEmptyRead() {
   const fd = fs.openSync(filePath, 'w+');
   fs.writeSync(fd, buffer, 0, buffer.length);
   fs.closeSync(fd);
-  const readAsyncHandle = await read(fileHandle, Buffer.alloc(11), 0, 11, 0);
+  const readAsyncHandle = await fileHandle.read(Buffer.alloc(11), 0, 11, 0);
   assert.deepStrictEqual(buffer.length, readAsyncHandle.bytesRead);
-
-  await fileHandle.close();
 }
 
 async function validateLargeRead() {
@@ -55,21 +47,12 @@ async function validateLargeRead() {
   const filePath = fixtures.path('x.txt');
   const fileHandle = await open(filePath, 'r');
   const pos = 0xffffffff + 1; // max-uint32 + 1
-  const readHandle = await read(fileHandle, Buffer.alloc(1), 0, 1, pos);
+  const readHandle = await fileHandle.read(Buffer.alloc(1), 0, 1, pos);
 
   assert.strictEqual(readHandle.bytesRead, 0);
 }
 
-let useConf = false;
-
-(async function() {
-  for (const value of [false, true]) {
-    tmpdir.refresh();
-    useConf = value;
-
-    await validateRead()
-          .then(validateEmptyRead)
-          .then(validateLargeRead)
-          .then(common.mustCall());
-  }
-});
+validateRead()
+  .then(validateEmptyRead)
+  .then(validateLargeRead)
+  .then(common.mustCall());

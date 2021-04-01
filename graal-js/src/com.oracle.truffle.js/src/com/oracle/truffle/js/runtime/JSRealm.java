@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -55,7 +55,6 @@ import java.util.Objects;
 import java.util.SplittableRandom;
 import java.util.WeakHashMap;
 
-import org.graalvm.collections.Pair;
 import org.graalvm.home.HomeFinder;
 import org.graalvm.options.OptionValues;
 
@@ -68,13 +67,9 @@ import com.oracle.truffle.api.TruffleContext;
 import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.interop.InteropException;
-import com.oracle.truffle.api.interop.InteropLibrary;
-import com.oracle.truffle.api.nodes.LanguageInfo;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.DynamicObjectLibrary;
 import com.oracle.truffle.api.object.Shape;
-import com.oracle.truffle.api.profiles.BranchProfile;
 import com.oracle.truffle.js.builtins.ArrayIteratorPrototypeBuiltins;
 import com.oracle.truffle.js.builtins.AtomicsBuiltins;
 import com.oracle.truffle.js.builtins.ConsoleBuiltins;
@@ -96,10 +91,8 @@ import com.oracle.truffle.js.builtins.StringIteratorPrototypeBuiltins;
 import com.oracle.truffle.js.builtins.commonjs.CommonJSRequireBuiltin;
 import com.oracle.truffle.js.builtins.commonjs.GlobalCommonJSRequireBuiltins;
 import com.oracle.truffle.js.builtins.commonjs.NpmCompatibleESModuleLoader;
-import com.oracle.truffle.js.builtins.foreign.ForeignIterablePrototypeBuiltins;
 import com.oracle.truffle.js.lang.JavaScriptLanguage;
 import com.oracle.truffle.js.nodes.JavaScriptNode;
-import com.oracle.truffle.js.nodes.function.JSBuiltin;
 import com.oracle.truffle.js.runtime.JSContext.BuiltinFunctionKey;
 import com.oracle.truffle.js.runtime.array.TypedArray;
 import com.oracle.truffle.js.runtime.array.TypedArrayFactory;
@@ -147,12 +140,6 @@ import com.oracle.truffle.js.runtime.builtins.intl.JSNumberFormat;
 import com.oracle.truffle.js.runtime.builtins.intl.JSPluralRules;
 import com.oracle.truffle.js.runtime.builtins.intl.JSRelativeTimeFormat;
 import com.oracle.truffle.js.runtime.builtins.intl.JSSegmenter;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssembly;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyGlobal;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyInstance;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyMemory;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyModule;
-import com.oracle.truffle.js.runtime.builtins.wasm.JSWebAssemblyTable;
 import com.oracle.truffle.js.runtime.interop.DynamicScopeWrapper;
 import com.oracle.truffle.js.runtime.interop.TopScopeObject;
 import com.oracle.truffle.js.runtime.java.JavaImporter;
@@ -168,7 +155,6 @@ import com.oracle.truffle.js.runtime.objects.PropertyDescriptor;
 import com.oracle.truffle.js.runtime.objects.PropertyProxy;
 import com.oracle.truffle.js.runtime.objects.Undefined;
 import com.oracle.truffle.js.runtime.util.PrintWriterWrapper;
-import com.oracle.truffle.js.runtime.util.SimpleArrayList;
 import com.oracle.truffle.js.runtime.util.TRegexUtil;
 
 /**
@@ -351,32 +337,6 @@ public class JSRealm {
     private long staticRegexResultFromIndex;
     private String staticRegexResultOriginalInputString;
 
-    /** WebAssembly support. */
-    private final Object wasmCompileFunction;
-    private final Object wasmInstantiateFunction;
-    private final Object wasmValidateFunction;
-    private final Object wasmModuleExportsFunction;
-    private final Object wasmModuleImportsFunction;
-    private final Object wasmModuleCustomSectionsFunction;
-    private final Object wasmGlobalConstructor;
-    private final Object wasmMemoryConstructor;
-    private final Object wasmTableConstructor;
-
-    private final DynamicObject webAssemblyObject;
-    private final DynamicObject webAssemblyGlobalConstructor;
-    private final DynamicObject webAssemblyGlobalPrototype;
-    private final DynamicObject webAssemblyInstanceConstructor;
-    private final DynamicObject webAssemblyInstancePrototype;
-    private final DynamicObject webAssemblyMemoryConstructor;
-    private final DynamicObject webAssemblyMemoryPrototype;
-    private final DynamicObject webAssemblyModuleConstructor;
-    private final DynamicObject webAssemblyModulePrototype;
-    private final DynamicObject webAssemblyTableConstructor;
-    private final DynamicObject webAssemblyTablePrototype;
-
-    /** Foreign object prototypes. */
-    private final DynamicObject foreignIterablePrototype;
-
     /**
      * Local time zone ID. Initialized lazily.
      */
@@ -430,11 +390,6 @@ public class JSRealm {
      * Per-realm CommonJs `require` cache.
      */
     private final Map<TruffleFile, DynamicObject> commonJSRequireCache;
-
-    /**
-     * Stack of receivers of (Typed)Array.prototype.join. Used to avoid cyclic calls.
-     */
-    private final SimpleArrayList<Object> joinStack = new SimpleArrayList<>();
 
     public JSRealm(JSContext context, TruffleLanguage.Env env) {
         this.context = context;
@@ -687,73 +642,6 @@ public class JSRealm {
         } else {
             this.commonJSRequireCache = null;
         }
-
-        if (context.getContextOptions().isWebAssembly()) {
-            if (!isWasmAvailable()) {
-                throw new IllegalStateException("WebAssembly API enabled but wasm language cannot be accessed!");
-            }
-            LanguageInfo wasmLanguageInfo = truffleLanguageEnv.getInternalLanguages().get("wasm");
-            truffleLanguageEnv.initializeLanguage(wasmLanguageInfo);
-            Object wasmObject = truffleLanguageEnv.importSymbol("WebAssembly");
-
-            try {
-                InteropLibrary wasmInterop = InteropLibrary.getUncached(wasmObject);
-                wasmCompileFunction = wasmInterop.readMember(wasmObject, "compile");
-                wasmInstantiateFunction = wasmInterop.readMember(wasmObject, "instantiate");
-                wasmValidateFunction = wasmInterop.readMember(wasmObject, "validate");
-                wasmGlobalConstructor = wasmInterop.readMember(wasmObject, "Global");
-                wasmMemoryConstructor = wasmInterop.readMember(wasmObject, "Memory");
-                wasmTableConstructor = wasmInterop.readMember(wasmObject, "Table");
-                Object wasmModuleConstructor = wasmInterop.readMember(wasmObject, "Module");
-                InteropLibrary moduleInterop = InteropLibrary.getUncached(wasmModuleConstructor);
-                wasmModuleExportsFunction = moduleInterop.readMember(wasmModuleConstructor, "exports");
-                wasmModuleImportsFunction = moduleInterop.readMember(wasmModuleConstructor, "imports");
-                wasmModuleCustomSectionsFunction = moduleInterop.readMember(wasmModuleConstructor, "customSections");
-            } catch (InteropException ex) {
-                throw Errors.shouldNotReachHere(ex);
-            }
-
-            this.webAssemblyObject = JSWebAssembly.create(this);
-            ctor = JSWebAssemblyModule.createConstructor(this);
-            this.webAssemblyModuleConstructor = ctor.getFunctionObject();
-            this.webAssemblyModulePrototype = ctor.getPrototype();
-            ctor = JSWebAssemblyInstance.createConstructor(this);
-            this.webAssemblyInstanceConstructor = ctor.getFunctionObject();
-            this.webAssemblyInstancePrototype = ctor.getPrototype();
-            ctor = JSWebAssemblyMemory.createConstructor(this);
-            this.webAssemblyMemoryConstructor = ctor.getFunctionObject();
-            this.webAssemblyMemoryPrototype = ctor.getPrototype();
-            ctor = JSWebAssemblyTable.createConstructor(this);
-            this.webAssemblyTableConstructor = ctor.getFunctionObject();
-            this.webAssemblyTablePrototype = ctor.getPrototype();
-            ctor = JSWebAssemblyGlobal.createConstructor(this);
-            this.webAssemblyGlobalConstructor = ctor.getFunctionObject();
-            this.webAssemblyGlobalPrototype = ctor.getPrototype();
-        } else {
-            this.wasmCompileFunction = null;
-            this.wasmInstantiateFunction = null;
-            this.wasmValidateFunction = null;
-            this.wasmModuleExportsFunction = null;
-            this.wasmModuleImportsFunction = null;
-            this.wasmModuleCustomSectionsFunction = null;
-            this.wasmGlobalConstructor = null;
-            this.wasmMemoryConstructor = null;
-            this.wasmTableConstructor = null;
-
-            this.webAssemblyObject = null;
-            this.webAssemblyGlobalConstructor = null;
-            this.webAssemblyGlobalPrototype = null;
-            this.webAssemblyInstanceConstructor = null;
-            this.webAssemblyInstancePrototype = null;
-            this.webAssemblyMemoryConstructor = null;
-            this.webAssemblyMemoryPrototype = null;
-            this.webAssemblyModuleConstructor = null;
-            this.webAssemblyModulePrototype = null;
-            this.webAssemblyTableConstructor = null;
-            this.webAssemblyTablePrototype = null;
-        }
-
-        this.foreignIterablePrototype = createForeignIterablePrototype();
     }
 
     private void initializeTypedArrayConstructors() {
@@ -781,26 +669,9 @@ public class JSRealm {
     }
 
     public final DynamicObject lookupFunction(JSBuiltinsContainer container, String methodName) {
-        Builtin builtin = Objects.requireNonNull(container.lookupFunctionByName(methodName), methodName);
+        Builtin builtin = Objects.requireNonNull(container.lookupByName(methodName));
         JSFunctionData functionData = builtin.createFunctionData(context);
         return JSFunction.create(this, functionData);
-    }
-
-    public final Accessor lookupAccessor(JSBuiltinsContainer container, Object key) {
-        Pair<JSBuiltin, JSBuiltin> pair = container.lookupAccessorByKey(key);
-        JSBuiltin getterBuiltin = pair.getLeft();
-        JSBuiltin setterBulitin = pair.getRight();
-        DynamicObject getterFunction = null;
-        DynamicObject setterFunction = null;
-        if (getterBuiltin != null) {
-            JSFunctionData functionData = getterBuiltin.createFunctionData(context);
-            getterFunction = JSFunction.create(this, functionData);
-        }
-        if (setterBulitin != null) {
-            JSFunctionData functionData = setterBulitin.createFunctionData(context);
-            setterFunction = JSFunction.create(this, functionData);
-        }
-        return new Accessor(getterFunction, setterFunction);
     }
 
     public static DynamicObject createObjectConstructor(JSRealm realm, DynamicObject objectPrototype) {
@@ -1300,24 +1171,9 @@ public class JSRealm {
         DynamicObject jsonBuiltin = (DynamicObject) JSObject.get(global, "JSON");
         this.jsonParseFunctionObject = JSObject.get(jsonBuiltin, "parse");
 
-        boolean webassembly = context.getContextOptions().isWebAssembly();
         for (JSErrorType type : JSErrorType.errorTypes()) {
-            switch (type) {
-                case CompileError:
-                case LinkError:
-                case RuntimeError:
-                    if (webassembly) {
-                        JSObjectUtil.putDataProperty(context, webAssemblyObject, type.name(), getErrorConstructor(type), JSAttributes.getDefaultNotEnumerable());
-                    }
-                    break;
-                case AggregateError:
-                    if (context.getEcmaScriptVersion() >= JSConfig.ECMAScript2021) {
-                        putGlobalProperty(type.name(), getErrorConstructor(type));
-                    }
-                    break;
-                default:
-                    putGlobalProperty(type.name(), getErrorConstructor(type));
-                    break;
+            if (type != JSErrorType.AggregateError || context.getEcmaScriptVersion() >= JSConfig.ECMAScript2021) {
+                putGlobalProperty(type.name(), getErrorConstructor(type));
             }
         }
 
@@ -1393,14 +1249,6 @@ public class JSRealm {
         }
         if (context.getContextOptions().isGraalBuiltin()) {
             putGraalObject();
-        }
-        if (webassembly) {
-            putGlobalProperty(JSWebAssembly.CLASS_NAME, webAssemblyObject);
-            JSObjectUtil.putDataProperty(context, webAssemblyObject, JSFunction.getName(webAssemblyGlobalConstructor), webAssemblyGlobalConstructor, JSAttributes.getDefaultNotEnumerable());
-            JSObjectUtil.putDataProperty(context, webAssemblyObject, JSFunction.getName(webAssemblyInstanceConstructor), webAssemblyInstanceConstructor, JSAttributes.getDefaultNotEnumerable());
-            JSObjectUtil.putDataProperty(context, webAssemblyObject, JSFunction.getName(webAssemblyMemoryConstructor), webAssemblyMemoryConstructor, JSAttributes.getDefaultNotEnumerable());
-            JSObjectUtil.putDataProperty(context, webAssemblyObject, JSFunction.getName(webAssemblyModuleConstructor), webAssemblyModuleConstructor, JSAttributes.getDefaultNotEnumerable());
-            JSObjectUtil.putDataProperty(context, webAssemblyObject, JSFunction.getName(webAssemblyTableConstructor), webAssemblyTableConstructor, JSAttributes.getDefaultNotEnumerable());
         }
         if (context.getContextOptions().isProfileTime()) {
             System.out.println("SetupGlobals: " + (System.nanoTime() - time) / 1000000);
@@ -1561,12 +1409,10 @@ public class JSRealm {
     private void putGraalObject() {
         DynamicObject graalObject = JSOrdinary.createInit(this);
         int flags = JSAttributes.notConfigurableEnumerableNotWritable();
-        int esVersion = getContext().getContextOptions().getEcmaScriptVersion();
-        esVersion = (esVersion > JSConfig.ECMAScript6 ? esVersion + JSConfig.ECMAScriptNumberYearDelta : esVersion);
         JSObjectUtil.putDataProperty(context, graalObject, "language", JavaScriptLanguage.NAME, flags);
         assert GRAALVM_VERSION != null;
         JSObjectUtil.putDataProperty(context, graalObject, "versionGraalVM", GRAALVM_VERSION, flags);
-        JSObjectUtil.putDataProperty(context, graalObject, "versionECMAScript", esVersion, flags);
+        JSObjectUtil.putDataProperty(context, graalObject, "versionJS", GRAALVM_VERSION, flags);
         JSObjectUtil.putDataProperty(context, graalObject, "isGraalRuntime", JSFunction.create(this, isGraalRuntimeFunction(context)), flags);
         putGlobalProperty("Graal", graalObject);
     }
@@ -1752,15 +1598,6 @@ public class JSRealm {
         return prototype;
     }
 
-    /**
-     * Creates the prototype object of foreign iterables.
-     */
-    private DynamicObject createForeignIterablePrototype() {
-        DynamicObject prototype = JSObjectUtil.createOrdinaryPrototypeObject(this);
-        JSObjectUtil.putFunctionsFromContainer(this, prototype, ForeignIterablePrototypeBuiltins.BUILTINS);
-        return prototype;
-    }
-
     public DynamicObject getArrayProtoValuesIterator() {
         return arrayProtoValuesIterator;
     }
@@ -1776,9 +1613,6 @@ public class JSRealm {
         DynamicObject obj = JSObjectUtil.createOrdinaryPrototypeObject(this, this.getObjectPrototype());
         JSObjectUtil.putToStringTag(obj, ATOMICS_CLASS_NAME);
         JSObjectUtil.putFunctionsFromContainer(this, obj, AtomicsBuiltins.BUILTINS);
-        if (context.isWaitAsyncEnabled()) {
-            JSObjectUtil.putFunctionsFromContainer(this, obj, AtomicsBuiltins.WAIT_ASYNC_BUILTIN);
-        }
         return obj;
     }
 
@@ -1888,15 +1722,16 @@ public class JSRealm {
                 putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpRightContext, "rightContext");
             } else {
                 putRegExpStaticPropertyAccessor(null, "input");
-                putRegExpStaticPropertyAccessor(null, "input", "$_");
                 putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpLastMatch, "lastMatch");
-                putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpLastMatch, "lastMatch", "$&");
                 putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpLastParen, "lastParen");
-                putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpLastParen, "lastParen", "$+");
                 putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpLeftContext, "leftContext");
-                putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpLeftContext, "leftContext", "$`");
                 putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpRightContext, "rightContext");
-                putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExpRightContext, "rightContext", "$'");
+
+                putRegExpStaticPropertyAccessor(null, "input", "$_");
+                putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExp$And, "lastMatch", "$&");
+                putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExp$Plus, "lastParen", "$+");
+                putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExp$Apostrophe, "leftContext", "$`");
+                putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExp$Quote, "rightContext", "$'");
             }
             putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExp$1, "$1");
             putRegExpStaticPropertyAccessor(BuiltinFunctionKey.RegExp$2, "$2");
@@ -1915,20 +1750,16 @@ public class JSRealm {
     }
 
     private void putRegExpStaticPropertyAccessor(BuiltinFunctionKey builtinKey, String getterName, String propertyName) {
-        Pair<JSBuiltin, JSBuiltin> pair = RegExpBuiltins.BUILTINS.lookupAccessorByKey(getterName);
-        JSBuiltin getterBuiltin = pair.getLeft();
-        DynamicObject getter = JSFunction.create(this, getterBuiltin.createFunctionData(context));
+        DynamicObject getter = lookupFunction(RegExpBuiltins.BUILTINS, getterName);
 
         DynamicObject setter;
-        JSBuiltin setterBuiltin = pair.getRight();
-        if (setterBuiltin != null) {
-            assert propertyName.equals("input") || propertyName.equals("$_");
-            setter = JSFunction.create(this, setterBuiltin.createFunctionData(context));
+        if (propertyName.equals("input") || propertyName.equals("$_")) {
+            setter = lookupFunction(RegExpBuiltins.BUILTINS, "setInput");
         } else if (context.isOptionV8CompatibilityModeInContextInit()) {
             // set empty setter for V8 compatibility, see testv8/mjsunit/regress/regress-5566.js
-            String setterName = "set " + getterName;
+            String setterName = "set " + propertyName;
             JSFunctionData setterData = context.getOrCreateBuiltinFunctionData(builtinKey,
-                            (c) -> JSFunctionData.createCallOnly(c, context.getEmptyFunctionCallTarget(), 1, setterName));
+                            (c) -> JSFunctionData.createCallOnly(c, context.getEmptyFunctionCallTarget(), 0, setterName));
             setter = JSFunction.create(this, setterData);
         } else {
             setter = Undefined.instance;
@@ -2025,7 +1856,7 @@ public class JSRealm {
         CREATING_CHILD_REALM.set(Boolean.TRUE);
         try {
             TruffleContext nestedContext = getEnv().newContextBuilder().build();
-            Object prev = nestedContext.enter(null);
+            Object prev = nestedContext.enter();
             try {
                 JSRealm childRealm = JavaScriptLanguage.getCurrentJSRealm();
                 childRealm.agent = this.agent;
@@ -2041,7 +1872,7 @@ public class JSRealm {
 
                 return childRealm;
             } finally {
-                nestedContext.leave(null, prev);
+                nestedContext.leave(prev);
             }
         } finally {
             CREATING_CHILD_REALM.set(Boolean.FALSE);
@@ -2357,89 +2188,9 @@ public class JSRealm {
         }
     }
 
-    public boolean joinStackPush(Object o, BranchProfile growProfile) {
-        InteropLibrary interop = (o instanceof JSObject) ? null : InteropLibrary.getFactory().getUncached(o);
-        for (int i = 0; i < joinStack.size(); i++) {
-            Object element = joinStack.get(i);
-            if ((interop == null) ? (o == element) : interop.isIdentical(o, element, InteropLibrary.getFactory().getUncached(element))) {
-                return false;
-            }
-        }
-        joinStack.add(o, growProfile);
-        return true;
-    }
-
-    public void joinStackPop() {
-        joinStack.pop();
-    }
-
     public final Map<TruffleFile, DynamicObject> getCommonJSRequireCache() {
         assert context.getContextOptions().isCommonJSRequire();
         return commonJSRequireCache;
-    }
-
-    private boolean isWasmAvailable() {
-        return truffleLanguageEnv.isPolyglotBindingsAccessAllowed() && truffleLanguageEnv.getInternalLanguages().get("wasm") != null;
-    }
-
-    public Object getWASMCompileFunction() {
-        return wasmCompileFunction;
-    }
-
-    public Object getWASMInstantiateFunction() {
-        return wasmInstantiateFunction;
-    }
-
-    public Object getWASMValidateFunction() {
-        return wasmValidateFunction;
-    }
-
-    public Object getWASMModuleExportsFunction() {
-        return wasmModuleExportsFunction;
-    }
-
-    public Object getWASMModuleImportsFunction() {
-        return wasmModuleImportsFunction;
-    }
-
-    public Object getWASMModuleCustomSectionsFunction() {
-        return wasmModuleCustomSectionsFunction;
-    }
-
-    public Object getWASMGlobalConstructor() {
-        return wasmGlobalConstructor;
-    }
-
-    public Object getWASMMemoryConstructor() {
-        return wasmMemoryConstructor;
-    }
-
-    public Object getWASMTableConstructor() {
-        return wasmTableConstructor;
-    }
-
-    public DynamicObject getWebAssemblyModulePrototype() {
-        return webAssemblyModulePrototype;
-    }
-
-    public DynamicObject getWebAssemblyInstancePrototype() {
-        return webAssemblyInstancePrototype;
-    }
-
-    public DynamicObject getWebAssemblyMemoryPrototype() {
-        return webAssemblyMemoryPrototype;
-    }
-
-    public DynamicObject getWebAssemblyTablePrototype() {
-        return webAssemblyTablePrototype;
-    }
-
-    public DynamicObject getWebAssemblyGlobalPrototype() {
-        return webAssemblyGlobalPrototype;
-    }
-
-    public DynamicObject getForeignIterablePrototype() {
-        return foreignIterablePrototype;
     }
 
 }

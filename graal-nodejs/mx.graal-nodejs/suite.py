@@ -179,7 +179,6 @@ suite = {
           "dependency:trufflenodeNative/headers/include",
         ],
         "NODE_README.md" : "file:README.md",
-        "native-image.properties": "file:mx.graal-nodejs/graal-nodejs-native-image.properties",
         "bin/" : [
           "dependency:trufflenodeNative/Release/<exe:node>",
           "file:mx.graal-nodejs/graalvm_launchers/<cmd:npm>",

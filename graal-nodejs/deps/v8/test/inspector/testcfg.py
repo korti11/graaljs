@@ -62,8 +62,7 @@ class TestCase(testcase.TestCase):
   def output_proc(self):
     return outproc.ExpectedOutProc(
         self.expected_outcomes,
-        os.path.join(self.suite.root, self.path) + EXPECTED_SUFFIX,
-        self.suite.test_config.regenerate_expected_files)
+        os.path.join(self.suite.root, self.path) + EXPECTED_SUFFIX)
 
 
 def GetSuite(*args, **kwargs):

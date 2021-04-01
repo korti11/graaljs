@@ -94,7 +94,7 @@ class ObjectStats {
  public:
   static const size_t kNoOverAllocation = 0;
 
-  explicit ObjectStats(Heap* heap) : heap_(heap) { ClearObjectStats(true); }
+  explicit ObjectStats(Heap* heap) : heap_(heap) { ClearObjectStats(); }
 
   // See description on VIRTUAL_INSTANCE_TYPE_LIST.
   enum VirtualInstanceType {

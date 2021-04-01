@@ -9,12 +9,7 @@ const assert = require('internal/assert');
 const { Socket } = require('net');
 const { JSStream } = internalBinding('js_stream');
 const uv = internalBinding('uv');
-let debug = require('internal/util/debuglog').debuglog(
-  'stream_socket',
-  (fn) => {
-    debug = fn;
-  }
-);
+const debug = require('internal/util/debuglog').debuglog('stream_socket');
 const { owner_symbol } = require('internal/async_hooks').symbols;
 const { ERR_STREAM_WRAP } = require('internal/errors').codes;
 

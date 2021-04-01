@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -39,10 +39,11 @@
  * SOFTWARE.
  */
 
-#include "graal_big_int.h"
 #include "graal_isolate.h"
+#include "graal_big_int.h"
 
-#include "graal_big_int-inl.h"
+GraalBigInt::GraalBigInt(GraalIsolate* isolate, jobject java_big_int) : GraalPrimitive(isolate, java_big_int) {
+}
 
 GraalHandleContent* GraalBigInt::CopyImpl(jobject java_object_copy) {
     return new GraalBigInt(Isolate(), java_object_copy);
@@ -63,13 +64,7 @@ v8::Local<v8::BigInt> GraalBigInt::NewFromUnsigned(v8::Isolate* isolate, uint64_
 }
 
 v8::MaybeLocal<v8::BigInt> GraalBigInt::NewFromWords(v8::Local<v8::Context> context, int sign_bit, int word_count, const uint64_t* words) {
-    v8::Isolate* isolate = context->GetIsolate();
-    if (word_count < 0 || word_count > (1 << 30) / 64) {
-        isolate->ThrowException(v8::Exception::RangeError(v8::String::NewFromUtf8(isolate, "Maximum BigInt size exceeded").ToLocalChecked()));
-        return v8::MaybeLocal<v8::BigInt>();
-    }
-
-    GraalIsolate* graal_isolate = reinterpret_cast<GraalIsolate*> (isolate);
+    GraalIsolate* graal_isolate = reinterpret_cast<GraalIsolate*> (context->GetIsolate());
     graal_isolate->ResetSharedBuffer();
     graal_isolate->WriteInt32ToSharedBuffer(sign_bit);
     graal_isolate->WriteInt32ToSharedBuffer(word_count);

@@ -13,6 +13,9 @@ namespace internal {
 
 class KeyedStoreGenericGenerator {
  public:
+  template <class T>
+  using TNode = compiler::TNode<T>;
+
   static void Generate(compiler::CodeAssemblerState* state);
 
   // Building block for fast path of Object.assign implementation.

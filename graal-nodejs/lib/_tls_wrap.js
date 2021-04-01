@@ -27,7 +27,6 @@ const {
   ObjectSetPrototypeOf,
   RegExp,
   Symbol,
-  SymbolFor,
 } = primordials;
 
 const {
@@ -46,9 +45,7 @@ const tls = require('tls');
 const common = require('_tls_common');
 const JSStreamSocket = require('internal/js_stream_socket');
 const { Buffer } = require('buffer');
-let debug = require('internal/util/debuglog').debuglog('tls', (fn) => {
-  debug = fn;
-});
+const debug = require('internal/util/debuglog').debuglog('tls');
 const { TCP, constants: TCPConstants } = internalBinding('tcp_wrap');
 const tls_wrap = internalBinding('tls_wrap');
 const { Pipe, constants: PipeConstants } = internalBinding('pipe_wrap');
@@ -490,6 +487,7 @@ function TLSSocket(socket, opts) {
     // handle, but a JS stream doesn't have one. Wrap it up to make it look like
     // a socket.
     wrap = new JSStreamSocket(socket);
+    wrap.once('close', () => this.destroy());
   }
 
   // Just a documented property to make secure sockets
@@ -500,8 +498,9 @@ function TLSSocket(socket, opts) {
     handle: this._wrapHandle(wrap),
     allowHalfOpen: socket ? socket.allowHalfOpen : tlsOptions.allowHalfOpen,
     pauseOnCreate: tlsOptions.pauseOnConnect,
-    manualStart: true,
-    highWaterMark: tlsOptions.highWaterMark,
+    // The readable flag is only needed if pauseOnCreate will be handled.
+    readable: tlsOptions.pauseOnConnect,
+    writable: false
   });
 
   // Proxy for API compatibility
@@ -510,6 +509,11 @@ function TLSSocket(socket, opts) {
   this.on('error', this._tlsError);
 
   this._init(socket, wrap);
+
+  // Make sure to setup all required properties like: `connecting` before
+  // starting the flow of the data
+  this.readable = true;
+  this.writable = true;
 
   if (enableTrace && this._handle)
     this._handle.enableTrace();
@@ -1314,12 +1318,6 @@ Server.prototype.setSecureContext = function(options) {
                                   .slice(0, 32);
   }
 
-  if (options.sessionTimeout)
-    this.sessionTimeout = options.sessionTimeout;
-
-  if (options.ticketKeys)
-    this.ticketKeys = options.ticketKeys;
-
   this._sharedCreds = tls.createSecureContext({
     pfx: this.pfx,
     key: this.key,
@@ -1337,10 +1335,16 @@ Server.prototype.setSecureContext = function(options) {
     secureOptions: this.secureOptions,
     honorCipherOrder: this.honorCipherOrder,
     crl: this.crl,
-    sessionIdContext: this.sessionIdContext,
-    ticketKeys: this.ticketKeys,
-    sessionTimeout: this.sessionTimeout
+    sessionIdContext: this.sessionIdContext
   });
+
+  if (this.sessionTimeout)
+    this._sharedCreds.context.setSessionTimeout(this.sessionTimeout);
+
+  if (options.ticketKeys) {
+    this.ticketKeys = options.ticketKeys;
+    this.setTicketKeys(this.ticketKeys);
+  }
 };
 
 
@@ -1428,7 +1432,7 @@ Server.prototype[EE.captureRejectionSymbol] = function(
       sock.destroy(err);
       break;
     default:
-      net.Server.prototype[SymbolFor('nodejs.rejection')]
+      net.Server.prototype[Symbol.for('nodejs.rejection')]
         .call(this, err, event, sock);
   }
 };
@@ -1518,12 +1522,10 @@ function onConnectSecure() {
     debug('client emit secureConnect. rejectUnauthorized: %s, ' +
           'authorizationError: %s', options.rejectUnauthorized,
           this.authorizationError);
-    this.secureConnecting = false;
     this.emit('secureConnect');
   } else {
     this.authorized = true;
     debug('client emit secureConnect. authorized:', this.authorized);
-    this.secureConnecting = false;
     this.emit('secureConnect');
   }
 
@@ -1591,7 +1593,6 @@ exports.connect = function connect(...args) {
     requestOCSP: options.requestOCSP,
     enableTrace: options.enableTrace,
     pskCallback: options.pskCallback,
-    highWaterMark: options.highWaterMark,
   });
 
   tlssock[kConnectOptions] = options;
@@ -1631,7 +1632,7 @@ exports.connect = function connect(...args) {
     tlssock._start();
 
   tlssock.on('secure', onConnectSecure);
-  tlssock.prependListener('end', onConnectEnd);
+  tlssock.once('end', onConnectEnd);
 
   return tlssock;
 };

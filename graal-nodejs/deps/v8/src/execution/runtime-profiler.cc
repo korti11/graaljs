@@ -9,7 +9,6 @@
 #include "src/codegen/compilation-cache.h"
 #include "src/codegen/compiler.h"
 #include "src/codegen/pending-optimization-table.h"
-#include "src/diagnostics/code-tracer.h"
 #include "src/execution/execution.h"
 #include "src/execution/frames-inl.h"
 #include "src/handles/global-handles.h"
@@ -70,20 +69,18 @@ RuntimeProfiler::RuntimeProfiler(Isolate* isolate)
     : isolate_(isolate), any_ic_changed_(false) {}
 
 static void TraceRecompile(JSFunction function, const char* reason,
-                           const char* type, Isolate* isolate) {
+                           const char* type) {
   if (FLAG_trace_opt) {
-    CodeTracer::Scope scope(isolate->GetCodeTracer());
-    PrintF(scope.file(), "[marking ");
-    function.ShortPrint(scope.file());
-    PrintF(scope.file(), " for %s recompilation, reason: %s", type, reason);
-    PrintF(scope.file(), "]\n");
+    PrintF("[marking ");
+    function.ShortPrint();
+    PrintF(" for %s recompilation, reason: %s", type, reason);
+    PrintF("]\n");
   }
 }
 
 void RuntimeProfiler::Optimize(JSFunction function, OptimizationReason reason) {
   DCHECK_NE(reason, OptimizationReason::kDoNotOptimize);
-  TraceRecompile(function, OptimizationReasonToString(reason), "optimized",
-                 isolate_);
+  TraceRecompile(function, OptimizationReasonToString(reason), "optimized");
   function.MarkForOptimization(ConcurrencyMode::kConcurrent);
 }
 
@@ -102,10 +99,9 @@ void RuntimeProfiler::AttemptOnStackReplacement(InterpretedFrame* frame,
   // BytecodeArray header so that certain back edges in any interpreter frame
   // for this bytecode will trigger on-stack replacement for that frame.
   if (FLAG_trace_osr) {
-    CodeTracer::Scope scope(isolate_->GetCodeTracer());
-    PrintF(scope.file(), "[OSR - arming back edges in ");
-    function.PrintName(scope.file());
-    PrintF(scope.file(), "]\n");
+    PrintF("[OSR - arming back edges in ");
+    function.PrintName();
+    PrintF("]\n");
   }
 
   DCHECK_EQ(StackFrame::INTERPRETED, frame->type());
@@ -176,7 +172,6 @@ bool RuntimeProfiler::MaybeOSR(JSFunction function, InterpretedFrame* frame) {
 
 OptimizationReason RuntimeProfiler::ShouldOptimize(JSFunction function,
                                                    BytecodeArray bytecode) {
-  if (function.HasOptimizedCode()) return OptimizationReason::kDoNotOptimize;
   int ticks = function.feedback_vector().profiler_ticks();
   int ticks_for_optimization =
       kProfilerTicksBeforeOptimization +

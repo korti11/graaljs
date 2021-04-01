@@ -43,8 +43,9 @@ class V8_EXPORT_PRIVATE InstructionOperand {
     CONSTANT,
     IMMEDIATE,
     // Location operand kinds.
+    EXPLICIT,
     ALLOCATED,
-    FIRST_LOCATION_OPERAND_KIND = ALLOCATED
+    FIRST_LOCATION_OPERAND_KIND = EXPLICIT
     // Location operand kinds must be last.
   };
 
@@ -67,6 +68,11 @@ class V8_EXPORT_PRIVATE InstructionOperand {
   // embedded directly in instructions, e.g. small integers and on some
   // platforms Objects.
   INSTRUCTION_OPERAND_PREDICATE(Immediate, IMMEDIATE)
+  // ExplicitOperands do not participate in register allocation. They are
+  // created by the instruction selector for direct access to registers and
+  // stack slots, completely bypassing the register allocator. They are never
+  // associated with a virtual register
+  INSTRUCTION_OPERAND_PREDICATE(Explicit, EXPLICIT)
   // AllocatedOperands are registers or stack slots that are assigned by the
   // register allocator and are always associated with a virtual register.
   INSTRUCTION_OPERAND_PREDICATE(Allocated, ALLOCATED)
@@ -125,7 +131,7 @@ class V8_EXPORT_PRIVATE InstructionOperand {
 
   inline uint64_t GetCanonicalizedValue() const;
 
-  using KindField = base::BitField64<Kind, 0, 3>;
+  using KindField = BitField64<Kind, 0, 3>;
 
   uint64_t value_;
 };
@@ -322,24 +328,24 @@ class UnallocatedOperand final : public InstructionOperand {
   //     P ... Policy
   //
   // The slot index is a signed value which requires us to decode it manually
-  // instead of using the base::BitField utility class.
+  // instead of using the BitField utility class.
 
   STATIC_ASSERT(KindField::kSize == 3);
 
-  using VirtualRegisterField = base::BitField64<uint32_t, 3, 32>;
+  using VirtualRegisterField = BitField64<uint32_t, 3, 32>;
 
-  // base::BitFields for all unallocated operands.
-  using BasicPolicyField = base::BitField64<BasicPolicy, 35, 1>;
+  // BitFields for all unallocated operands.
+  using BasicPolicyField = BitField64<BasicPolicy, 35, 1>;
 
   // BitFields specific to BasicPolicy::FIXED_SLOT.
-  using FixedSlotIndexField = base::BitField64<int, 36, 28>;
+  using FixedSlotIndexField = BitField64<int, 36, 28>;
 
   // BitFields specific to BasicPolicy::EXTENDED_POLICY.
-  using ExtendedPolicyField = base::BitField64<ExtendedPolicy, 36, 3>;
-  using LifetimeField = base::BitField64<Lifetime, 39, 1>;
-  using HasSecondaryStorageField = base::BitField64<bool, 40, 1>;
-  using FixedRegisterField = base::BitField64<int, 41, 6>;
-  using SecondaryStorageField = base::BitField64<int, 47, 3>;
+  using ExtendedPolicyField = BitField64<ExtendedPolicy, 36, 3>;
+  using LifetimeField = BitField64<Lifetime, 39, 1>;
+  using HasSecondaryStorageField = BitField64<bool, 40, 1>;
+  using FixedRegisterField = BitField64<int, 41, 6>;
+  using SecondaryStorageField = BitField64<int, 47, 3>;
 
  private:
   explicit UnallocatedOperand(int virtual_register)
@@ -368,7 +374,7 @@ class ConstantOperand : public InstructionOperand {
   INSTRUCTION_OPERAND_CASTS(ConstantOperand, CONSTANT)
 
   STATIC_ASSERT(KindField::kSize == 3);
-  using VirtualRegisterField = base::BitField64<uint32_t, 3, 32>;
+  using VirtualRegisterField = BitField64<uint32_t, 3, 32>;
 };
 
 class ImmediateOperand : public InstructionOperand {
@@ -401,8 +407,8 @@ class ImmediateOperand : public InstructionOperand {
   INSTRUCTION_OPERAND_CASTS(ImmediateOperand, IMMEDIATE)
 
   STATIC_ASSERT(KindField::kSize == 3);
-  using TypeField = base::BitField64<ImmediateType, 3, 1>;
-  using ValueField = base::BitField64<int32_t, 32, 32>;
+  using TypeField = BitField64<ImmediateType, 3, 1>;
+  using ValueField = BitField64<int32_t, 32, 32>;
 };
 
 class LocationOperand : public InstructionOperand {
@@ -472,6 +478,7 @@ class LocationOperand : public InstructionOperand {
       case MachineRepresentation::kTaggedSigned:
       case MachineRepresentation::kTaggedPointer:
       case MachineRepresentation::kTagged:
+      case MachineRepresentation::kCompressedSigned:
       case MachineRepresentation::kCompressedPointer:
       case MachineRepresentation::kCompressed:
         return true;
@@ -503,9 +510,22 @@ class LocationOperand : public InstructionOperand {
   }
 
   STATIC_ASSERT(KindField::kSize == 3);
-  using LocationKindField = base::BitField64<LocationKind, 3, 2>;
-  using RepresentationField = base::BitField64<MachineRepresentation, 5, 8>;
-  using IndexField = base::BitField64<int32_t, 35, 29>;
+  using LocationKindField = BitField64<LocationKind, 3, 2>;
+  using RepresentationField = BitField64<MachineRepresentation, 5, 8>;
+  using IndexField = BitField64<int32_t, 35, 29>;
+};
+
+class V8_EXPORT_PRIVATE ExplicitOperand
+    : public NON_EXPORTED_BASE(LocationOperand) {
+ public:
+  ExplicitOperand(LocationKind kind, MachineRepresentation rep, int index);
+
+  static ExplicitOperand* New(Zone* zone, LocationKind kind,
+                              MachineRepresentation rep, int index) {
+    return InstructionOperand::New(zone, ExplicitOperand(kind, rep, index));
+  }
+
+  INSTRUCTION_OPERAND_CASTS(ExplicitOperand, EXPLICIT)
 };
 
 class AllocatedOperand : public LocationOperand {
@@ -623,7 +643,7 @@ uint64_t InstructionOperand::GetCanonicalizedValue() const {
     }
     return InstructionOperand::KindField::update(
         LocationOperand::RepresentationField::update(this->value_, canonical),
-        LocationOperand::ALLOCATED);
+        LocationOperand::EXPLICIT);
   }
   return this->value_;
 }
@@ -756,11 +776,11 @@ class V8_EXPORT_PRIVATE Instruction final {
  public:
   size_t OutputCount() const { return OutputCountField::decode(bit_field_); }
   const InstructionOperand* OutputAt(size_t i) const {
-    DCHECK_LT(i, OutputCount());
+    DCHECK(i < OutputCount());
     return &operands_[i];
   }
   InstructionOperand* OutputAt(size_t i) {
-    DCHECK_LT(i, OutputCount());
+    DCHECK(i < OutputCount());
     return &operands_[i];
   }
 
@@ -770,21 +790,21 @@ class V8_EXPORT_PRIVATE Instruction final {
 
   size_t InputCount() const { return InputCountField::decode(bit_field_); }
   const InstructionOperand* InputAt(size_t i) const {
-    DCHECK_LT(i, InputCount());
+    DCHECK(i < InputCount());
     return &operands_[OutputCount() + i];
   }
   InstructionOperand* InputAt(size_t i) {
-    DCHECK_LT(i, InputCount());
+    DCHECK(i < InputCount());
     return &operands_[OutputCount() + i];
   }
 
   size_t TempCount() const { return TempCountField::decode(bit_field_); }
   const InstructionOperand* TempAt(size_t i) const {
-    DCHECK_LT(i, TempCount());
+    DCHECK(i < TempCount());
     return &operands_[OutputCount() + InputCount() + i];
   }
   InstructionOperand* TempAt(size_t i) {
-    DCHECK_LT(i, TempCount());
+    DCHECK(i < TempCount());
     return &operands_[OutputCount() + InputCount() + i];
   }
 
@@ -806,10 +826,12 @@ class V8_EXPORT_PRIVATE Instruction final {
                           size_t output_count, InstructionOperand* outputs,
                           size_t input_count, InstructionOperand* inputs,
                           size_t temp_count, InstructionOperand* temps) {
+    // TODO(9872)
+    // DCHECK_LE(0, opcode);
     DCHECK(output_count == 0 || outputs != nullptr);
     DCHECK(input_count == 0 || inputs != nullptr);
     DCHECK(temp_count == 0 || temps != nullptr);
-    // TODO(turbofan): Handle this gracefully. See crbug.com/582702.
+    // TODO(jarin/mstarzinger): Handle this gracefully. See crbug.com/582702.
     CHECK(InputCountField::is_valid(input_count));
 
     size_t total_extra_ops = output_count + input_count + temp_count;
@@ -861,7 +883,10 @@ class V8_EXPORT_PRIVATE Instruction final {
   bool IsJump() const { return arch_opcode() == ArchOpcode::kArchJmp; }
   bool IsRet() const { return arch_opcode() == ArchOpcode::kArchRet; }
   bool IsTailCall() const {
-    return arch_opcode() <= ArchOpcode::kArchTailCallWasm;
+    return arch_opcode() == ArchOpcode::kArchTailCallCodeObject ||
+           arch_opcode() == ArchOpcode::kArchTailCallCodeObjectFromJSFunction ||
+           arch_opcode() == ArchOpcode::kArchTailCallAddress ||
+           arch_opcode() == ArchOpcode::kArchTailCallWasm;
   }
   bool IsThrow() const {
     return arch_opcode() == ArchOpcode::kArchThrowTerminator;
@@ -906,9 +931,9 @@ class V8_EXPORT_PRIVATE Instruction final {
   // APIs to aid debugging. For general-stream APIs, use operator<<.
   void Print() const;
 
-  using OutputCountField = base::BitField<size_t, 0, 8>;
-  using InputCountField = base::BitField<size_t, 8, 16>;
-  using TempCountField = base::BitField<size_t, 24, 6>;
+  using OutputCountField = BitField<size_t, 0, 8>;
+  using InputCountField = BitField<size_t, 8, 16>;
+  using TempCountField = BitField<size_t, 24, 6>;
 
   static const size_t kMaxOutputCount = OutputCountField::kMax;
   static const size_t kMaxInputCount = InputCountField::kMax;
@@ -922,7 +947,7 @@ class V8_EXPORT_PRIVATE Instruction final {
               InstructionOperand* inputs, size_t temp_count,
               InstructionOperand* temps);
 
-  using IsCallField = base::BitField<bool, 30, 1>;
+  using IsCallField = BitField<bool, 30, 1>;
 
   InstructionCode opcode_;
   uint32_t bit_field_;
@@ -1212,8 +1237,8 @@ class StateValueList {
   void PushPlain(MachineType type) {
     fields_.push_back(StateValueDescriptor::Plain(type));
   }
-  void PushOptimizedOut(size_t num = 1) {
-    fields_.insert(fields_.end(), num, StateValueDescriptor::OptimizedOut());
+  void PushOptimizedOut() {
+    fields_.push_back(StateValueDescriptor::OptimizedOut());
   }
 
   iterator begin() { return iterator(fields_.begin(), nested_.begin()); }
@@ -1362,8 +1387,6 @@ class V8_EXPORT_PRIVATE InstructionBlock final
 
   bool IsDeferred() const { return deferred_; }
   bool IsHandler() const { return handler_; }
-  void MarkHandler() { handler_ = true; }
-  void UnmarkHandler() { handler_ = false; }
 
   RpoNumber ao_number() const { return ao_number_; }
   RpoNumber rpo_number() const { return rpo_number_; }
@@ -1417,8 +1440,8 @@ class V8_EXPORT_PRIVATE InstructionBlock final
   const RpoNumber loop_end_;
   int32_t code_start_;   // start index of arch-specific code.
   int32_t code_end_ = -1;     // end index of arch-specific code.
-  const bool deferred_;       // Block contains deferred code.
-  bool handler_;              // Block is a handler entry point.
+  const bool deferred_ = -1;  // Block contains deferred code.
+  const bool handler_;   // Block is a handler entry point.
   bool switch_target_ = false;
   bool alignment_ = false;  // insert alignment before this block
   bool needs_frame_ = false;

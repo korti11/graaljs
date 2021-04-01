@@ -21,8 +21,6 @@ function makeRequest() {
   const req = http.get({
     port: server.address().port
   });
-  req.on('close', () => {
-    assert.strictEqual(req.destroyed, true);
-    server.close();
-  });
+  req.on('close', () =>
+    server.close());
 }

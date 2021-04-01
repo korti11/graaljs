@@ -2,7 +2,6 @@
 
 const {
   ObjectSetPrototypeOf,
-  ReflectApply,
 } = primordials;
 
 const EventEmitter = require('events');
@@ -14,7 +13,7 @@ function Worker(options) {
   if (!(this instanceof Worker))
     return new Worker(options);
 
-  ReflectApply(EventEmitter, this, []);
+  EventEmitter.call(this);
 
   if (options === null || typeof options !== 'object')
     options = {};
@@ -39,11 +38,11 @@ ObjectSetPrototypeOf(Worker.prototype, EventEmitter.prototype);
 ObjectSetPrototypeOf(Worker, EventEmitter);
 
 Worker.prototype.kill = function() {
-  ReflectApply(this.destroy, this, arguments);
+  this.destroy.apply(this, arguments);
 };
 
 Worker.prototype.send = function() {
-  return ReflectApply(this.process.send, this.process, arguments);
+  return this.process.send.apply(this.process, arguments);
 };
 
 Worker.prototype.isDead = function() {

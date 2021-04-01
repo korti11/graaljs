@@ -155,8 +155,10 @@
   %OptimizeFunctionOnNextCall(foo);
   assertEquals(1, foo([1, 2], 0));
   assertEquals(1, foo([1, 2], 1));
-  assertOptimized(foo);
+  // Even passing -0 should not deoptimize and
+  // of course still pass the equality test above.
   assertEquals(9, foo([9, 2], -0));
+  assertOptimized(foo);
 })();
 
 // Test the RedundancyElimination::ReduceSpeculativeNumberComparison()
@@ -174,8 +176,10 @@
   %OptimizeFunctionOnNextCall(foo);
   assertEquals(1, foo([1, 2], 0));
   assertEquals(1, foo([1, 2], 1));
-  assertOptimized(foo);
+  // Even passing -0 should not deoptimize and
+  // of course still pass the equality test above.
   assertEquals(9, foo([9, 2], -0));
+  assertOptimized(foo);
 })();
 
 // Test the RedundancyElimination::ReduceSpeculativeNumberComparison()
@@ -193,6 +197,8 @@
   %OptimizeFunctionOnNextCall(foo);
   assertEquals(1, foo([1, 2], 0));
   assertEquals(1, foo([1, 2], 1));
-  assertOptimized(foo);
+  // Even passing -0 should not deoptimize and
+  // of course still pass the equality test above.
   assertEquals(9, foo([9, 2], -0));
+  assertOptimized(foo);
 })();

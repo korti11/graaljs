@@ -22,8 +22,6 @@ async function validateWriteFile() {
   await fileHandle.writeFile(buffer);
   const readFileData = fs.readFileSync(filePathForHandle);
   assert.deepStrictEqual(buffer, readFileData);
-
-  await fileHandle.close();
 }
 
 validateWriteFile()

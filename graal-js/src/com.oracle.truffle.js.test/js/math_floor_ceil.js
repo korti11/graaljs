@@ -29,3 +29,5 @@ double = -(2**31) - 0.5;
 called = 0;
 assertSame(-(2**31), Math.ceil(fakeDouble));
 assertSame(1, called);
+
+true;

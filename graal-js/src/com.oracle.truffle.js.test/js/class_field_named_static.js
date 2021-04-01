@@ -26,3 +26,5 @@ class D {
 
 assertTrue(D.hasOwnProperty('static'));
 assertTrue(new D().hasOwnProperty('static'));
+
+true;

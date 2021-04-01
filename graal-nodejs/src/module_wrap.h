@@ -12,10 +12,6 @@ namespace node {
 
 class Environment;
 
-namespace contextify {
-class ContextifyContext;
-}
-
 namespace loader {
 
 enum ScriptType : int {
@@ -32,14 +28,6 @@ enum HostDefinedOptions : int {
 
 class ModuleWrap : public BaseObject {
  public:
-  enum InternalFields {
-    kModuleWrapBaseField = BaseObject::kInternalFieldCount,
-    kURLSlot,
-    kSyntheticEvaluationStepsSlot,
-    kContextObjectSlot,  // Object whose creation context is the target Context
-    kInternalFieldCount
-  };
-
   static void Initialize(v8::Local<v8::Object> target,
                          v8::Local<v8::Value> unused,
                          v8::Local<v8::Context> context,
@@ -50,11 +38,11 @@ class ModuleWrap : public BaseObject {
       v8::Local<v8::Object> meta);
 
   void MemoryInfo(MemoryTracker* tracker) const override {
+    tracker->TrackField("url", url_);
     tracker->TrackField("resolve_cache", resolve_cache_);
   }
 
   inline uint32_t id() { return id_; }
-  v8::Local<v8::Context> context() const;
   static ModuleWrap* GetFromID(node::Environment*, uint32_t id);
 
   SET_MEMORY_INFO_NAME(ModuleWrap)
@@ -93,11 +81,13 @@ class ModuleWrap : public BaseObject {
       v8::Local<v8::Module> referrer);
   static ModuleWrap* GetFromModule(node::Environment*, v8::Local<v8::Module>);
 
-  v8::Global<v8::Module> module_;
-  std::unordered_map<std::string, v8::Global<v8::Promise>> resolve_cache_;
-  contextify::ContextifyContext* contextify_context_ = nullptr;
+  v8::Global<v8::Function> synthetic_evaluation_steps_;
   bool synthetic_ = false;
+  v8::Global<v8::Module> module_;
+  v8::Global<v8::String> url_;
   bool linked_ = false;
+  std::unordered_map<std::string, v8::Global<v8::Promise>> resolve_cache_;
+  v8::Global<v8::Context> context_;
   uint32_t id_;
 };
 

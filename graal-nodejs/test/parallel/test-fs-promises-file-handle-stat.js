@@ -17,7 +17,6 @@ async function validateStat() {
   const fileHandle = await open(filePath, 'w+');
   const stats = await fileHandle.stat();
   assert.ok(stats.mtime instanceof Date);
-  await fileHandle.close();
 }
 
 validateStat()

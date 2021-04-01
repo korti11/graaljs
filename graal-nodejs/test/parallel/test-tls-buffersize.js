@@ -31,7 +31,7 @@ server.listen(0, common.mustCall(() => {
 
     for (let i = 1; i < iter; i++) {
       client.write('a');
-      assert.strictEqual(client.bufferSize, i);
+      assert.strictEqual(client.bufferSize, i + 1);
     }
 
     client.on('finish', common.mustCall(() => {

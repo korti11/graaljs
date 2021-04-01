@@ -45,13 +45,12 @@ import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.js.nodes.JavaScriptBaseNode;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.builtins.JSClass;
 import com.oracle.truffle.js.runtime.builtins.JSObjectPrototype;
 import com.oracle.truffle.js.runtime.objects.JSObject;
 
-@ImportStatic({JSObject.class, JSConfig.class})
+@ImportStatic({JSObject.class})
 public abstract class HasOnlyShapePropertiesNode extends JavaScriptBaseNode {
 
     protected HasOnlyShapePropertiesNode() {
@@ -67,7 +66,7 @@ public abstract class HasOnlyShapePropertiesNode extends JavaScriptBaseNode {
 
     public abstract boolean execute(DynamicObject object, JSClass jsclass);
 
-    @Specialization(guards = {"jsclass == cachedJSClass", "!isJSObjectPrototype(cachedJSClass)"}, limit = "InteropLibraryLimit")
+    @Specialization(guards = {"jsclass == cachedJSClass", "!isJSObjectPrototype(cachedJSClass)"}, limit = "5")
     static boolean doCached(DynamicObject object, @SuppressWarnings("unused") JSClass jsclass,
                     @Cached(value = "jsclass") JSClass cachedJSClass) {
         return cachedJSClass.hasOnlyShapeProperties(object);

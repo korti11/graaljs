@@ -151,6 +151,7 @@ class V8_EXPORT_PRIVATE CompilerDispatcher {
   JobMap::const_iterator RemoveJob(JobMap::const_iterator job);
 
   Isolate* isolate_;
+  AccountingAllocator* allocator_;
   WorkerThreadRuntimeCallStats* worker_thread_runtime_call_stats_;
   TimedHistogram* background_compile_timer_;
   std::shared_ptr<v8::TaskRunner> taskrunner_;

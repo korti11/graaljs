@@ -25,8 +25,6 @@ async function validateReadFile() {
 
   const readFileData = await fileHandle.readFile();
   assert.deepStrictEqual(buffer, readFileData);
-
-  await fileHandle.close();
 }
 
 async function validateReadFileProc() {

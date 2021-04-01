@@ -13,8 +13,7 @@ async function simple() {
   const foo = new SourceTextModule('export default 5;');
   await foo.link(common.mustNotCall());
 
-  globalThis.fiveResult = undefined;
-  const bar = new SourceTextModule('import five from "foo"; fiveResult = five');
+  const bar = new SourceTextModule('import five from "foo"; five');
 
   assert.deepStrictEqual(bar.dependencySpecifiers, ['foo']);
 
@@ -24,9 +23,7 @@ async function simple() {
     return foo;
   }));
 
-  await bar.evaluate();
-  assert.strictEqual(globalThis.fiveResult, 5);
-  delete globalThis.fiveResult;
+  assert.strictEqual((await bar.evaluate()).result, 5);
 }
 
 async function depth() {

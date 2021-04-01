@@ -2,29 +2,15 @@
 
 <!-- TOC -->
 
-* [Triagers](#triagers)
 * [Collaborators](#collaborators)
-  * [Collaborator activities](#collaborator-activities)
-* [Technical steering committee](#technical-steering-committee)
-  * [TSC meetings](#tsc-meetings)
-* [Collaborator nominations](#collaborator-nominations)
+  * [Collaborator Activities](#collaborator-activities)
+* [Technical Steering Committee](#technical-steering-committee)
+  * [TSC Meetings](#tsc-meetings)
+* [Collaborator Nominations](#collaborator-nominations)
   * [Onboarding](#onboarding)
-* [Consensus seeking process](#consensus-seeking-process)
+* [Consensus Seeking Process](#consensus-seeking-process)
 
 <!-- /TOC -->
-
-## Triagers
-
-Triagers assess newly-opened issues in the nodejs/node and nodejs/help
-repositories. There is no GitHub team for triagers at the moment.
-
-Triagers have:
-* ability to label issues
-* ability to comment, close, and reopen issues
-
-See:
-
-* [A guide for triagers](./doc/guides/contributing/issues.md#triaging-a-bug-report)
 
 ## Collaborators
 
@@ -55,7 +41,7 @@ See:
 * [List of Collaborators](./README.md#current-project-team-members)
 * [A guide for Collaborators](./doc/guides/collaborator-guide.md)
 
-### Collaborator activities
+### Collaborator Activities
 
 * Helping users and novice contributors
 * Contributing code and documentation changes that improve the project
@@ -84,7 +70,7 @@ The current list of TSC members is in
 The [TSC Charter][] governs the operations of the TSC. All changes to the
 Charter need approval by the OpenJS Foundation Board of Directors.
 
-### TSC meetings
+### TSC Meetings
 
 The TSC meets in a voice conference call. Each year, the TSC elects a chair to
 run the meetings. The TSC streams its meetings for public viewing on YouTube or
@@ -118,7 +104,7 @@ the issue tracker is:
   and no TSC opposition.
 * If there is an extended impasse, a TSC member may make a motion for a vote.
 
-## Collaborator nominations
+## Collaborator Nominations
 
 Existing Collaborators can nominate someone to become a Collaborator. Nominees
 should have significant and valuable contributions across the Node.js
@@ -165,7 +151,7 @@ After the nomination passes, a TSC member onboards the new Collaborator. See
 [the onboarding guide](./onboarding.md) for details of the onboarding
 process.
 
-## Consensus seeking process
+## Consensus Seeking Process
 
 The TSC follows a [Consensus Seeking][] decision-making model per the
 [TSC Charter][].

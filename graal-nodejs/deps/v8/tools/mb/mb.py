@@ -64,8 +64,6 @@ class MetaBuildWrapper(object):
     self.luci_tryservers = {}
     self.masters = {}
     self.mixins = {}
-    self.isolate_exe = 'isolate.exe' if self.platform.startswith(
-        'win') else 'isolate'
 
   def Main(self, args):
     self.ParseArgs(args)
@@ -362,39 +360,19 @@ class MetaBuildWrapper(object):
     for k, v in self._DefaultDimensions() + self.args.dimensions:
       dimensions += ['-d', k, v]
 
-    archive_json_path = self.ToSrcRelPath(
-        '%s/%s.archive.json' % (build_dir, target))
     cmd = [
-        self.PathJoin(self.chromium_src_dir, 'tools', 'luci-go',
-                      self.isolate_exe),
+        self.executable,
+        self.PathJoin('tools', 'swarming_client', 'isolate.py'),
         'archive',
-        '-i',
-        self.ToSrcRelPath('%s/%s.isolate' % (build_dir, target)),
         '-s',
         self.ToSrcRelPath('%s/%s.isolated' % (build_dir, target)),
         '-I', 'isolateserver.appspot.com',
-        '-dump-json',
-        archive_json_path,
       ]
-    ret, _, _ = self.Run(cmd, force_verbose=False)
+    ret, out, _ = self.Run(cmd, force_verbose=False)
     if ret:
       return ret
 
-    try:
-      archive_hashes = json.loads(self.ReadFile(archive_json_path))
-    except Exception:
-      self.Print(
-          'Failed to read JSON file "%s"' % archive_json_path, file=sys.stderr)
-      return 1
-    try:
-      isolated_hash = archive_hashes[target]
-    except Exception:
-      self.Print(
-          'Cannot find hash for "%s" in "%s", file content: %s' %
-          (target, archive_json_path, archive_hashes),
-          file=sys.stderr)
-      return 1
-
+    isolated_hash = out.splitlines()[0].split()[0]
     cmd = [
         self.executable,
         self.PathJoin('tools', 'swarming_client', 'swarming.py'),
@@ -410,11 +388,11 @@ class MetaBuildWrapper(object):
 
   def _RunLocallyIsolated(self, build_dir, target):
     cmd = [
-        self.PathJoin(self.chromium_src_dir, 'tools', 'luci-go',
-                      self.isolate_exe),
+        self.executable,
+        self.PathJoin('tools', 'swarming_client', 'isolate.py'),
         'run',
-        '-i',
-        self.ToSrcRelPath('%s/%s.isolate' % (build_dir, target)),
+        '-s',
+        self.ToSrcRelPath('%s/%s.isolated' % (build_dir, target)),
       ]
     if self.args.extra_args:
       cmd += ['--'] + self.args.extra_args
@@ -748,6 +726,7 @@ class MetaBuildWrapper(object):
         return ret
 
     android = 'target_os="android"' in vals['gn_args']
+    fuchsia = 'target_os="fuchsia"' in vals['gn_args']
     for target in swarming_targets:
       if android:
         # Android targets may be either android_apk or executable. The former
@@ -757,6 +736,11 @@ class MetaBuildWrapper(object):
         runtime_deps_targets = [
             target + '.runtime_deps',
             'obj/%s.stamp.runtime_deps' % label.replace(':', '/')]
+      elif fuchsia:
+        # Only emit a runtime deps file for the group() target on Fuchsia.
+        label = isolate_map[target]['label']
+        runtime_deps_targets = [
+          'obj/%s.stamp.runtime_deps' % label.replace(':', '/')]
       elif (isolate_map[target]['type'] == 'script' or
             isolate_map[target].get('label_type') == 'group'):
         # For script targets, the build target is usually a group,
@@ -811,11 +795,13 @@ class MetaBuildWrapper(object):
     self.WriteIsolateFiles(build_dir, target, runtime_deps)
 
     ret, _, _ = self.Run([
-        self.PathJoin(self.chromium_src_dir, 'tools', 'luci-go',
-                      self.isolate_exe),
+        self.executable,
+        self.PathJoin('tools', 'swarming_client', 'isolate.py'),
         'check',
         '-i',
-        self.ToSrcRelPath('%s/%s.isolate' % (build_dir, target))],
+        self.ToSrcRelPath('%s/%s.isolate' % (build_dir, target)),
+        '-s',
+        self.ToSrcRelPath('%s/%s.isolated' % (build_dir, target))],
         buffer_output=False)
 
     return ret

@@ -3,8 +3,6 @@
 <!-- introduced_in=v0.10.0 -->
 <!-- type=global -->
 
-<!-- source_link=lib/process.js -->
-
 The `process` object is a `global` that provides information about, and control
 over, the current Node.js process. As a global, it is always available to
 Node.js applications without using `require()`. It can also be explicitly
@@ -226,9 +224,7 @@ most convenient for scripts).
 <!-- YAML
 added: v0.1.18
 changes:
-  - version:
-     - v12.0.0
-     - v10.17.0
+  - version: v12.0.0
     pr-url: https://github.com/nodejs/node/pull/26599
     description: Added the `origin` argument.
 -->
@@ -237,8 +233,7 @@ changes:
 * `origin` {string} Indicates if the exception originates from an unhandled
   rejection or from an synchronous error. Can either be `'uncaughtException'` or
   `'unhandledRejection'`. The latter is only used in conjunction with the
-  [`--unhandled-rejections`][] flag set to `strict` or `throw` and
-  an unhandled rejection.
+  [`--unhandled-rejections`][] flag set to `strict` and an unhandled rejection.
 
 The `'uncaughtException'` event is emitted when an uncaught JavaScript
 exception bubbles all the way back to the event loop. By default, Node.js
@@ -301,15 +296,13 @@ needed.
 
 ### Event: `'uncaughtExceptionMonitor'`
 <!-- YAML
-added: v13.7.0
+added: v12.17.0
 -->
 
 * `err` {Error} The uncaught exception.
 * `origin` {string} Indicates if the exception originates from an unhandled
   rejection or from synchronous errors. Can either be `'uncaughtException'` or
-  `'unhandledRejection'`. The latter is only used in conjunction with the
-  [`--unhandled-rejections`][] flag set to `strict` or `throw` and
-  an unhandled rejection.
+  `'unhandledRejection'`.
 
 The `'uncaughtExceptionMonitor'` event is emitted before an
 `'uncaughtException'` event is emitted or a hook installed via
@@ -443,16 +436,16 @@ $ node --no-warnings
 The `--trace-warnings` command-line option can be used to have the default
 console output for warnings include the full stack trace of the warning.
 
-Launching Node.js using the `--throw-deprecation` command-line flag will
+Launching Node.js using the `--throw-deprecation` command line flag will
 cause custom deprecation warnings to be thrown as exceptions.
 
-Using the `--trace-deprecation` command-line flag will cause the custom
+Using the `--trace-deprecation` command line flag will cause the custom
 deprecation to be printed to `stderr` along with the stack trace.
 
-Using the `--no-deprecation` command-line flag will suppress all reporting
+Using the `--no-deprecation` command line flag will suppress all reporting
 of the custom deprecation.
 
-The `*-deprecation` command-line flags only affect warnings that use the name
+The `*-deprecation` command line flags only affect warnings that use the name
 `'DeprecationWarning'`.
 
 #### Emitting custom warnings
@@ -509,12 +502,11 @@ process.on('SIGTERM', handle);
   installed its default behavior will be removed.
 * `'SIGTERM'` is not supported on Windows, it can be listened on.
 * `'SIGINT'` from the terminal is supported on all platforms, and can usually be
-  generated with <kbd>Ctrl</kbd>+<kbd>C</kbd> (though this may be configurable).
-  It is not generated when [terminal raw mode][] is enabled and
-  <kbd>Ctrl</kbd>+<kbd>C</kbd> is used.
-* `'SIGBREAK'` is delivered on Windows when <kbd>Ctrl</kbd>+<kbd>Break</kbd> is
-  pressed. On non-Windows platforms, it can be listened on, but there is no way
-  to send or generate it.
+  generated with `<Ctrl>+C` (though this may be configurable). It is not
+  generated when [terminal raw mode][] is enabled and `<Ctrl>+C` is used.
+* `'SIGBREAK'` is delivered on Windows when `<Ctrl>+<Break>` is pressed, on
+  non-Windows platforms it can be listened on, but there is no way to send or
+  generate it.
 * `'SIGWINCH'` is delivered when the console has been resized. On Windows, this
   will only happen on write to the console when the cursor is being moved, or
   when a readable tty is used in raw mode.
@@ -523,8 +515,10 @@ process.on('SIGTERM', handle);
 * `'SIGSTOP'` cannot have a listener installed.
 * `'SIGBUS'`, `'SIGFPE'`, `'SIGSEGV'` and `'SIGILL'`, when not raised
    artificially using kill(2), inherently leave the process in a state from
-   which it is not safe to call JS listeners. Doing so might cause the process
-   to stop responding.
+   which it is not safe to attempt to call JS listeners. Doing so might lead to
+   the process hanging in an endless loop, since listeners attached using
+   `process.on()` are called asynchronously and therefore unable to correct the
+   underlying problem.
 * `0` can be sent to test for the existence of a process, it has no effect if
    the process exists, but will throw an error if the process does not exist.
 
@@ -618,11 +612,11 @@ added: v0.1.27
 
 * {string[]}
 
-The `process.argv` property returns an array containing the command-line
+The `process.argv` property returns an array containing the command line
 arguments passed when the Node.js process was launched. The first element will
 be [`process.execPath`][]. See `process.argv0` if access to the original value
 of `argv[0]` is needed. The second element will be the path to the JavaScript
-file being executed. The remaining elements will be any additional command-line
+file being executed. The remaining elements will be any additional command line
 arguments.
 
 For example, assuming the following script for `process-args.js`:
@@ -671,10 +665,6 @@ $ bash -c 'exec -a customArgv0 ./node'
 ## `process.channel`
 <!-- YAML
 added: v7.1.0
-changes:
-  - version: v14.0.0
-    pr-url: https://github.com/nodejs/node/pull/30165
-    description: The object no longer accidentally exposes native C++ bindings.
 -->
 
 * {Object}
@@ -683,30 +673,6 @@ If the Node.js process was spawned with an IPC channel (see the
 [Child Process][] documentation), the `process.channel`
 property is a reference to the IPC channel. If no IPC channel exists, this
 property is `undefined`.
-
-### `process.channel.ref()`
-<!-- YAML
-added: v7.1.0
--->
-
-This method makes the IPC channel keep the event loop of the process
-running if `.unref()` has been called before.
-
-Typically, this is managed through the number of `'disconnect'` and `'message'`
-listeners on the `process` object. However, this method can be used to
-explicitly request a specific behavior.
-
-### `process.channel.unref()`
-<!-- YAML
-added: v7.1.0
--->
-
-This method makes the IPC channel not keep the event loop of the process
-running, and lets it finish even while the channel is open.
-
-Typically, this is managed through the number of `'disconnect'` and `'message'`
-listeners on the `process` object. However, this method can be used to
-explicitly request a specific behavior.
 
 ## `process.chdir(directory)`
 <!-- YAML
@@ -881,29 +847,31 @@ changes:
 * `filename` {string}
 * `flags` {os.constants.dlopen} **Default:** `os.constants.dlopen.RTLD_LAZY`
 
-The `process.dlopen()` method allows dynamically loading shared objects. It is
-primarily used by `require()` to load C++ Addons, and should not be used
-directly, except in special cases. In other words, [`require()`][] should be
-preferred over `process.dlopen()` unless there are specific reasons such as
-custom dlopen flags or loading from ES modules.
+The `process.dlopen()` method allows to dynamically load shared
+objects. It is primarily used by `require()` to load
+C++ Addons, and should not be used directly, except in special
+cases. In other words, [`require()`][] should be preferred over
+`process.dlopen()`, unless there are specific reasons.
 
 The `flags` argument is an integer that allows to specify dlopen
 behavior. See the [`os.constants.dlopen`][] documentation for details.
 
-An important requirement when calling `process.dlopen()` is that the `module`
-instance must be passed. Functions exported by the C++ Addon are then
-accessible via `module.exports`.
+If there are specific reasons to use `process.dlopen()` (for instance,
+to specify dlopen flags), it's often useful to use [`require.resolve()`][]
+to look up the module's path.
 
-The example below shows how to load a C++ Addon, named `local.node`,
-that exports a `foo` function. All the symbols are loaded before
+An important drawback when calling `process.dlopen()` is that the `module`
+instance must be passed. Functions exported by the C++ Addon will be accessible
+via `module.exports`.
+
+The example below shows how to load a C++ Addon, named as `binding`,
+that exports a `foo` function. All the symbols will be loaded before
 the call returns, by passing the `RTLD_NOW` constant. In this example
 the constant is assumed to be available.
 
 ```js
 const os = require('os');
-const path = require('path');
-const module = { exports: {} };
-process.dlopen(module, path.join(__dirname, 'local.node'),
+process.dlopen(module, require.resolve('binding'),
                os.constants.dlopen.RTLD_NOW);
 module.exports.foo();
 ```
@@ -1173,9 +1141,6 @@ And `process.argv`:
 ['/usr/local/bin/node', 'script.js', '--version']
 ```
 
-Refer to [`Worker` constructor][] for the detailed behavior of worker
-threads with this property.
-
 ## `process.execPath`
 <!-- YAML
 added: v0.1.100
@@ -1184,7 +1149,7 @@ added: v0.1.100
 * {string}
 
 The `process.execPath` property returns the absolute pathname of the executable
-that started the Node.js process. Symbolic links, if any, are resolved.
+that started the Node.js process.
 
 <!-- eslint-disable semi -->
 ```js
@@ -1339,12 +1304,6 @@ The `process.getgroups()` method returns an array with the supplementary group
 IDs. POSIX leaves it unspecified if the effective group ID is included but
 Node.js ensures it always is.
 
-```js
-if (process.getgroups) {
-  console.log(process.getgroups()); // [ 16, 21, 297 ]
-}
-```
-
 This function is only available on POSIX platforms (i.e. not Windows or
 Android).
 
@@ -1460,7 +1419,7 @@ Use care when dropping privileges:
 
 ```js
 console.log(process.getgroups());         // [ 0 ]
-process.initgroups('nodeuser', 1000);     // switch user
+process.initgroups('bnoordhuis', 1000);   // switch user
 console.log(process.getgroups());         // [ 27, 30, 46, 1000, 0 ]
 process.setgid(1000);                     // drop root gid
 console.log(process.getgroups());         // [ 27, 30, 46, 1000 ]
@@ -1513,10 +1472,7 @@ debugger. See [Signal Events][].
 ## `process.mainModule`
 <!-- YAML
 added: v0.1.17
-deprecated: v14.0.0
 -->
-
-> Stability: 0 - Deprecated: Use [`require.main`][] instead.
 
 * {Object}
 
@@ -1533,7 +1489,7 @@ is no entry script.
 <!-- YAML
 added: v0.1.16
 changes:
-  - version: v13.9.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/31550
     description: Added `arrayBuffers` to the returned object.
   - version: v7.2.0
@@ -1740,8 +1696,7 @@ added:
 
 * {integer}
 
-The `process.ppid` property returns the PID of the parent of the
-current process.
+The `process.ppid` property returns the PID of the current parent process.
 
 ```js
 console.log(`The parent process is pid ${process.ppid}`);
@@ -1764,7 +1719,8 @@ tarball.
 
 `process.release` contains the following properties:
 
-* `name` {string} A value that will always be `'node'`.
+* `name` {string} A value that will always be `'node'` for Node.js. For
+  legacy io.js releases, this will be `'io.js'`.
 * `sourceUrl` {string} an absolute URL pointing to a _`.tar.gz`_ file containing
   the source code of the current release.
 * `headersUrl`{string} an absolute URL pointing to a _`.tar.gz`_ file containing
@@ -1777,22 +1733,19 @@ tarball.
   builds of Node.js and will be missing on all other platforms._
 * `lts` {string} a string label identifying the [LTS][] label for this release.
   This property only exists for LTS releases and is `undefined` for all other
-  release types, including _Current_ releases.
-  Valid values include the LTS Release Codenames (including those
-  that are no longer supported). A non-exhaustive example of
-  these codenames includes:
-  * `'Dubnium'` for the 10.x LTS line beginning with 10.13.0.
-  * `'Erbium'` for the 12.x LTS line beginning with 12.13.0.
-  For other LTS Release Codenames, see [Node.js Changelog Archive](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_ARCHIVE.md)
+  release types, including _Current_ releases. Currently the valid values are:
+  * `'Argon'` for the 4.x LTS line beginning with 4.2.0.
+  * `'Boron'` for the 6.x LTS line beginning with 6.9.0.
+  * `'Carbon'` for the 8.x LTS line beginning with 8.9.1.
 
 <!-- eslint-skip -->
 ```js
 {
   name: 'node',
-  lts: 'Erbium',
-  sourceUrl: 'https://nodejs.org/download/release/v12.18.1/node-v12.18.1.tar.gz',
-  headersUrl: 'https://nodejs.org/download/release/v12.18.1/node-v12.18.1-headers.tar.gz',
-  libUrl: 'https://nodejs.org/download/release/v12.18.1/win-x64/node.lib'
+  lts: 'Argon',
+  sourceUrl: 'https://nodejs.org/download/release/v4.4.5/node-v4.4.5.tar.gz',
+  headersUrl: 'https://nodejs.org/download/release/v4.4.5/node-v4.4.5-headers.tar.gz',
+  libUrl: 'https://nodejs.org/download/release/v4.4.5/win-x64/node.lib'
 }
 ```
 
@@ -1804,9 +1757,9 @@ relied upon to exist.
 <!-- YAML
 added: v11.8.0
 changes:
-  - version: v13.12.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/32242
-    description: This API is no longer experimental.
+    description: This API is no longer considered experimental.
 -->
 
 * {Object}
@@ -1817,7 +1770,7 @@ reports for the current process. Additional documentation is available in the
 
 ### `process.report.compact`
 <!-- YAML
-added: v13.12.0
+added: v12.17.0
 -->
 
 * {boolean}
@@ -1834,9 +1787,9 @@ console.log(`Reports are compact? ${process.report.compact}`);
 <!-- YAML
 added: v11.12.0
 changes:
-  - version: v13.12.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/32242
-    description: This API is no longer experimental.
+    description: This API is no longer considered experimental.
 -->
 
 * {string}
@@ -1853,9 +1806,9 @@ console.log(`Report directory is ${process.report.directory}`);
 <!-- YAML
 added: v11.12.0
 changes:
-  - version: v13.12.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/32242
-    description: This API is no longer experimental.
+    description: This API is no longer considered experimental.
 -->
 
 * {string}
@@ -1872,9 +1825,9 @@ console.log(`Report filename is ${process.report.filename}`);
 <!-- YAML
 added: v11.8.0
 changes:
-  - version: v13.12.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/32242
-    description: This API is no longer experimental.
+    description: This API is no longer considered experimental.
 -->
 
 * `err` {Error} A custom error used for reporting the JavaScript stack.
@@ -1886,7 +1839,7 @@ present.
 
 ```js
 const data = process.report.getReport();
-console.log(data.header.nodejsVersion);
+console.log(data.header.nodeJsVersion);
 
 // Similar to process.report.writeReport()
 const fs = require('fs');
@@ -1915,9 +1868,9 @@ console.log(`Report on fatal error: ${process.report.reportOnFatalError}`);
 <!-- YAML
 added: v11.12.0
 changes:
-  - version: v13.12.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/32242
-    description: This API is no longer experimental.
+    description: This API is no longer considered experimental.
 -->
 
 * {boolean}
@@ -1933,9 +1886,9 @@ console.log(`Report on signal: ${process.report.reportOnSignal}`);
 <!-- YAML
 added: v11.12.0
 changes:
-  - version: v13.12.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/32242
-    description: This API is no longer experimental.
+    description: This API is no longer considered experimental.
 -->
 
 * {boolean}
@@ -1950,9 +1903,9 @@ console.log(`Report on exception: ${process.report.reportOnUncaughtException}`);
 <!-- YAML
 added: v11.12.0
 changes:
-  - version: v13.12.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/32242
-    description: This API is no longer experimental.
+    description: This API is no longer considered experimental.
 -->
 
 * {string}
@@ -1968,9 +1921,9 @@ console.log(`Report signal: ${process.report.signal}`);
 <!-- YAML
 added: v11.8.0
 changes:
-  - version: v13.12.0
+  - version: v12.17.0
     pr-url: https://github.com/nodejs/node/pull/32242
-    description: This API is no longer experimental.
+    description: This API is no longer considered experimental.
 -->
 
 * `filename` {string} Name of the file where the report is written. This
@@ -2184,18 +2137,7 @@ The `process.setgroups()` method sets the supplementary group IDs for the
 Node.js process. This is a privileged operation that requires the Node.js
 process to have `root` or the `CAP_SETGID` capability.
 
-The `groups` array can contain numeric group IDs, group names, or both.
-
-```js
-if (process.getgroups && process.setgroups) {
-  try {
-    process.setgroups([501]);
-    console.log(process.getgroups()); // new groups
-  } catch (err) {
-    console.log(`Failed to set groups: ${err}`);
-  }
-}
-```
+The `groups` array can contain numeric group IDs, group names or both.
 
 This function is only available on POSIX platforms (i.e. not Windows or
 Android).
@@ -2243,8 +2185,7 @@ exception value itself as its first argument.
 If such a function is set, the [`'uncaughtException'`][] event will
 not be emitted. If `--abort-on-uncaught-exception` was passed from the
 command line or set through [`v8.setFlagsFromString()`][], the process will
-not abort. Actions configured to take place on exceptions such as report
-generations will be affected too
+not abort.
 
 To unset the capture function,
 `process.setUncaughtExceptionCaptureCallback(null)` may be used. Calling this
@@ -2283,7 +2224,21 @@ The `process.stdin` property returns a stream connected to
 stream) unless fd `0` refers to a file, in which case it is
 a [Readable][] stream.
 
-For details of how to read from `stdin` see [`readable.read()`][].
+```js
+process.stdin.setEncoding('utf8');
+
+process.stdin.on('readable', () => {
+  let chunk;
+  // Use a loop to make sure we read all available data.
+  while ((chunk = process.stdin.read()) !== null) {
+    process.stdout.write(`data: ${chunk}`);
+  }
+});
+
+process.stdin.on('end', () => {
+  process.stdout.write('end');
+});
+```
 
 As a [Duplex][] stream, `process.stdin` can also be used in "old" mode that
 is compatible with scripts written for Node.js prior to v0.10.
@@ -2341,7 +2296,7 @@ important ways:
    * Pipes (and sockets): *synchronous* on Windows, *asynchronous* on POSIX
 
 These behaviors are partly for historical reasons, as changing them would
-create backward incompatibility, but they are also expected by some users.
+create backwards incompatibility, but they are also expected by some users.
 
 Synchronous writes avoid problems such as output written with `console.log()` or
 `console.error()` being unexpectedly interleaved, or not written at all if
@@ -2419,15 +2374,11 @@ the current value of `ps`.
 When a new value is assigned, different platforms will impose different maximum
 length restrictions on the title. Usually such restrictions are quite limited.
 For instance, on Linux and macOS, `process.title` is limited to the size of the
-binary name plus the length of the command-line arguments because setting the
+binary name plus the length of the command line arguments because setting the
 `process.title` overwrites the `argv` memory of the process. Node.js v0.8
 allowed for longer process title strings by also overwriting the `environ`
 memory but that was potentially insecure and confusing in some (rather obscure)
 cases.
-
-Assigning a value to `process.title` might not result in an accurate label
-within process manager applications such as macOS Activity Monitor or Windows
-Services Manager.
 
 ## `process.traceDeprecation`
 <!-- YAML
@@ -2442,35 +2393,17 @@ documentation for the [`'warning'` event][process_warning] and the
 [`emitWarning()` method][process_emit_warning] for more information about this
 flag's behavior.
 
-## `process.umask()`
-<!-- YAML
-added: v0.1.19
-changes:
-  - version:
-    - v14.0.0
-    - v12.19.0
-    pr-url: https://github.com/nodejs/node/pull/32499
-    description: Calling `process.umask()` with no arguments is deprecated.
-
--->
-
-> Stability: 0 - Deprecated. Calling `process.umask()` with no argument causes
-> the process-wide umask to be written twice. This introduces a race condition
-> between threads, and is a potential security vulnerability. There is no safe,
-> cross-platform alternative API.
-
-`process.umask()` returns the Node.js process's file mode creation mask. Child
-processes inherit the mask from the parent process.
-
-## `process.umask(mask)`
+## `process.umask([mask])`
 <!-- YAML
 added: v0.1.19
 -->
 
 * `mask` {string|integer}
 
-`process.umask(mask)` sets the Node.js process's file mode creation mask. Child
-processes inherit the mask from the parent process. Returns the previous mask.
+The `process.umask()` method sets or returns the Node.js process's file mode
+creation mask. Child processes inherit the mask from the parent process. Invoked
+without an argument, the current mask is returned, otherwise the umask is set to
+the argument value and the previous mask is returned.
 
 ```js
 const newmask = 0o022;
@@ -2480,7 +2413,8 @@ console.log(
 );
 ```
 
-In [`Worker`][] threads, `process.umask(mask)` will throw an exception.
+[`Worker`][] threads are able to read the umask, however attempting to set the
+umask will result in a thrown exception.
 
 ## `process.uptime()`
 <!-- YAML
@@ -2502,26 +2436,22 @@ added: v0.1.3
 
 * {string}
 
-The `process.version` property contains the Node.js version string.
+The `process.version` property returns the Node.js version string.
 
 ```js
 console.log(`Version: ${process.version}`);
-// Version: v14.8.0
 ```
-
-To get the version string without the prepended _v_, use
-`process.versions.node`.
 
 ## `process.versions`
 <!-- YAML
 added: v0.2.0
 changes:
-  - version: v9.0.0
-    pr-url: https://github.com/nodejs/node/pull/15785
-    description: The `v8` property now includes a Node.js specific suffix.
   - version: v4.2.0
     pr-url: https://github.com/nodejs/node/pull/3102
     description: The `icu` property is now supported.
+  - version: v9.0.0
+    pr-url: https://github.com/nodejs/node/pull/15785
+    description: The `v8` property now includes a Node.js specific suffix.
 -->
 
 * {Object}
@@ -2548,6 +2478,7 @@ Will generate an object similar to:
   nghttp2: '1.34.0',
   napi: '4',
   llhttp: '1.1.1',
+  http_parser: '2.8.0',
   openssl: '1.1.1b',
   cldr: '34.0',
   icu: '63.1',
@@ -2594,8 +2525,6 @@ cases:
   and generally can only happen during development of Node.js itself.
 * `12` **Invalid Debug Argument**: The `--inspect` and/or `--inspect-brk`
   options were set, but the port number chosen was invalid or unavailable.
-* `13` **Unfinished Top-Level Await**: `await` was used outside of a function
-  in the top-level code, but the passed `Promise` never resolved.
 * `>128` **Signal Exits**: If Node.js receives a fatal signal such as
   `SIGKILL` or `SIGHUP`, then its exit code will be `128` plus the
   value of the signal code. This is a standard POSIX practice, since
@@ -2604,38 +2533,24 @@ cases:
   For example, signal `SIGABRT` has value `6`, so the expected exit
   code will be `128` + `6`, or `134`.
 
-[Advanced serialization for `child_process`]: child_process.md#child_process_advanced_serialization
-[Android building]: https://github.com/nodejs/node/blob/master/BUILDING.md#androidandroid-based-devices-eg-firefox-os
-[Child Process]: child_process.md
-[Cluster]: cluster.md
-[Duplex]: stream.md#stream_duplex_and_transform_streams
-[Event Loop]: https://nodejs.org/en/docs/guides/event-loop-timers-and-nexttick/#process-nexttick
-[LTS]: https://github.com/nodejs/Release
-[Readable]: stream.md#stream_readable_streams
-[Signal Events]: #process_signal_events
-[Stream compatibility]: stream.md#stream_compatibility_with_older_node_js_versions
-[TTY]: tty.md#tty_tty
-[Writable]: stream.md#stream_writable_streams
 [`'exit'`]: #process_event_exit
-[`'message'`]: child_process.md#child_process_event_message
+[`'message'`]: child_process.html#child_process_event_message
 [`'uncaughtException'`]: #process_event_uncaughtexception
-[`--unhandled-rejections`]: cli.md#cli_unhandled_rejections_mode
-[`Buffer`]: buffer.md
-[`ChildProcess.disconnect()`]: child_process.md#child_process_subprocess_disconnect
-[`ChildProcess.send()`]: child_process.md#child_process_subprocess_send_message_sendhandle_options_callback
-[`ChildProcess`]: child_process.md#child_process_class_childprocess
-[`Error`]: errors.md#errors_class_error
-[`EventEmitter`]: events.md#events_class_eventemitter
-[`NODE_OPTIONS`]: cli.md#cli_node_options_options
-[`Promise.race()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/race
-[`Worker`]: worker_threads.md#worker_threads_class_worker
-[`Worker` constructor]: worker_threads.md#worker_threads_new_worker_filename_options
-[`console.error()`]: console.md#console_console_error_data_args
-[`console.log()`]: console.md#console_console_log_data_args
-[`domain`]: domain.md
-[`net.Server`]: net.md#net_class_net_server
-[`net.Socket`]: net.md#net_class_net_socket
-[`os.constants.dlopen`]: os.md#os_dlopen_constants
+[`--unhandled-rejections`]: cli.html#cli_unhandled_rejections_mode
+[`Buffer`]: buffer.html
+[`ChildProcess.disconnect()`]: child_process.html#child_process_subprocess_disconnect
+[`ChildProcess.send()`]: child_process.html#child_process_subprocess_send_message_sendhandle_options_callback
+[`ChildProcess`]: child_process.html#child_process_class_childprocess
+[`Error`]: errors.html#errors_class_error
+[`EventEmitter`]: events.html#events_class_eventemitter
+[`NODE_OPTIONS`]: cli.html#cli_node_options_options
+[`Worker`]: worker_threads.html#worker_threads_class_worker
+[`console.error()`]: console.html#console_console_error_data_args
+[`console.log()`]: console.html#console_console_log_data_args
+[`domain`]: domain.html
+[`net.Server`]: net.html#net_class_net_server
+[`net.Socket`]: net.html#net_class_net_socket
+[`os.constants.dlopen`]: os.html#os_dlopen_constants
 [`process.argv`]: #process_process_argv
 [`process.config`]: #process_process_config
 [`process.execPath`]: #process_process_execpath
@@ -2644,20 +2559,33 @@ cases:
 [`process.hrtime()`]: #process_process_hrtime_time
 [`process.hrtime.bigint()`]: #process_process_hrtime_bigint
 [`process.kill()`]: #process_process_kill_pid_signal
-[`process.setUncaughtExceptionCaptureCallback()`]: process.md#process_process_setuncaughtexceptioncapturecallback_fn
+[`process.setUncaughtExceptionCaptureCallback()`]: process.html#process_process_setuncaughtexceptioncapturecallback_fn
 [`promise.catch()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/catch
-[`readable.read()`]: stream.md#stream_readable_read_size
-[`require()`]: globals.md#globals_require
-[`require.main`]: modules.md#modules_accessing_the_main_module
-[`subprocess.kill()`]: child_process.md#child_process_subprocess_kill_signal
-[`v8.setFlagsFromString()`]: v8.md#v8_v8_setflagsfromstring_flags
-[debugger]: debugger.md
-[note on process I/O]: process.md#process_a_note_on_process_i_o
+[`Promise.race()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/race
+[`require()`]: globals.html#globals_require
+[`require.main`]: modules.html#modules_accessing_the_main_module
+[`require.resolve()`]: modules.html#modules_require_resolve_request_options
+[`subprocess.kill()`]: child_process.html#child_process_subprocess_kill_signal
+[`v8.setFlagsFromString()`]: v8.html#v8_v8_setflagsfromstring_flags
+[Advanced serialization for `child_process`]: child_process.html#child_process_advanced_serialization
+[Android building]: https://github.com/nodejs/node/blob/master/BUILDING.md#androidandroid-based-devices-eg-firefox-os
+[Child Process]: child_process.html
+[Cluster]: cluster.html
+[Duplex]: stream.html#stream_duplex_and_transform_streams
+[Event Loop]: https://nodejs.org/en/docs/guides/event-loop-timers-and-nexttick/#process-nexttick
+[LTS]: https://github.com/nodejs/Release
+[Readable]: stream.html#stream_readable_streams
+[Signal Events]: #process_signal_events
+[Stream compatibility]: stream.html#stream_compatibility_with_older_node_js_versions
+[TTY]: tty.html#tty_tty
+[Writable]: stream.html#stream_writable_streams
+[debugger]: debugger.html
+[note on process I/O]: process.html#process_a_note_on_process_i_o
 [process.cpuUsage]: #process_process_cpuusage_previousvalue
 [process_emit_warning]: #process_process_emitwarning_warning_type_code_ctor
 [process_warning]: #process_event_warning
-[report documentation]: report.md
-[terminal raw mode]: tty.md#tty_readstream_setrawmode_mode
-[uv_rusage_t]: https://docs.libuv.org/en/v1.x/misc.html#c.uv_rusage_t
-[wikipedia_major_fault]: https://en.wikipedia.org/wiki/Page_fault#Major
+[report documentation]: report.html
+[terminal raw mode]: tty.html#tty_readstream_setrawmode_mode
+[uv_rusage_t]: http://docs.libuv.org/en/v1.x/misc.html#c.uv_rusage_t
 [wikipedia_minor_fault]: https://en.wikipedia.org/wiki/Page_fault#Minor
+[wikipedia_major_fault]: https://en.wikipedia.org/wiki/Page_fault#Major

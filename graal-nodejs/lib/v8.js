@@ -73,12 +73,12 @@ class Deserializer extends _Deserializer { }
 const {
   cachedDataVersionTag,
   setFlagsFromString: _setFlagsFromString,
-  heapStatisticsBuffer,
-  heapSpaceStatisticsBuffer,
-  heapCodeStatisticsBuffer,
-  updateHeapStatisticsBuffer,
-  updateHeapSpaceStatisticsBuffer,
-  updateHeapCodeStatisticsBuffer,
+  heapStatisticsArrayBuffer,
+  heapSpaceStatisticsArrayBuffer,
+  heapCodeStatisticsArrayBuffer,
+  updateHeapStatisticsArrayBuffer,
+  updateHeapSpaceStatisticsArrayBuffer,
+  updateHeapCodeStatisticsArrayBuffer,
 
   // Properties for heap statistics buffer extraction.
   kTotalHeapSizeIndex,
@@ -95,6 +95,7 @@ const {
 
   // Properties for heap spaces statistics buffer extraction.
   kHeapSpaces,
+  kHeapSpaceStatisticsPropertiesCount,
   kSpaceSizeIndex,
   kSpaceUsedSizeIndex,
   kSpaceAvailableSizeIndex,
@@ -108,6 +109,15 @@ const {
 
 const kNumberOfHeapSpaces = kHeapSpaces.length;
 
+const heapStatisticsBuffer =
+    new Float64Array(heapStatisticsArrayBuffer);
+
+const heapSpaceStatisticsBuffer =
+    new Float64Array(heapSpaceStatisticsArrayBuffer);
+
+const heapCodeStatisticsBuffer =
+    new Float64Array(heapCodeStatisticsArrayBuffer);
+
 function setFlagsFromString(flags) {
   validateString(flags, 'flags');
   _setFlagsFromString(flags);
@@ -116,7 +126,7 @@ function setFlagsFromString(flags) {
 function getHeapStatistics() {
   const buffer = heapStatisticsBuffer;
 
-  updateHeapStatisticsBuffer();
+  updateHeapStatisticsArrayBuffer();
 
   return {
     'total_heap_size': buffer[kTotalHeapSizeIndex],
@@ -136,15 +146,16 @@ function getHeapStatistics() {
 function getHeapSpaceStatistics() {
   const heapSpaceStatistics = new Array(kNumberOfHeapSpaces);
   const buffer = heapSpaceStatisticsBuffer;
+  updateHeapSpaceStatisticsArrayBuffer();
 
   for (let i = 0; i < kNumberOfHeapSpaces; i++) {
-    updateHeapSpaceStatisticsBuffer(i);
+    const propertyOffset = i * kHeapSpaceStatisticsPropertiesCount;
     heapSpaceStatistics[i] = {
       space_name: kHeapSpaces[i],
-      space_size: buffer[kSpaceSizeIndex],
-      space_used_size: buffer[kSpaceUsedSizeIndex],
-      space_available_size: buffer[kSpaceAvailableSizeIndex],
-      physical_space_size: buffer[kPhysicalSpaceSizeIndex]
+      space_size: buffer[propertyOffset + kSpaceSizeIndex],
+      space_used_size: buffer[propertyOffset + kSpaceUsedSizeIndex],
+      space_available_size: buffer[propertyOffset + kSpaceAvailableSizeIndex],
+      physical_space_size: buffer[propertyOffset + kPhysicalSpaceSizeIndex]
     };
   }
 
@@ -154,7 +165,7 @@ function getHeapSpaceStatistics() {
 function getHeapCodeStatistics() {
   const buffer = heapCodeStatisticsBuffer;
 
-  updateHeapCodeStatisticsBuffer();
+  updateHeapCodeStatisticsArrayBuffer();
   return {
     'code_and_metadata_size': buffer[kCodeAndMetadataSizeIndex],
     'bytecode_and_metadata_size': buffer[kBytecodeAndMetadataSizeIndex],

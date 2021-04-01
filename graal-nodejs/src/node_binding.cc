@@ -49,9 +49,9 @@
   V(heap_utils)                                                                \
   V(http2)                                                                     \
   V(http_parser)                                                               \
+  V(http_parser_llhttp)                                                        \
   V(inspector)                                                                 \
   V(js_stream)                                                                 \
-  V(js_udp_wrap)                                                               \
   V(messaging)                                                                 \
   V(module_wrap)                                                               \
   V(native_module)                                                             \
@@ -230,9 +230,9 @@ namespace node {
 
 using v8::Context;
 using v8::Exception;
-using v8::Function;
 using v8::FunctionCallbackInfo;
 using v8::Local;
+using v8::NewStringType;
 using v8::Object;
 using v8::String;
 using v8::Value;
@@ -461,7 +461,7 @@ void DLOpen(const FunctionCallbackInfo<Value>& args) {
 
     if (mp != nullptr) {
       if (mp->nm_context_register_func == nullptr) {
-        if (env->force_context_aware()) {
+        if (env->options()->force_context_aware) {
           dlib->Close();
           THROW_ERR_NON_CONTEXT_AWARE_DISABLED(env);
           return false;
@@ -498,7 +498,7 @@ void DLOpen(const FunctionCallbackInfo<Value>& args) {
           snprintf(errmsg,
                sizeof(errmsg),
                "Native module '%s' is compiled against the original Node.js!\n"
-               "Use '--nodedir=<GraalVMHome>/jre/languages/nodejs' option of 'npm install' "
+               "Use '--nodedir=<GraalVMHome>/jre/languages/js' option of 'npm install' "
                "(resp. 'node-gyp') for the compilation against Graal-Node.js.\n"
                "If the native module is downloaded by 'node-pre-gyp' then use also "
                "'--build-from-source' option (to force the compilation).",
@@ -567,11 +567,8 @@ inline struct node_module* FindModule(struct node_module* list,
 static Local<Object> InitModule(Environment* env,
                                 node_module* mod,
                                 Local<String> module) {
+  Local<Object> exports = Object::New(env->isolate());
   // Internal bindings don't have a "module" object, only exports.
-  Local<Function> ctor = env->binding_data_ctor_template()
-                             ->GetFunction(env->context())
-                             .ToLocalChecked();
-  Local<Object> exports = ctor->NewInstance(env->context()).ToLocalChecked();
   CHECK_NULL(mod->nm_register_func);
   CHECK_NOT_NULL(mod->nm_context_register_func);
   Local<Value> unused = Undefined(env->isolate());
@@ -654,7 +651,8 @@ void GetLinkedBinding(const FunctionCallbackInfo<Value>& args) {
   Local<Object> module = Object::New(env->isolate());
   Local<Object> exports = Object::New(env->isolate());
   Local<String> exports_prop =
-      String::NewFromUtf8Literal(env->isolate(), "exports");
+      String::NewFromUtf8(env->isolate(), "exports", NewStringType::kNormal)
+          .ToLocalChecked();
   module->Set(env->context(), exports_prop, exports).Check();
 
   if (mod->nm_context_register_func != nullptr) {

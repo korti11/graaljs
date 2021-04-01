@@ -240,9 +240,8 @@ void* SigintWatchdogHelper::RunSigintWatchdog(void* arg) {
   return nullptr;
 }
 
-void SigintWatchdogHelper::HandleSignal(int signum,
-                                        siginfo_t* info,
-                                        void* ucontext) {
+
+void SigintWatchdogHelper::HandleSignal(int signum) {
   uv_sem_post(&instance.sem_);
 }
 

@@ -43,7 +43,6 @@ package com.oracle.truffle.js.runtime.builtins;
 import java.util.List;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.Shape;
 import com.oracle.truffle.js.runtime.Errors;
@@ -121,7 +120,7 @@ public final class JSAdapter extends AbstractJSClass implements JSConstructorFac
 
     @TruffleBoundary
     @Override
-    public Object getOwnHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode) {
+    public Object getOwnHelper(DynamicObject store, Object thisObj, Object key) {
         assert JSRuntime.isPropertyKey(key);
         DynamicObject overrides = getOverrides(store);
         if (overrides != null && JSObject.hasOwnProperty(overrides, key)) {
@@ -133,7 +132,7 @@ public final class JSAdapter extends AbstractJSClass implements JSConstructorFac
 
     @TruffleBoundary
     @Override
-    public Object getOwnHelper(DynamicObject store, Object thisObj, long index, Node encapsulatingNode) {
+    public Object getOwnHelper(DynamicObject store, Object thisObj, long index) {
         DynamicObject overrides = getOverrides(store);
         if (overrides != null && JSObject.hasOwnProperty(overrides, index)) {
             return JSObject.get(overrides, index);
@@ -187,10 +186,10 @@ public final class JSAdapter extends AbstractJSClass implements JSConstructorFac
 
     @TruffleBoundary
     @Override
-    public boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    public boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict) {
         DynamicObject overrides = getOverrides(thisObj);
         if (overrides != null && JSObject.hasOwnProperty(overrides, index)) {
-            JSObject.set(overrides, index, value, isStrict, encapsulatingNode);
+            JSObject.set(overrides, index, value, isStrict);
             return true;
         }
 
@@ -205,11 +204,11 @@ public final class JSAdapter extends AbstractJSClass implements JSConstructorFac
 
     @TruffleBoundary
     @Override
-    public boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    public boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict) {
         assert JSRuntime.isPropertyKey(key);
         DynamicObject overrides = getOverrides(thisObj);
         if (overrides != null && JSObject.hasOwnProperty(overrides, key)) {
-            return JSObject.set(overrides, key, value, isStrict, encapsulatingNode);
+            return JSObject.set(overrides, key, value, isStrict);
         }
 
         DynamicObject adaptee = getAdaptee(thisObj);
@@ -254,7 +253,7 @@ public final class JSAdapter extends AbstractJSClass implements JSConstructorFac
 
     @Override
     public boolean defineOwnProperty(DynamicObject thisObj, Object key, PropertyDescriptor desc, boolean doThrow) {
-        return set(thisObj, key, desc.getValue(), thisObj, doThrow, null);
+        return set(thisObj, key, desc.getValue(), thisObj, doThrow);
     }
 
     @Override
@@ -305,7 +304,7 @@ public final class JSAdapter extends AbstractJSClass implements JSConstructorFac
 
     @TruffleBoundary
     @Override
-    public Object getMethodHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode) {
+    public Object getMethodHelper(DynamicObject store, Object thisObj, Object key) {
         if (key instanceof Symbol) {
             return null;
         }

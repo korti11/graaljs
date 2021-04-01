@@ -4,18 +4,19 @@
 
 'use strict';
 
-import {CATEGORIES, CATEGORY_NAMES} from './categories.js';
+const details_selection_template =
+    document.currentScript.ownerDocument.querySelector(
+        '#details-selection-template');
 
-export const VIEW_BY_INSTANCE_TYPE = 'by-instance-type';
-export const VIEW_BY_INSTANCE_CATEGORY = 'by-instance-category';
-export const VIEW_BY_FIELD_TYPE = 'by-field-type';
+const VIEW_BY_INSTANCE_TYPE = 'by-instance-type';
+const VIEW_BY_INSTANCE_CATEGORY = 'by-instance-category';
+const VIEW_BY_FIELD_TYPE = 'by-field-type';
 
-defineCustomElement('details-selection', (templateText) =>
- class DetailsSelection extends HTMLElement {
+class DetailsSelection extends HTMLElement {
   constructor() {
     super();
     const shadowRoot = this.attachShadow({mode: 'open'});
-    shadowRoot.innerHTML = templateText;
+    shadowRoot.appendChild(details_selection_template.content.cloneNode(true));
     this.isolateSelect.addEventListener(
         'change', e => this.handleIsolateChange(e));
     this.dataViewSelect.addEventListener(
@@ -402,4 +403,6 @@ defineCustomElement('details-selection', (templateText) =>
     link.click();
     this.shadowRoot.removeChild(link);
   }
-});
+}
+
+customElements.define('details-selection', DetailsSelection);

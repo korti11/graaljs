@@ -345,7 +345,7 @@ public class ExecuteNativeFunctionNode extends JavaScriptNode {
 
         @Override
         public String getName() {
-            return JSFunction.getFunctionData(template.getFunctionObject(context.getRealm())).getName();
+            return JSFunction.getFunctionData(template.getFunctionObject()).getName();
         }
 
         @Override

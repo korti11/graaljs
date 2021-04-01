@@ -44,7 +44,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.oracle.truffle.api.dsl.Cached;
-import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.InvalidArrayIndexException;
@@ -60,7 +59,6 @@ import com.oracle.truffle.js.nodes.cast.JSToStringNode;
 import com.oracle.truffle.js.nodes.unary.TypeOfNode;
 import com.oracle.truffle.js.runtime.Boundaries;
 import com.oracle.truffle.js.runtime.Errors;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.builtins.intl.JSLocale;
@@ -71,7 +69,6 @@ import com.oracle.truffle.js.runtime.util.IntlUtil;
  * Implementation of ECMA intl402 9.2.1 "CanonicalizeLocaleList" as Truffle node.
  * https://tc39.github.io/ecma402/#sec-canonicalizelocalelist
  */
-@ImportStatic({JSConfig.class})
 public abstract class JSToCanonicalizedLocaleListNode extends JavaScriptBaseNode {
     final JSContext context;
     private final BranchProfile errorBranch = BranchProfile.create();
@@ -136,7 +133,7 @@ public abstract class JSToCanonicalizedLocaleListNode extends JavaScriptBaseNode
 
     @Specialization(guards = {"isForeignObject(object)"})
     protected String[] doForeignType(Object object,
-                    @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop,
+                    @CachedLibrary(limit = "1") InteropLibrary interop,
                     @Cached TypeOfNode typeOfNode,
                     @Cached JSToStringNode toStringNode) {
         List<String> result = new ArrayList<>();

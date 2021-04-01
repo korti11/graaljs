@@ -90,7 +90,6 @@ import com.oracle.truffle.js.nodes.function.JSFunctionCallNode;
 import com.oracle.truffle.js.nodes.intl.InitializeDateTimeFormatNode;
 import com.oracle.truffle.js.runtime.Errors;
 import com.oracle.truffle.js.runtime.JSArguments;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.Symbol;
@@ -339,7 +338,7 @@ public final class DatePrototypeBuiltins extends JSBuiltinsContainer.SwitchEnum<
             InteropLibrary interop = interopLibrary;
             if (interop == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
-                interop = insert(InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit));
+                interop = insert(InteropLibrary.getFactory().createDispatched(3));
                 interopLibrary = interop;
             }
             if (interop.isInstant(thisDate)) {
@@ -912,13 +911,13 @@ public final class DatePrototypeBuiltins extends JSBuiltinsContainer.SwitchEnum<
                     CompilerDirectives.transferToInterpreterAndInvalidate();
                     ordinaryToPrimitiveHintNumber = insert(OrdinaryToPrimitiveNode.createHintNumber(getContext()));
                 }
-                return ordinaryToPrimitiveHintNumber.execute(obj);
+                return ordinaryToPrimitiveHintNumber.execute((DynamicObject) obj);
             } else if (isHintStringOrDefault.profile(JSRuntime.HINT_STRING.equals(hint) || JSRuntime.HINT_DEFAULT.equals(hint))) {
                 if (ordinaryToPrimitiveHintString == null) {
                     CompilerDirectives.transferToInterpreterAndInvalidate();
                     ordinaryToPrimitiveHintString = insert(OrdinaryToPrimitiveNode.createHintString(getContext()));
                 }
-                return ordinaryToPrimitiveHintString.execute(obj);
+                return ordinaryToPrimitiveHintString.execute((DynamicObject) obj);
             } else {
                 throw Errors.createTypeError("invalid hint");
             }

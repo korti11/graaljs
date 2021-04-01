@@ -136,9 +136,10 @@
   'fast/js/string-capitalization': [FAIL],
 }],  # variant == no_wasm_traps
 
-################################################################################
-['variant == stress_snapshot', {
-  '*': [SKIP],  # only relevant for mjsunit tests.
-}],
+##############################################################################
+['variant == jitless and not embedded_builtins', {
+  '*': [SKIP],
+}], # variant == jitless and not embedded_builtins
 
+##############################################################################
 ]

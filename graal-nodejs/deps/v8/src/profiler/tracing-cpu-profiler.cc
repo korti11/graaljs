@@ -4,7 +4,6 @@
 
 #include "src/profiler/tracing-cpu-profiler.h"
 
-#include "src/execution/isolate.h"
 #include "src/init/v8.h"
 #include "src/profiler/cpu-profiler.h"
 #include "src/tracing/trace-event.h"

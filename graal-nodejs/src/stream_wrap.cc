@@ -46,10 +46,8 @@ using v8::HandleScope;
 using v8::Local;
 using v8::MaybeLocal;
 using v8::Object;
-using v8::PropertyAttribute;
 using v8::ReadOnly;
 using v8::Signature;
-using v8::String;
 using v8::Value;
 
 
@@ -142,7 +140,7 @@ Local<FunctionTemplate> LibuvStreamWrap::GetConstructorTemplate(
     Local<FunctionTemplate> get_write_queue_size =
         FunctionTemplate::New(env->isolate(),
                               GetWriteQueueSize,
-                              Local<Value>(),
+                              env->as_callback_data(),
                               Signature::New(env->isolate(), tmpl));
     tmpl->PrototypeTemplate()->SetAccessorProperty(
         env->write_queue_size_string(),

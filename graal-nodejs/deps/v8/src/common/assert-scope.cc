@@ -94,7 +94,7 @@ bool PerThreadAssertScope<kType, kAllow>::IsAllowed() {
 
 namespace {
 template <PerIsolateAssertType kType>
-using DataBit = base::BitField<bool, kType, 1>;
+using DataBit = BitField<bool, kType, 1>;
 }
 
 template <PerIsolateAssertType kType, bool kAllow>
@@ -126,6 +126,8 @@ template class PerThreadAssertScope<HANDLE_ALLOCATION_ASSERT, false>;
 template class PerThreadAssertScope<HANDLE_ALLOCATION_ASSERT, true>;
 template class PerThreadAssertScope<HANDLE_DEREFERENCE_ASSERT, false>;
 template class PerThreadAssertScope<HANDLE_DEREFERENCE_ASSERT, true>;
+template class PerThreadAssertScope<DEFERRED_HANDLE_DEREFERENCE_ASSERT, false>;
+template class PerThreadAssertScope<DEFERRED_HANDLE_DEREFERENCE_ASSERT, true>;
 template class PerThreadAssertScope<CODE_DEPENDENCY_CHANGE_ASSERT, false>;
 template class PerThreadAssertScope<CODE_DEPENDENCY_CHANGE_ASSERT, true>;
 

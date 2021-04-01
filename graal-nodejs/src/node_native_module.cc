@@ -30,14 +30,6 @@ bool NativeModuleLoader::Exists(const char* id) {
   return source_.find(id) != source_.end();
 }
 
-bool NativeModuleLoader::Add(const char* id, const UnionBytes& source) {
-  if (Exists(id)) {
-    return false;
-  }
-  source_.emplace(id, source);
-  return true;
-}
-
 Local<Object> NativeModuleLoader::GetSourceObject(Local<Context> context) {
   Isolate* isolate = context->GetIsolate();
   Local<Object> out = Object::New(isolate);
@@ -78,9 +70,6 @@ void NativeModuleLoader::InitializeModuleCategories() {
     "internal/main/"
   };
 
-  module_categories_.can_be_required.emplace(
-      "internal/deps/cjs-module-lexer/lexer");
-
   module_categories_.cannot_be_required = std::set<std::string> {
 #if !HAVE_INSPECTOR
       "inspector",
@@ -118,8 +107,7 @@ void NativeModuleLoader::InitializeModuleCategories() {
       if (prefix.length() > id.length()) {
         continue;
       }
-      if (id.find(prefix) == 0 &&
-          module_categories_.can_be_required.count(id) == 0) {
+      if (id.find(prefix) == 0) {
         module_categories_.cannot_be_required.emplace(id);
       }
     }

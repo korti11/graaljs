@@ -21,13 +21,9 @@
 
 'use strict';
 const common = require('../common');
-const tmpdir = require('../common/tmpdir');
-tmpdir.refresh();
-
 const assert = require('assert');
 
 const { execFileSync, execSync, spawnSync } = require('child_process');
-const { getSystemErrorName } = require('util');
 
 const TIMER = 200;
 const SLEEP = 2000;
@@ -52,7 +48,7 @@ try {
   ret = execSync(cmd, { timeout: TIMER });
 } catch (e) {
   caught = true;
-  assert.strictEqual(getSystemErrorName(e.errno), 'ETIMEDOUT');
+  assert.strictEqual(e.errno, 'ETIMEDOUT');
   err = e;
 } finally {
   assert.strictEqual(ret, undefined,
@@ -102,7 +98,7 @@ const args = [
 // Verify that the cwd option works.
 // See https://github.com/nodejs/node-v0.x-archive/issues/7824.
 {
-  const cwd = tmpdir.path;
+  const cwd = common.rootDir;
   const cmd = common.isWindows ? 'echo %cd%' : 'pwd';
   const response = execSync(cmd, { cwd });
 

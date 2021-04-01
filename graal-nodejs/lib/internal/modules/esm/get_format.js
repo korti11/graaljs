@@ -1,8 +1,5 @@
 'use strict';
-const {
-  RegExpPrototypeExec,
-  StringPrototypeStartsWith,
-} = primordials;
+const { StringPrototypeStartsWith } = primordials;
 const { extname } = require('path');
 const { getOptionValue } = require('internal/options');
 
@@ -37,15 +34,12 @@ if (experimentalJsonModules)
   extensionFormatMap['.json'] = legacyExtensionFormatMap['.json'] = 'json';
 
 function defaultGetFormat(url, context, defaultGetFormatUnused) {
-  if (StringPrototypeStartsWith(url, 'node:')) {
+  if (StringPrototypeStartsWith(url, 'nodejs:')) {
     return { format: 'builtin' };
   }
   const parsed = new URL(url);
   if (parsed.protocol === 'data:') {
-    const [ , mime ] = RegExpPrototypeExec(
-      /^([^/]+\/[^;,]+)(?:[^,]*?)(;base64)?,/,
-      parsed.pathname,
-    ) || [ null, null, null ];
+    const [ , mime ] = /^([^/]+\/[^;,]+)(?:[^,]*?)(;base64)?,/.exec(parsed.pathname) || [ null, null, null ];
     const format = ({
       '__proto__': null,
       'text/javascript': 'module',

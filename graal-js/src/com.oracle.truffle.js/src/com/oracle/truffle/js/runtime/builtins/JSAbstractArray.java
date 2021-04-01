@@ -48,7 +48,6 @@ import java.util.TreeMap;
 
 import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.DynamicObjectLibrary;
 import com.oracle.truffle.api.object.HiddenKey;
@@ -276,46 +275,46 @@ public abstract class JSAbstractArray extends JSNonProxy {
 
     @TruffleBoundary
     @Override
-    public final Object getOwnHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode) {
+    public final Object getOwnHelper(DynamicObject store, Object thisObj, Object key) {
         long idx = JSRuntime.propertyKeyToArrayIndex(key);
         if (JSRuntime.isArrayIndex(idx)) {
-            return getOwnHelper(store, thisObj, idx, encapsulatingNode);
+            return getOwnHelper(store, thisObj, idx);
         }
-        return super.getOwnHelper(store, thisObj, key, encapsulatingNode);
+        return super.getOwnHelper(store, thisObj, key);
     }
 
     @TruffleBoundary
     @Override
-    public final boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    public final boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict) {
         if (receiver != thisObj) {
-            return ordinarySetWithReceiver(thisObj, key, value, receiver, isStrict, encapsulatingNode);
+            return ordinarySetWithReceiver(thisObj, key, value, receiver, isStrict);
         }
         assert receiver == thisObj;
         long idx = JSRuntime.propertyKeyToArrayIndex(key);
         if (JSRuntime.isArrayIndex(idx)) {
-            return set(thisObj, idx, value, receiver, isStrict, encapsulatingNode);
+            return set(thisObj, idx, value, receiver, isStrict);
         } else {
-            return super.set(thisObj, key, value, receiver, isStrict, encapsulatingNode);
+            return super.set(thisObj, key, value, receiver, isStrict);
         }
     }
 
     @TruffleBoundary
     @Override
-    public boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    public boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict) {
         if (receiver != thisObj) {
-            return ordinarySetWithReceiver(thisObj, Boundaries.stringValueOf(index), value, receiver, isStrict, encapsulatingNode);
+            return ordinarySetWithReceiver(thisObj, Boundaries.stringValueOf(index), value, receiver, isStrict);
         }
         assert receiver == thisObj;
         if (arrayGetArrayType(thisObj).hasElement(thisObj, index)) {
             return setElement(thisObj, index, value, isStrict);
         } else {
-            return setPropertySlow(thisObj, index, value, receiver, isStrict, encapsulatingNode);
+            return setPropertySlow(thisObj, index, value, receiver, isStrict);
         }
     }
 
     @TruffleBoundary
-    private static boolean setPropertySlow(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
-        if (!JSObject.getJSContext(thisObj).getArrayPrototypeNoElementsAssumption().isValid() && setPropertyPrototypes(thisObj, index, value, receiver, isStrict, encapsulatingNode)) {
+    private static boolean setPropertySlow(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict) {
+        if (!JSObject.getJSContext(thisObj).getArrayPrototypeNoElementsAssumption().isValid() && setPropertyPrototypes(thisObj, index, value, receiver, isStrict)) {
             return true;
         }
 
@@ -328,13 +327,13 @@ public abstract class JSAbstractArray extends JSNonProxy {
         return setElement(thisObj, index, value, isStrict);
     }
 
-    private static boolean setPropertyPrototypes(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    private static boolean setPropertyPrototypes(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict) {
         // check prototype chain for accessors
         DynamicObject current = JSObject.getPrototype(thisObj);
         String propertyName = null;
         while (current != Null.instance) {
             if (JSProxy.isJSProxy(current)) {
-                return JSObject.getJSClass(current).set(current, index, value, receiver, false, encapsulatingNode);
+                return JSObject.setWithReceiver(current, index, value, receiver, false);
             }
             if (canHaveReadOnlyOrAccessorProperties(current)) {
                 if (JSObject.hasOwnProperty(current, index)) {
@@ -344,7 +343,7 @@ public abstract class JSAbstractArray extends JSNonProxy {
                     PropertyDescriptor desc = JSObject.getOwnProperty(current, propertyName);
                     if (desc != null) {
                         if (desc.isAccessorDescriptor()) {
-                            invokeAccessorPropertySetter(desc, thisObj, propertyName, value, receiver, isStrict, encapsulatingNode);
+                            invokeAccessorPropertySetter(desc, thisObj, propertyName, value, receiver, isStrict);
                             return true;
                         } else if (!desc.getWritable()) {
                             if (isStrict) {
@@ -384,12 +383,12 @@ public abstract class JSAbstractArray extends JSNonProxy {
 
     @TruffleBoundary
     @Override
-    public Object getOwnHelper(DynamicObject store, Object thisObj, long index, Node encapsulatingNode) {
+    public Object getOwnHelper(DynamicObject store, Object thisObj, long index) {
         ScriptArray array = arrayGetArrayType(store);
         if (array.hasElement(store, index)) {
             return array.getElement(store, index);
         }
-        return super.getOwnHelper(store, thisObj, Boundaries.stringValueOf(index), encapsulatingNode);
+        return super.getOwnHelper(store, thisObj, Boundaries.stringValueOf(index));
     }
 
     @TruffleBoundary

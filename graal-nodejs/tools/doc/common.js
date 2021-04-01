@@ -7,10 +7,6 @@ function isYAMLBlock(text) {
   return /^<!-- YAML/.test(text);
 }
 
-function isSourceLink(text) {
-  return /^<!-- source_link=([^\s/]+\/)+\w+\.\w+ -->/.test(text);
-}
-
 function arrify(value) {
   return Array.isArray(value) ? value : [value];
 }
@@ -47,4 +43,4 @@ function extractAndParseYAML(text) {
   return meta;
 }
 
-module.exports = { arrify, isYAMLBlock, isSourceLink, extractAndParseYAML };
+module.exports = { arrify, isYAMLBlock, extractAndParseYAML };

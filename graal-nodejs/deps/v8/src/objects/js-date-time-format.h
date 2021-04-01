@@ -12,7 +12,6 @@
 #include <set>
 #include <string>
 
-#include "src/base/bit-field.h"
 #include "src/execution/isolate.h"
 #include "src/objects/intl-objects.h"
 #include "src/objects/managed.h"
@@ -31,12 +30,11 @@ class SimpleDateFormat;
 namespace v8 {
 namespace internal {
 
-class JSDateTimeFormat
-    : public TorqueGeneratedJSDateTimeFormat<JSDateTimeFormat, JSObject> {
+class JSDateTimeFormat : public JSObject {
  public:
   V8_WARN_UNUSED_RESULT static MaybeHandle<JSDateTimeFormat> New(
       Isolate* isolate, Handle<Map> map, Handle<Object> locales,
-      Handle<Object> options, const char* service);
+      Handle<Object> options);
 
   V8_WARN_UNUSED_RESULT static MaybeHandle<JSObject> ResolvedOptions(
       Isolate* isolate, Handle<JSDateTimeFormat> date_time_format);
@@ -48,6 +46,11 @@ class JSDateTimeFormat
   // Convert the options to ICU DateTimePatternGenerator skeleton.
   static Maybe<std::string> OptionsToSkeleton(Isolate* isolate,
                                               Handle<JSReceiver> options);
+
+  // Return the time zone id which match ICU's expectation of title casing
+  // return empty string when error.
+  static std::string CanonicalizeTimeZoneID(Isolate* isolate,
+                                            const std::string& input);
 
   // ecma402/#sec-datetime-format-functions
   // DateTime Format Functions
@@ -79,21 +82,22 @@ class JSDateTimeFormat
 
   V8_WARN_UNUSED_RESULT static MaybeHandle<String> ToLocaleDateTime(
       Isolate* isolate, Handle<Object> date, Handle<Object> locales,
-      Handle<Object> options, RequiredOption required, DefaultsOption defaults,
-      const char* method);
+      Handle<Object> options, RequiredOption required, DefaultsOption defaults);
 
   V8_EXPORT_PRIVATE static const std::set<std::string>& GetAvailableLocales();
 
   Handle<String> HourCycleAsString() const;
+  DECL_CAST(JSDateTimeFormat)
 
   // ecma-402/#sec-properties-of-intl-datetimeformat-instances
   enum class DateTimeStyle { kUndefined, kFull, kLong, kMedium, kShort };
 
-  // enum for "hourCycle" option.
-  enum class HourCycle { kUndefined, kH11, kH12, kH23, kH24 };
+// Layout description.
+  DEFINE_FIELD_OFFSET_CONSTANTS(JSObject::kHeaderSize,
+                                TORQUE_GENERATED_JSDATE_TIME_FORMAT_FIELDS)
 
-  inline void set_hour_cycle(HourCycle hour_cycle);
-  inline HourCycle hour_cycle() const;
+  inline void set_hour_cycle(Intl::HourCycle hour_cycle);
+  inline Intl::HourCycle hour_cycle() const;
 
   inline void set_date_style(DateTimeStyle date_style);
   inline DateTimeStyle date_style() const;
@@ -101,14 +105,20 @@ class JSDateTimeFormat
   inline void set_time_style(DateTimeStyle time_style);
   inline DateTimeStyle time_style() const;
 
-  // Bit positions in |flags|.
-  DEFINE_TORQUE_GENERATED_JS_DATE_TIME_FORMAT_FLAGS()
+// Bit positions in |flags|.
+#define FLAGS_BIT_FIELDS(V, _)            \
+  V(HourCycleBits, Intl::HourCycle, 3, _) \
+  V(DateStyleBits, DateTimeStyle, 3, _)   \
+  V(TimeStyleBits, DateTimeStyle, 3, _)
 
-  STATIC_ASSERT(HourCycle::kUndefined <= HourCycleBits::kMax);
-  STATIC_ASSERT(HourCycle::kH11 <= HourCycleBits::kMax);
-  STATIC_ASSERT(HourCycle::kH12 <= HourCycleBits::kMax);
-  STATIC_ASSERT(HourCycle::kH23 <= HourCycleBits::kMax);
-  STATIC_ASSERT(HourCycle::kH24 <= HourCycleBits::kMax);
+  DEFINE_BIT_FIELDS(FLAGS_BIT_FIELDS)
+#undef FLAGS_BIT_FIELDS
+
+  STATIC_ASSERT(Intl::HourCycle::kUndefined <= HourCycleBits::kMax);
+  STATIC_ASSERT(Intl::HourCycle::kH11 <= HourCycleBits::kMax);
+  STATIC_ASSERT(Intl::HourCycle::kH12 <= HourCycleBits::kMax);
+  STATIC_ASSERT(Intl::HourCycle::kH23 <= HourCycleBits::kMax);
+  STATIC_ASSERT(Intl::HourCycle::kH24 <= HourCycleBits::kMax);
 
   STATIC_ASSERT(DateTimeStyle::kUndefined <= DateStyleBits::kMax);
   STATIC_ASSERT(DateTimeStyle::kFull <= DateStyleBits::kMax);
@@ -125,10 +135,13 @@ class JSDateTimeFormat
   DECL_ACCESSORS(icu_locale, Managed<icu::Locale>)
   DECL_ACCESSORS(icu_simple_date_format, Managed<icu::SimpleDateFormat>)
   DECL_ACCESSORS(icu_date_interval_format, Managed<icu::DateIntervalFormat>)
+  DECL_ACCESSORS(bound_format, Object)
+  DECL_INT_ACCESSORS(flags)
 
   DECL_PRINTER(JSDateTimeFormat)
+  DECL_VERIFIER(JSDateTimeFormat)
 
-  TQ_OBJECT_CONSTRUCTORS(JSDateTimeFormat)
+  OBJECT_CONSTRUCTORS(JSDateTimeFormat, JSObject);
 };
 
 }  // namespace internal

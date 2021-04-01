@@ -10,7 +10,6 @@
 #include "src/api/api-inl.h"
 #include "src/ast/modules.h"
 #include "src/builtins/accessors.h"
-#include "src/heap/heap-inl.h"
 #include "src/objects/cell-inl.h"
 #include "src/objects/hash-table-inl.h"
 #include "src/objects/js-generator-inl.h"
@@ -51,14 +50,12 @@ void Module::SetStatus(Status new_status) {
   set_status(new_status);
 }
 
-void Module::RecordErrorUsingPendingException(Isolate* isolate) {
-  Handle<Object> the_exception(isolate->pending_exception(), isolate);
-  RecordError(isolate, the_exception);
-}
-
-void Module::RecordError(Isolate* isolate, Handle<Object> error) {
+void Module::RecordError(Isolate* isolate) {
+  DisallowHeapAllocation no_alloc;
   DCHECK(exception().IsTheHole(isolate));
-  DCHECK(!error->IsTheHole(isolate));
+  Object the_exception = isolate->pending_exception();
+  DCHECK(!the_exception.IsTheHole(isolate));
+
   if (this->IsSourceTextModule()) {
     Handle<SourceTextModule> self(SourceTextModule::cast(*this), GetIsolate());
     self->set_code(self->info());
@@ -67,20 +64,13 @@ void Module::RecordError(Isolate* isolate, Handle<Object> error) {
   PrintStatusTransition(Module::kErrored);
 #endif  // DEBUG
   set_status(Module::kErrored);
-  if (isolate->is_catchable_by_javascript(*error)) {
-    set_exception(*error);
-  } else {
-    // v8::TryCatch uses `null` for termination exceptions.
-    set_exception(*isolate->factory()->null_value());
-  }
+  set_exception(the_exception);
 }
 
 void Module::ResetGraph(Isolate* isolate, Handle<Module> module) {
+  DCHECK_NE(module->status(), kInstantiating);
   DCHECK_NE(module->status(), kEvaluating);
-  if (module->status() != kPreInstantiating &&
-      module->status() != kInstantiating) {
-    return;
-  }
+  if (module->status() != kPreInstantiating) return;
 
   Handle<FixedArray> requested_modules =
       module->IsSourceTextModule()
@@ -182,14 +172,15 @@ bool Module::Instantiate(Isolate* isolate, Handle<Module> module,
 
   if (!PrepareInstantiate(isolate, module, context, callback)) {
     ResetGraph(isolate, module);
-    DCHECK_EQ(module->status(), kUninstantiated);
     return false;
   }
   Zone zone(isolate->allocator(), ZONE_NAME);
   ZoneForwardList<Handle<SourceTextModule>> stack(&zone);
   unsigned dfs_index = 0;
   if (!FinishInstantiate(isolate, module, &stack, &dfs_index, &zone)) {
-    ResetGraph(isolate, module);
+    for (auto& descendant : stack) {
+      Reset(isolate, descendant);
+    }
     DCHECK_EQ(module->status(), kUninstantiated);
     return false;
   }
@@ -253,35 +244,46 @@ MaybeHandle<Object> Module::Evaluate(Isolate* isolate, Handle<Module> module) {
 #endif  // OBJECT_PRINT
   }
 #endif  // DEBUG
-  STACK_CHECK(isolate, MaybeHandle<Object>());
-  if (FLAG_harmony_top_level_await && module->IsSourceTextModule()) {
-    return SourceTextModule::EvaluateMaybeAsync(
-        isolate, Handle<SourceTextModule>::cast(module));
-  } else {
-    return Module::InnerEvaluate(isolate, module);
-  }
-}
-
-MaybeHandle<Object> Module::InnerEvaluate(Isolate* isolate,
-                                          Handle<Module> module) {
   if (module->status() == kErrored) {
     isolate->Throw(module->GetException());
     return MaybeHandle<Object>();
-  } else if (module->status() == kEvaluated) {
+  }
+  DCHECK_NE(module->status(), kEvaluating);
+  DCHECK_GE(module->status(), kInstantiated);
+  Zone zone(isolate->allocator(), ZONE_NAME);
+
+  ZoneForwardList<Handle<SourceTextModule>> stack(&zone);
+  unsigned dfs_index = 0;
+  Handle<Object> result;
+  if (!Evaluate(isolate, module, &stack, &dfs_index).ToHandle(&result)) {
+    for (auto& descendant : stack) {
+      DCHECK_EQ(descendant->status(), kEvaluating);
+      descendant->RecordError(isolate);
+    }
+    DCHECK_EQ(module->GetException(), isolate->pending_exception());
+    return MaybeHandle<Object>();
+  }
+  DCHECK_EQ(module->status(), kEvaluated);
+  DCHECK(stack.empty());
+  return result;
+}
+
+MaybeHandle<Object> Module::Evaluate(
+    Isolate* isolate, Handle<Module> module,
+    ZoneForwardList<Handle<SourceTextModule>>* stack, unsigned* dfs_index) {
+  if (module->status() == kErrored) {
+    isolate->Throw(module->GetException());
+    return MaybeHandle<Object>();
+  }
+  if (module->status() >= kEvaluating) {
     return isolate->factory()->undefined_value();
   }
-
-  // InnerEvaluate can be called both to evaluate top level modules without
-  // the harmony_top_level_await flag and recursively to evaluate
-  // SyntheticModules in the dependency graphs of SourceTextModules.
-  //
-  // However, SyntheticModules transition directly to 'Evaluated,' so we should
-  // never see an 'Evaluating' module at this point.
-  CHECK_EQ(module->status(), kInstantiated);
+  DCHECK_EQ(module->status(), kInstantiated);
+  STACK_CHECK(isolate, MaybeHandle<Object>());
 
   if (module->IsSourceTextModule()) {
-    return SourceTextModule::Evaluate(isolate,
-                                      Handle<SourceTextModule>::cast(module));
+    return SourceTextModule::Evaluate(
+        isolate, Handle<SourceTextModule>::cast(module), stack, dfs_index);
   } else {
     return SyntheticModule::Evaluate(isolate,
                                      Handle<SyntheticModule>::cast(module));
@@ -309,7 +311,7 @@ Handle<JSModuleNamespace> Module::GetModuleNamespace(Isolate* isolate,
   Handle<ObjectHashTable> exports(module->exports(), isolate);
   ZoneVector<Handle<String>> names(&zone);
   names.reserve(exports->NumberOfElements());
-  for (InternalIndex i : exports->IterateEntries()) {
+  for (int i = 0, n = exports->Capacity(); i < n; ++i) {
     Object key;
     if (!exports->ToKey(roots, i, &key)) continue;
     names.push_back(handle(String::cast(key), isolate));

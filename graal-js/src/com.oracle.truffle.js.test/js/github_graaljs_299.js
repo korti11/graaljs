@@ -35,3 +35,5 @@ function test4b() {
   assertSame(4, arr.length);
 };
 test4b();
+
+true;

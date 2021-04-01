@@ -10,8 +10,6 @@
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
-#include <iterator>
-#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -23,7 +21,6 @@
 #include "include/libplatform/libplatform.h"
 #include "include/libplatform/v8-tracing.h"
 #include "include/v8-inspector.h"
-#include "include/v8-profiler.h"
 #include "src/api/api-inl.h"
 #include "src/base/cpu.h"
 #include "src/base/logging.h"
@@ -34,10 +31,8 @@
 #include "src/d8/d8-platforms.h"
 #include "src/d8/d8.h"
 #include "src/debug/debug-interface.h"
-#include "src/deoptimizer/deoptimizer.h"
 #include "src/diagnostics/basic-block-profiler.h"
 #include "src/execution/vm-state-inl.h"
-#include "src/handles/maybe-handles.h"
 #include "src/init/v8.h"
 #include "src/interpreter/interpreter.h"
 #include "src/logging/counters.h"
@@ -47,9 +42,8 @@
 #include "src/parsing/parse-info.h"
 #include "src/parsing/parsing.h"
 #include "src/parsing/scanner-character-streams.h"
-#include "src/profiler/profile-generator.h"
 #include "src/sanitizer/msan.h"
-#include "src/snapshot/snapshot.h"
+#include "src/snapshot/natives.h"
 #include "src/trap-handler/trap-handler.h"
 #include "src/utils/ostreams.h"
 #include "src/utils/utils.h"
@@ -62,10 +56,6 @@
 #ifdef V8_INTL_SUPPORT
 #include "unicode/locid.h"
 #endif  // V8_INTL_SUPPORT
-
-#ifdef V8_OS_LINUX
-#include <sys/mman.h>  // For MultiMappedAllocator.
-#endif
 
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <unistd.h>  // NOLINT
@@ -80,11 +70,6 @@
 #ifndef CHECK
 #define CHECK(condition) assert(condition)
 #endif
-
-#define TRACE_BS(...)                                     \
-  do {                                                    \
-    if (i::FLAG_trace_backing_store) PrintF(__VA_ARGS__); \
-  } while (false)
 
 namespace v8 {
 
@@ -139,12 +124,19 @@ class ShellArrayBufferAllocator : public ArrayBufferAllocatorBase {
 
  private:
   static constexpr size_t kVMThreshold = 65536;
+  static constexpr size_t kTwoGB = 2u * 1024u * 1024u * 1024u;
 
   void* AllocateVM(size_t length) {
     DCHECK_LE(kVMThreshold, length);
+    // TODO(titzer): allocations should fail if >= 2gb because array buffers
+    // store their lengths as a SMI internally.
+    if (length >= kTwoGB) return nullptr;
+
     v8::PageAllocator* page_allocator = i::GetPlatformPageAllocator();
     size_t page_size = page_allocator->AllocatePageSize();
     size_t allocated = RoundUp(length, page_size);
+    // Rounding up could go over the limit.
+    if (allocated >= kTwoGB) return nullptr;
     return i::AllocatePages(page_allocator, nullptr, allocated, page_size,
                             PageAllocator::kReadWrite);
   }
@@ -212,122 +204,21 @@ class MockArrayBufferAllocatiorWithLimit : public MockArrayBufferAllocator {
   std::atomic<size_t> space_left_;
 };
 
-#ifdef V8_OS_LINUX
-
-// This is a mock allocator variant that provides a huge virtual allocation
-// backed by a small real allocation that is repeatedly mapped. If you create an
-// array on memory allocated by this allocator, you will observe that elements
-// will alias each other as if their indices were modulo-divided by the real
-// allocation length.
-// The purpose is to allow stability-testing of huge (typed) arrays without
-// actually consuming huge amounts of physical memory.
-// This is currently only available on Linux because it relies on {mremap}.
-class MultiMappedAllocator : public ArrayBufferAllocatorBase {
- protected:
-  void* Allocate(size_t length) override {
-    if (length < kChunkSize) {
-      return ArrayBufferAllocatorBase::Allocate(length);
-    }
-    // We use mmap, which initializes pages to zero anyway.
-    return AllocateUninitialized(length);
-  }
-
-  void* AllocateUninitialized(size_t length) override {
-    if (length < kChunkSize) {
-      return ArrayBufferAllocatorBase::AllocateUninitialized(length);
-    }
-    size_t rounded_length = RoundUp(length, kChunkSize);
-    int prot = PROT_READ | PROT_WRITE;
-    // We have to specify MAP_SHARED to make {mremap} below do what we want.
-    int flags = MAP_SHARED | MAP_ANONYMOUS;
-    void* real_alloc = mmap(nullptr, kChunkSize, prot, flags, -1, 0);
-    if (reinterpret_cast<intptr_t>(real_alloc) == -1) {
-      // If we ran into some limit (physical or virtual memory, or number
-      // of mappings, etc), return {nullptr}, which callers can handle.
-      if (errno == ENOMEM) {
-        return nullptr;
-      }
-      // Other errors may be bugs which we want to learn about.
-      FATAL("mmap (real) failed with error %d: %s", errno, strerror(errno));
-    }
-    void* virtual_alloc =
-        mmap(nullptr, rounded_length, prot, flags | MAP_NORESERVE, -1, 0);
-    if (reinterpret_cast<intptr_t>(virtual_alloc) == -1) {
-      if (errno == ENOMEM) {
-        // Undo earlier, successful mappings.
-        munmap(real_alloc, kChunkSize);
-        return nullptr;
-      }
-      FATAL("mmap (virtual) failed with error %d: %s", errno, strerror(errno));
-    }
-    i::Address virtual_base = reinterpret_cast<i::Address>(virtual_alloc);
-    i::Address virtual_end = virtual_base + rounded_length;
-    for (i::Address to_map = virtual_base; to_map < virtual_end;
-         to_map += kChunkSize) {
-      // Specifying 0 as the "old size" causes the existing map entry to not
-      // get deleted, which is important so that we can remap it again in the
-      // next iteration of this loop.
-      void* result =
-          mremap(real_alloc, 0, kChunkSize, MREMAP_MAYMOVE | MREMAP_FIXED,
-                 reinterpret_cast<void*>(to_map));
-      if (reinterpret_cast<intptr_t>(result) == -1) {
-        if (errno == ENOMEM) {
-          // Undo earlier, successful mappings.
-          munmap(real_alloc, kChunkSize);
-          munmap(virtual_alloc, (to_map - virtual_base));
-          return nullptr;
-        }
-        FATAL("mremap failed with error %d: %s", errno, strerror(errno));
-      }
-    }
-    base::MutexGuard lock_guard(&regions_mutex_);
-    regions_[virtual_alloc] = real_alloc;
-    return virtual_alloc;
-  }
-
-  void Free(void* data, size_t length) override {
-    if (length < kChunkSize) {
-      return ArrayBufferAllocatorBase::Free(data, length);
-    }
-    base::MutexGuard lock_guard(&regions_mutex_);
-    void* real_alloc = regions_[data];
-    munmap(real_alloc, kChunkSize);
-    size_t rounded_length = RoundUp(length, kChunkSize);
-    munmap(data, rounded_length);
-    regions_.erase(data);
-  }
-
- private:
-  // Aiming for a "Huge Page" (2M on Linux x64) to go easy on the TLB.
-  static constexpr size_t kChunkSize = 2 * 1024 * 1024;
-
-  std::unordered_map<void*, void*> regions_;
-  base::Mutex regions_mutex_;
-};
-
-#endif  // V8_OS_LINUX
-
 v8::Platform* g_default_platform;
 std::unique_ptr<v8::Platform> g_platform;
 
 static Local<Value> Throw(Isolate* isolate, const char* message) {
   return isolate->ThrowException(
-      String::NewFromUtf8(isolate, message).ToLocalChecked());
-}
-
-static MaybeLocal<Value> TryGetValue(v8::Isolate* isolate,
-                                     Local<Context> context,
-                                     Local<v8::Object> object,
-                                     const char* property) {
-  Local<String> v8_str =
-      String::NewFromUtf8(isolate, property).FromMaybe(Local<String>());
-  if (v8_str.IsEmpty()) return Local<Value>();
-  return object->Get(context, v8_str);
+      String::NewFromUtf8(isolate, message, NewStringType::kNormal)
+          .ToLocalChecked());
 }
 
 static Local<Value> GetValue(v8::Isolate* isolate, Local<Context> context,
                              Local<v8::Object> object, const char* property) {
-  return TryGetValue(isolate, context, object, property).ToLocalChecked();
+  Local<String> v8_str =
+      String::NewFromUtf8(isolate, property, NewStringType::kNormal)
+          .ToLocalChecked();
+  return object->Get(context, v8_str).ToLocalChecked();
 }
 
 Worker* GetWorkerFromInternalField(Isolate* isolate, Local<Object> object) {
@@ -372,7 +263,8 @@ class TraceConfigParser {
     HandleScope inner_scope(isolate);
 
     Local<String> source =
-        String::NewFromUtf8(isolate, json_str).ToLocalChecked();
+        String::NewFromUtf8(isolate, json_str, NewStringType::kNormal)
+            .ToLocalChecked();
     Local<Value> result = JSON::Parse(context, source).ToLocalChecked();
     Local<v8::Object> trace_config_object = Local<v8::Object>::Cast(result);
 
@@ -441,6 +333,7 @@ Global<Function> Shell::stringify_function_;
 base::LazyMutex Shell::workers_mutex_;
 bool Shell::allow_new_workers_ = true;
 std::unordered_set<std::shared_ptr<Worker>> Shell::running_workers_;
+std::vector<ExternalizedContents> Shell::externalized_contents_;
 std::atomic<bool> Shell::script_executed_{false};
 base::LazyMutex Shell::isolate_status_lock_;
 std::map<v8::Isolate*, bool> Shell::isolate_status_;
@@ -452,6 +345,54 @@ Global<Context> Shell::evaluation_context_;
 ArrayBuffer::Allocator* Shell::array_buffer_allocator;
 ShellOptions Shell::options;
 base::OnceType Shell::quit_once_ = V8_ONCE_INIT;
+
+// Dummy external source stream which returns the whole source in one go.
+class DummySourceStream : public v8::ScriptCompiler::ExternalSourceStream {
+ public:
+  DummySourceStream(Local<String> source, Isolate* isolate) : done_(false) {
+    source_length_ = source->Utf8Length(isolate);
+    source_buffer_.reset(new uint8_t[source_length_]);
+    source->WriteUtf8(isolate, reinterpret_cast<char*>(source_buffer_.get()),
+                      source_length_);
+  }
+
+  size_t GetMoreData(const uint8_t** src) override {
+    if (done_) {
+      return 0;
+    }
+    *src = source_buffer_.release();
+    done_ = true;
+
+    return source_length_;
+  }
+
+ private:
+  int source_length_;
+  std::unique_ptr<uint8_t[]> source_buffer_;
+  bool done_;
+};
+
+class BackgroundCompileThread : public base::Thread {
+ public:
+  BackgroundCompileThread(Isolate* isolate, Local<String> source)
+      : base::Thread(GetThreadOptions("BackgroundCompileThread")),
+        source_(source),
+        streamed_source_(base::make_unique<DummySourceStream>(source, isolate),
+                         v8::ScriptCompiler::StreamedSource::UTF8),
+        task_(v8::ScriptCompiler::StartStreamingScript(isolate,
+                                                       &streamed_source_)) {}
+
+  void Run() override { task_->Run(); }
+
+  v8::ScriptCompiler::StreamedSource* streamed_source() {
+    return &streamed_source_;
+  }
+
+ private:
+  Local<String> source_;
+  v8::ScriptCompiler::StreamedSource streamed_source_;
+  std::unique_ptr<v8::ScriptCompiler::ScriptStreamingTask> task_;
+};
 
 ScriptCompiler::CachedData* Shell::LookupCodeCache(Isolate* isolate,
                                                    Local<Value> source) {
@@ -497,22 +438,15 @@ bool Shell::ExecuteString(Isolate* isolate, Local<String> source,
     i::Handle<i::String> str = Utils::OpenHandle(*(source));
 
     // Set up ParseInfo.
-    i::UnoptimizedCompileState compile_state(i_isolate);
+    i::ParseInfo parse_info(i_isolate);
+    parse_info.set_toplevel();
+    parse_info.set_allow_lazy_parsing();
+    parse_info.set_language_mode(
+        i::construct_language_mode(i::FLAG_use_strict));
+    parse_info.set_script(
+        parse_info.CreateScript(i_isolate, str, options.compile_options));
 
-    i::UnoptimizedCompileFlags flags =
-        i::UnoptimizedCompileFlags::ForToplevelCompile(
-            i_isolate, true, i::construct_language_mode(i::FLAG_use_strict),
-            i::REPLMode::kNo);
-
-    if (options.compile_options == v8::ScriptCompiler::kEagerCompile) {
-      flags.set_is_eager(true);
-    }
-
-    i::ParseInfo parse_info(i_isolate, flags, &compile_state);
-
-    i::Handle<i::Script> script = parse_info.CreateScript(
-        i_isolate, str, i::kNullMaybeHandle, ScriptOriginOptions());
-    if (!i::parsing::ParseProgram(&parse_info, script, i_isolate)) {
+    if (!i::parsing::ParseProgram(&parse_info, i_isolate)) {
       fprintf(stderr, "Failed parsing\n");
       return false;
     }
@@ -521,7 +455,7 @@ bool Shell::ExecuteString(Isolate* isolate, Local<String> source,
 
   HandleScope handle_scope(isolate);
   TryCatch try_catch(isolate);
-  try_catch.SetVerbose(report_exceptions == kReportExceptions);
+  try_catch.SetVerbose(true);
 
   MaybeLocal<Value> maybe_result;
   bool success = true;
@@ -547,6 +481,23 @@ bool Shell::ExecuteString(Isolate* isolate, Local<String> source,
         maybe_script = ScriptCompiler::Compile(
             context, &script_source, ScriptCompiler::kNoCompileOptions);
       }
+    } else if (options.stress_background_compile) {
+      // Start a background thread compiling the script.
+      BackgroundCompileThread background_compile_thread(isolate, source);
+      CHECK(background_compile_thread.Start());
+
+      // In parallel, compile on the main thread to flush out any data races.
+      {
+        TryCatch ignore_try_catch(isolate);
+        ScriptCompiler::Source script_source(source, origin);
+        USE(ScriptCompiler::Compile(context, &script_source,
+                                    ScriptCompiler::kNoCompileOptions));
+      }
+
+      // Join with background thread and finalize compilation.
+      background_compile_thread.Join();
+      maybe_script = v8::ScriptCompiler::Compile(
+          context, background_compile_thread.streamed_source(), source, origin);
     } else {
       ScriptCompiler::Source script_source(source, origin);
       maybe_script = ScriptCompiler::Compile(context, &script_source,
@@ -555,6 +506,8 @@ bool Shell::ExecuteString(Isolate* isolate, Local<String> source,
 
     Local<Script> script;
     if (!maybe_script.ToLocal(&script)) {
+      // Print errors that happened during compilation.
+      if (report_exceptions) ReportException(isolate, &try_catch);
       return false;
     }
 
@@ -581,10 +534,11 @@ bool Shell::ExecuteString(Isolate* isolate, Local<String> source,
   Local<Value> result;
   if (!maybe_result.ToLocal(&result)) {
     DCHECK(try_catch.HasCaught());
+    // Print errors that happened during execution.
+    if (report_exceptions) ReportException(isolate, &try_catch);
     return false;
   }
-  // It's possible that a FinalizationRegistry cleanup task threw an error.
-  if (try_catch.HasCaught()) success = false;
+  DCHECK(!try_catch.HasCaught());
   if (print_result) {
     if (options.test_shell) {
       if (!result->IsUndefined()) {
@@ -649,29 +603,18 @@ std::string DirName(const std::string& path) {
 // and replacing backslashes with slashes).
 std::string NormalizePath(const std::string& path,
                           const std::string& dir_name) {
-  std::string absolute_path;
+  std::string result;
   if (IsAbsolutePath(path)) {
-    absolute_path = path;
+    result = path;
   } else {
-    absolute_path = dir_name + '/' + path;
+    result = dir_name + '/' + path;
   }
-  std::replace(absolute_path.begin(), absolute_path.end(), '\\', '/');
-  std::vector<std::string> segments;
-  std::istringstream segment_stream(absolute_path);
-  std::string segment;
-  while (std::getline(segment_stream, segment, '/')) {
-    if (segment == "..") {
-      segments.pop_back();
-    } else if (segment != ".") {
-      segments.push_back(segment);
-    }
+  std::replace(result.begin(), result.end(), '\\', '/');
+  size_t i;
+  while ((i = result.find("/./")) != std::string::npos) {
+    result.erase(i, 2);
   }
-  // Join path segments.
-  std::ostringstream os;
-  std::copy(segments.begin(), segments.end() - 1,
-            std::ostream_iterator<std::string>(os, "/"));
-  os << *segments.rbegin();
-  return os.str();
+  return result;
 }
 
 // Per-context Module data, allowing sharing of module maps
@@ -739,21 +682,14 @@ MaybeLocal<Module> Shell::FetchModuleTree(Local<Context> context,
   DCHECK(IsAbsolutePath(file_name));
   Isolate* isolate = context->GetIsolate();
   Local<String> source_text = ReadFile(isolate, file_name.c_str());
-  if (source_text.IsEmpty() && options.fuzzy_module_file_extensions) {
-    std::string fallback_file_name = file_name + ".js";
-    source_text = ReadFile(isolate, fallback_file_name.c_str());
-    if (source_text.IsEmpty()) {
-      fallback_file_name = file_name + ".mjs";
-      source_text = ReadFile(isolate, fallback_file_name.c_str());
-    }
-  }
   if (source_text.IsEmpty()) {
     std::string msg = "Error reading: " + file_name;
     Throw(isolate, msg.c_str());
     return MaybeLocal<Module>();
   }
   ScriptOrigin origin(
-      String::NewFromUtf8(isolate, file_name.c_str()).ToLocalChecked(),
+      String::NewFromUtf8(isolate, file_name.c_str(), NewStringType::kNormal)
+          .ToLocalChecked(),
       Local<Integer>(), Local<Integer>(), Local<Boolean>(), Local<Integer>(),
       Local<Value>(), Local<Boolean>(), Local<Boolean>(), True(isolate));
   ScriptCompiler::Source source(source_text, origin);
@@ -776,9 +712,10 @@ MaybeLocal<Module> Shell::FetchModuleTree(Local<Context> context,
     Local<String> name = module->GetModuleRequest(i);
     std::string absolute_path =
         NormalizePath(ToSTLString(isolate, name), dir_name);
-    if (d->specifier_to_module_map.count(absolute_path)) continue;
-    if (FetchModuleTree(context, absolute_path).IsEmpty()) {
-      return MaybeLocal<Module>();
+    if (!d->specifier_to_module_map.count(absolute_path)) {
+      if (FetchModuleTree(context, absolute_path).IsEmpty()) {
+        return MaybeLocal<Module>();
+      }
     }
   }
 
@@ -803,59 +740,7 @@ struct DynamicImportData {
   Global<Promise::Resolver> resolver;
 };
 
-struct ModuleResolutionData {
-  ModuleResolutionData(Isolate* isolate_, Local<Value> module_namespace_,
-                       Local<Promise::Resolver> resolver_)
-      : isolate(isolate_) {
-    module_namespace.Reset(isolate, module_namespace_);
-    resolver.Reset(isolate, resolver_);
-  }
-
-  Isolate* isolate;
-  Global<Value> module_namespace;
-  Global<Promise::Resolver> resolver;
-};
-
 }  // namespace
-
-void Shell::ModuleResolutionSuccessCallback(
-    const FunctionCallbackInfo<Value>& info) {
-  std::unique_ptr<ModuleResolutionData> module_resolution_data(
-      static_cast<ModuleResolutionData*>(
-          info.Data().As<v8::External>()->Value()));
-  Isolate* isolate(module_resolution_data->isolate);
-  HandleScope handle_scope(isolate);
-
-  Local<Promise::Resolver> resolver(
-      module_resolution_data->resolver.Get(isolate));
-  Local<Value> module_namespace(
-      module_resolution_data->module_namespace.Get(isolate));
-
-  PerIsolateData* data = PerIsolateData::Get(isolate);
-  Local<Context> realm = data->realms_[data->realm_current_].Get(isolate);
-  Context::Scope context_scope(realm);
-
-  resolver->Resolve(realm, module_namespace).ToChecked();
-}
-
-void Shell::ModuleResolutionFailureCallback(
-    const FunctionCallbackInfo<Value>& info) {
-  std::unique_ptr<ModuleResolutionData> module_resolution_data(
-      static_cast<ModuleResolutionData*>(
-          info.Data().As<v8::External>()->Value()));
-  Isolate* isolate(module_resolution_data->isolate);
-  HandleScope handle_scope(isolate);
-
-  Local<Promise::Resolver> resolver(
-      module_resolution_data->resolver.Get(isolate));
-
-  PerIsolateData* data = PerIsolateData::Get(isolate);
-  Local<Context> realm = data->realms_[data->realm_current_].Get(isolate);
-  Context::Scope context_scope(realm);
-
-  DCHECK_EQ(info.Length(), 1);
-  resolver->Reject(realm, info[0]).ToChecked();
-}
 
 MaybeLocal<Promise> Shell::HostImportModuleDynamically(
     Local<Context> context, Local<ScriptOrModule> referrer,
@@ -876,6 +761,16 @@ MaybeLocal<Promise> Shell::HostImportModuleDynamically(
   return MaybeLocal<Promise>();
 }
 
+void Shell::HostCleanupFinalizationGroup(Local<Context> context,
+                                         Local<FinalizationGroup> fg) {
+  Isolate* isolate = context->GetIsolate();
+  PerIsolateData::Get(isolate)->HostCleanupFinalizationGroup(fg);
+}
+
+void PerIsolateData::HostCleanupFinalizationGroup(Local<FinalizationGroup> fg) {
+  cleanup_finalization_groups_.emplace(isolate_, fg);
+}
+
 void Shell::HostInitializeImportMetaObject(Local<Context> context,
                                            Local<Module> module,
                                            Local<Object> meta) {
@@ -888,8 +783,10 @@ void Shell::HostInitializeImportMetaObject(Local<Context> context,
   CHECK(specifier_it != d->module_to_specifier_map.end());
 
   Local<String> url_key =
-      String::NewFromUtf8Literal(isolate, "url", NewStringType::kInternalized);
-  Local<String> url = String::NewFromUtf8(isolate, specifier_it->second.c_str())
+      String::NewFromUtf8(isolate, "url", NewStringType::kNormal)
+          .ToLocalChecked();
+  Local<String> url = String::NewFromUtf8(isolate, specifier_it->second.c_str(),
+                                          NewStringType::kNormal)
                           .ToLocalChecked();
   meta->CreateDataProperty(context, url_key, url).ToChecked();
 }
@@ -932,44 +829,19 @@ void Shell::DoHostImportModuleDynamically(void* import_data) {
   if (root_module->InstantiateModule(realm, ResolveModuleCallback)
           .FromMaybe(false)) {
     maybe_result = root_module->Evaluate(realm);
-    CHECK_IMPLIES(i::FLAG_harmony_top_level_await, !maybe_result.IsEmpty());
     EmptyMessageQueues(isolate);
   }
 
-  Local<Value> result;
-  if (!maybe_result.ToLocal(&result)) {
+  Local<Value> module;
+  if (!maybe_result.ToLocal(&module)) {
     DCHECK(try_catch.HasCaught());
     resolver->Reject(realm, try_catch.Exception()).ToChecked();
     return;
   }
 
+  DCHECK(!try_catch.HasCaught());
   Local<Value> module_namespace = root_module->GetModuleNamespace();
-  if (i::FLAG_harmony_top_level_await) {
-    Local<Promise> result_promise(Local<Promise>::Cast(result));
-    if (result_promise->State() == Promise::kRejected) {
-      resolver->Reject(realm, result_promise->Result()).ToChecked();
-      return;
-    }
-
-    // Setup callbacks, and then chain them to the result promise.
-    // ModuleResolutionData will be deleted by the callbacks.
-    auto module_resolution_data =
-        new ModuleResolutionData(isolate, module_namespace, resolver);
-    Local<v8::External> edata = External::New(isolate, module_resolution_data);
-    Local<Function> callback_success;
-    CHECK(Function::New(realm, ModuleResolutionSuccessCallback, edata)
-              .ToLocal(&callback_success));
-    Local<Function> callback_failure;
-    CHECK(Function::New(realm, ModuleResolutionFailureCallback, edata)
-              .ToLocal(&callback_failure));
-    result_promise->Then(realm, callback_success, callback_failure)
-        .ToLocalChecked();
-  } else {
-    // TODO(cbruni): Clean up exception handling after introducing new
-    // API for evaluating async modules.
-    DCHECK(!try_catch.HasCaught());
-    resolver->Resolve(realm, module_namespace).ToChecked();
-  }
+  resolver->Resolve(realm, module_namespace).ToChecked();
 }
 
 bool Shell::ExecuteModule(Isolate* isolate, const char* file_name) {
@@ -981,13 +853,11 @@ bool Shell::ExecuteModule(Isolate* isolate, const char* file_name) {
 
   std::string absolute_path = NormalizePath(file_name, GetWorkingDirectory());
 
-  // Use a non-verbose TryCatch and report exceptions manually using
-  // Shell::ReportException, because some errors (such as file errors) are
-  // thrown without entering JS and thus do not trigger
-  // isolate->ReportPendingMessages().
   TryCatch try_catch(isolate);
+  try_catch.SetVerbose(true);
 
   Local<Module> root_module;
+  MaybeLocal<Value> maybe_exception;
 
   if (!FetchModuleTree(realm, absolute_path).ToLocal(&root_module)) {
     CHECK(try_catch.HasCaught());
@@ -999,39 +869,15 @@ bool Shell::ExecuteModule(Isolate* isolate, const char* file_name) {
   if (root_module->InstantiateModule(realm, ResolveModuleCallback)
           .FromMaybe(false)) {
     maybe_result = root_module->Evaluate(realm);
-    CHECK_IMPLIES(i::FLAG_harmony_top_level_await, !maybe_result.IsEmpty());
     EmptyMessageQueues(isolate);
   }
   Local<Value> result;
   if (!maybe_result.ToLocal(&result)) {
     DCHECK(try_catch.HasCaught());
+    // Print errors that happened during execution.
     ReportException(isolate, &try_catch);
     return false;
   }
-  if (i::FLAG_harmony_top_level_await) {
-    // Loop until module execution finishes
-    // TODO(cbruni): This is a bit wonky. "Real" engines would not be
-    // able to just busy loop waiting for execution to finish.
-    Local<Promise> result_promise(Local<Promise>::Cast(result));
-    while (result_promise->State() == Promise::kPending) {
-      isolate->PerformMicrotaskCheckpoint();
-    }
-
-    if (result_promise->State() == Promise::kRejected) {
-      // If the exception has been caught by the promise pipeline, we rethrow
-      // here in order to ReportException.
-      // TODO(cbruni): Clean this up after we create a new API for the case
-      // where TLA is enabled.
-      if (!try_catch.HasCaught()) {
-        isolate->ThrowException(result_promise->Result());
-      } else {
-        DCHECK_EQ(try_catch.Exception(), result_promise->Result());
-      }
-      ReportException(isolate, &try_catch);
-      return false;
-    }
-  }
-
   DCHECK(!try_catch.HasCaught());
   return true;
 }
@@ -1068,6 +914,15 @@ MaybeLocal<Context> PerIsolateData::GetTimeoutContext() {
   if (set_timeout_contexts_.empty()) return MaybeLocal<Context>();
   Local<Context> result = set_timeout_contexts_.front().Get(isolate_);
   set_timeout_contexts_.pop();
+  return result;
+}
+
+MaybeLocal<FinalizationGroup> PerIsolateData::GetCleanupFinalizationGroup() {
+  if (cleanup_finalization_groups_.empty())
+    return MaybeLocal<FinalizationGroup>();
+  Local<FinalizationGroup> result =
+      cleanup_finalization_groups_.front().Get(isolate_);
+  cleanup_finalization_groups_.pop();
   return result;
 }
 
@@ -1127,31 +982,6 @@ void Shell::PerformanceNow(const v8::FunctionCallbackInfo<v8::Value>& args) {
         base::TimeTicks::HighResolutionNow() - kInitialTicks;
     args.GetReturnValue().Set(delta.InMillisecondsF());
   }
-}
-
-// performance.measureMemory() implements JavaScript Memory API proposal.
-// See https://github.com/ulan/javascript-agent-memory/blob/master/explainer.md.
-void Shell::PerformanceMeasureMemory(
-    const v8::FunctionCallbackInfo<v8::Value>& args) {
-  v8::MeasureMemoryMode mode = v8::MeasureMemoryMode::kSummary;
-  v8::Isolate* isolate = args.GetIsolate();
-  Local<Context> context = isolate->GetCurrentContext();
-  if (args.Length() >= 1 && args[0]->IsObject()) {
-    Local<Object> object = args[0].As<Object>();
-    Local<Value> value = TryGetValue(isolate, context, object, "detailed")
-                             .FromMaybe(Local<Value>());
-    if (!value.IsEmpty() && value->IsBoolean() &&
-        value->BooleanValue(isolate)) {
-      mode = v8::MeasureMemoryMode::kDetailed;
-    }
-  }
-  Local<v8::Promise::Resolver> promise_resolver =
-      v8::Promise::Resolver::New(context).ToLocalChecked();
-  args.GetIsolate()->MeasureMemory(
-      v8::MeasureMemoryDelegate::Default(isolate, context, promise_resolver,
-                                         mode),
-      v8::MeasureMemoryExecution::kEager);
-  args.GetReturnValue().Set(promise_resolver->GetPromise());
 }
 
 // Realm.current() returns the index of the currently active realm.
@@ -1220,11 +1050,8 @@ void Shell::DisposeRealm(const v8::FunctionCallbackInfo<v8::Value>& args,
                          int index) {
   Isolate* isolate = args.GetIsolate();
   PerIsolateData* data = PerIsolateData::Get(isolate);
-  Local<Context> context = data->realms_[index].Get(isolate);
-  DisposeModuleEmbedderData(context);
+  DisposeModuleEmbedderData(data->realms_[index].Get(isolate));
   data->realms_[index].Reset();
-  // ContextDisposedNotification expects the disposed context to be entered.
-  v8::Context::Scope scope(context);
   isolate->ContextDisposedNotification();
   isolate->IdleNotificationDeadline(g_platform->MonotonicallyIncreasingTime());
 }
@@ -1406,7 +1233,7 @@ void WriteToFile(FILE* file, const v8::FunctionCallbackInfo<v8::Value>& args) {
     Local<String> str_obj;
 
     if (arg->IsSymbol()) {
-      arg = Local<Symbol>::Cast(arg)->Description();
+      arg = Local<Symbol>::Cast(arg)->Name();
     }
     if (!arg->ToString(args.GetIsolate()->GetCurrentContext())
              .ToLocal(&str_obj)) {
@@ -1466,7 +1293,8 @@ void Shell::Read(const v8::FunctionCallbackInfo<v8::Value>& args) {
 Local<String> Shell::ReadFromStdin(Isolate* isolate) {
   static const int kBufferSize = 256;
   char buffer[kBufferSize];
-  Local<String> accumulator = String::NewFromUtf8Literal(isolate, "");
+  Local<String> accumulator =
+      String::NewFromUtf8(isolate, "", NewStringType::kNormal).ToLocalChecked();
   int length;
   while (true) {
     // Continue reading if the line ends with an escape '\\' or the line has
@@ -1515,7 +1343,9 @@ void Shell::Load(const v8::FunctionCallbackInfo<v8::Value>& args) {
     }
     if (!ExecuteString(
             args.GetIsolate(), source,
-            String::NewFromUtf8(args.GetIsolate(), *file).ToLocalChecked(),
+            String::NewFromUtf8(args.GetIsolate(), *file,
+                                NewStringType::kNormal)
+                .ToLocalChecked(),
             kNoPrintResult,
             options.quiet_load ? kNoReportExceptions : kReportExceptions,
             kNoProcessMessageQueue)) {
@@ -1689,13 +1519,13 @@ void Shell::NotifyDone(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 void Shell::Version(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  args.GetReturnValue().Set(
-      String::NewFromUtf8(args.GetIsolate(), V8::GetVersion())
-          .ToLocalChecked());
+  args.GetReturnValue().Set(String::NewFromUtf8(args.GetIsolate(),
+                                                V8::GetVersion(),
+                                                NewStringType::kNormal)
+                                .ToLocalChecked());
 }
 
-void Shell::ReportException(Isolate* isolate, Local<v8::Message> message,
-                            Local<v8::Value> exception_obj) {
+void Shell::ReportException(Isolate* isolate, v8::TryCatch* try_catch) {
   HandleScope handle_scope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   bool enter_context = context.IsEmpty();
@@ -1708,17 +1538,18 @@ void Shell::ReportException(Isolate* isolate, Local<v8::Message> message,
     return *value ? *value : "<string conversion failed>";
   };
 
-  v8::String::Utf8Value exception(isolate, exception_obj);
+  v8::String::Utf8Value exception(isolate, try_catch->Exception());
   const char* exception_string = ToCString(exception);
+  Local<Message> message = try_catch->Message();
   if (message.IsEmpty()) {
     // V8 didn't provide any extra information about this error; just
     // print the exception.
     printf("%s\n", exception_string);
   } else if (message->GetScriptOrigin().Options().IsWasm()) {
     // Print wasm-function[(function index)]:(offset): (message).
-    int function_index = message->GetWasmFunctionIndex();
+    int function_index = message->GetLineNumber(context).FromJust() - 1;
     int offset = message->GetStartColumn(context).FromJust();
-    printf("wasm-function[%d]:0x%x: %s\n", function_index, offset,
+    printf("wasm-function[%d]:%d: %s\n", function_index, offset,
            exception_string);
   } else {
     // Print (filename):(line number): (message).
@@ -1746,8 +1577,7 @@ void Shell::ReportException(Isolate* isolate, Local<v8::Message> message,
     }
   }
   Local<Value> stack_trace_string;
-  if (v8::TryCatch::StackTrace(context, exception_obj)
-          .ToLocal(&stack_trace_string) &&
+  if (try_catch->StackTrace(context).ToLocal(&stack_trace_string) &&
       stack_trace_string->IsString()) {
     v8::String::Utf8Value stack_trace(isolate,
                                       Local<String>::Cast(stack_trace_string));
@@ -1755,10 +1585,6 @@ void Shell::ReportException(Isolate* isolate, Local<v8::Message> message,
   }
   printf("\n");
   if (enter_context) context->Exit();
-}
-
-void Shell::ReportException(v8::Isolate* isolate, v8::TryCatch* try_catch) {
-  ReportException(isolate, try_catch->Message(), try_catch->Exception());
 }
 
 int32_t* Counter::Bind(const char* name, bool is_histogram) {
@@ -1845,8 +1671,11 @@ Local<String> Shell::Stringify(Isolate* isolate, Local<Value> value) {
       v8::Local<v8::Context>::New(isolate, evaluation_context_);
   if (stringify_function_.IsEmpty()) {
     Local<String> source =
-        String::NewFromUtf8(isolate, stringify_source_).ToLocalChecked();
-    Local<String> name = String::NewFromUtf8Literal(isolate, "d8-stringify");
+        String::NewFromUtf8(isolate, stringify_source_, NewStringType::kNormal)
+            .ToLocalChecked();
+    Local<String> name =
+        String::NewFromUtf8(isolate, "d8-stringify", NewStringType::kNormal)
+            .ToLocalChecked();
     ScriptOrigin origin(name);
     Local<Script> script =
         Script::Compile(context, source, &origin).ToLocalChecked();
@@ -1863,119 +1692,204 @@ Local<String> Shell::Stringify(Isolate* isolate, Local<Value> value) {
 
 Local<ObjectTemplate> Shell::CreateGlobalTemplate(Isolate* isolate) {
   Local<ObjectTemplate> global_template = ObjectTemplate::New(isolate);
-  global_template->Set(isolate, "print", FunctionTemplate::New(isolate, Print));
-  global_template->Set(isolate, "printErr",
-                       FunctionTemplate::New(isolate, PrintErr));
-  global_template->Set(isolate, "write", FunctionTemplate::New(isolate, Write));
-  global_template->Set(isolate, "read", FunctionTemplate::New(isolate, Read));
-  global_template->Set(isolate, "readbuffer",
-                       FunctionTemplate::New(isolate, ReadBuffer));
-  global_template->Set(isolate, "readline",
-                       FunctionTemplate::New(isolate, ReadLine));
-  global_template->Set(isolate, "load", FunctionTemplate::New(isolate, Load));
-  global_template->Set(isolate, "setTimeout",
-                       FunctionTemplate::New(isolate, SetTimeout));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "print", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, Print));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "printErr", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, PrintErr));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "write", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, Write));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "read", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, Read));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "readbuffer", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, ReadBuffer));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "readline", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, ReadLine));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "load", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, Load));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "setTimeout", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, SetTimeout));
   // Some Emscripten-generated code tries to call 'quit', which in turn would
   // call C's exit(). This would lead to memory leaks, because there is no way
   // we can terminate cleanly then, so we need a way to hide 'quit'.
   if (!options.omit_quit) {
-    global_template->Set(isolate, "quit", FunctionTemplate::New(isolate, Quit));
+    global_template->Set(
+        String::NewFromUtf8(isolate, "quit", NewStringType::kNormal)
+            .ToLocalChecked(),
+        FunctionTemplate::New(isolate, Quit));
   }
   Local<ObjectTemplate> test_template = ObjectTemplate::New(isolate);
-  global_template->Set(isolate, "testRunner", test_template);
-  test_template->Set(isolate, "notifyDone",
-                     FunctionTemplate::New(isolate, NotifyDone));
-  test_template->Set(isolate, "waitUntilDone",
-                     FunctionTemplate::New(isolate, WaitUntilDone));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "testRunner", NewStringType::kNormal)
+          .ToLocalChecked(),
+      test_template);
+  test_template->Set(
+      String::NewFromUtf8(isolate, "notifyDone", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, NotifyDone));
+  test_template->Set(
+      String::NewFromUtf8(isolate, "waitUntilDone", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, WaitUntilDone));
   // Reliable access to quit functionality. The "quit" method function
   // installed on the global object can be hidden with the --omit-quit flag
   // (e.g. on asan bots).
-  test_template->Set(isolate, "quit", FunctionTemplate::New(isolate, Quit));
+  test_template->Set(
+      String::NewFromUtf8(isolate, "quit", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, Quit));
 
-  global_template->Set(isolate, "version",
-                       FunctionTemplate::New(isolate, Version));
-  global_template->Set(Symbol::GetToStringTag(isolate),
-                       String::NewFromUtf8Literal(isolate, "global"));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "version", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, Version));
+  global_template->Set(
+      Symbol::GetToStringTag(isolate),
+      String::NewFromUtf8(isolate, "global", NewStringType::kNormal)
+          .ToLocalChecked());
 
   // Bind the Realm object.
   Local<ObjectTemplate> realm_template = ObjectTemplate::New(isolate);
-  realm_template->Set(isolate, "current",
-                      FunctionTemplate::New(isolate, RealmCurrent));
-  realm_template->Set(isolate, "owner",
-                      FunctionTemplate::New(isolate, RealmOwner));
-  realm_template->Set(isolate, "global",
-                      FunctionTemplate::New(isolate, RealmGlobal));
-  realm_template->Set(isolate, "create",
-                      FunctionTemplate::New(isolate, RealmCreate));
   realm_template->Set(
-      isolate, "createAllowCrossRealmAccess",
+      String::NewFromUtf8(isolate, "current", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmCurrent));
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "owner", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmOwner));
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "global", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmGlobal));
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "create", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmCreate));
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "createAllowCrossRealmAccess",
+                          NewStringType::kNormal)
+          .ToLocalChecked(),
       FunctionTemplate::New(isolate, RealmCreateAllowCrossRealmAccess));
-  realm_template->Set(isolate, "navigate",
-                      FunctionTemplate::New(isolate, RealmNavigate));
-  realm_template->Set(isolate, "detachGlobal",
-                      FunctionTemplate::New(isolate, RealmDetachGlobal));
-  realm_template->Set(isolate, "dispose",
-                      FunctionTemplate::New(isolate, RealmDispose));
-  realm_template->Set(isolate, "switch",
-                      FunctionTemplate::New(isolate, RealmSwitch));
-  realm_template->Set(isolate, "eval",
-                      FunctionTemplate::New(isolate, RealmEval));
-  realm_template->SetAccessor(String::NewFromUtf8Literal(isolate, "shared"),
-                              RealmSharedGet, RealmSharedSet);
-  global_template->Set(isolate, "Realm", realm_template);
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "navigate", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmNavigate));
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "detachGlobal", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmDetachGlobal));
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "dispose", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmDispose));
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "switch", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmSwitch));
+  realm_template->Set(
+      String::NewFromUtf8(isolate, "eval", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, RealmEval));
+  realm_template->SetAccessor(
+      String::NewFromUtf8(isolate, "shared", NewStringType::kNormal)
+          .ToLocalChecked(),
+      RealmSharedGet, RealmSharedSet);
+  global_template->Set(
+      String::NewFromUtf8(isolate, "Realm", NewStringType::kNormal)
+          .ToLocalChecked(),
+      realm_template);
 
   Local<ObjectTemplate> performance_template = ObjectTemplate::New(isolate);
-  performance_template->Set(isolate, "now",
-                            FunctionTemplate::New(isolate, PerformanceNow));
   performance_template->Set(
-      isolate, "measureMemory",
-      FunctionTemplate::New(isolate, PerformanceMeasureMemory));
-  global_template->Set(isolate, "performance", performance_template);
+      String::NewFromUtf8(isolate, "now", NewStringType::kNormal)
+          .ToLocalChecked(),
+      FunctionTemplate::New(isolate, PerformanceNow));
+  global_template->Set(
+      String::NewFromUtf8(isolate, "performance", NewStringType::kNormal)
+          .ToLocalChecked(),
+      performance_template);
 
   Local<FunctionTemplate> worker_fun_template =
       FunctionTemplate::New(isolate, WorkerNew);
   Local<Signature> worker_signature =
       Signature::New(isolate, worker_fun_template);
   worker_fun_template->SetClassName(
-      String::NewFromUtf8Literal(isolate, "Worker"));
+      String::NewFromUtf8(isolate, "Worker", NewStringType::kNormal)
+          .ToLocalChecked());
   worker_fun_template->ReadOnlyPrototype();
   worker_fun_template->PrototypeTemplate()->Set(
-      isolate, "terminate",
+      String::NewFromUtf8(isolate, "terminate", NewStringType::kNormal)
+          .ToLocalChecked(),
       FunctionTemplate::New(isolate, WorkerTerminate, Local<Value>(),
                             worker_signature));
   worker_fun_template->PrototypeTemplate()->Set(
-      isolate, "postMessage",
+      String::NewFromUtf8(isolate, "postMessage", NewStringType::kNormal)
+          .ToLocalChecked(),
       FunctionTemplate::New(isolate, WorkerPostMessage, Local<Value>(),
                             worker_signature));
   worker_fun_template->PrototypeTemplate()->Set(
-      isolate, "getMessage",
+      String::NewFromUtf8(isolate, "getMessage", NewStringType::kNormal)
+          .ToLocalChecked(),
       FunctionTemplate::New(isolate, WorkerGetMessage, Local<Value>(),
                             worker_signature));
   worker_fun_template->InstanceTemplate()->SetInternalFieldCount(1);
-  global_template->Set(isolate, "Worker", worker_fun_template);
+  global_template->Set(
+      String::NewFromUtf8(isolate, "Worker", NewStringType::kNormal)
+          .ToLocalChecked(),
+      worker_fun_template);
 
   Local<ObjectTemplate> os_templ = ObjectTemplate::New(isolate);
   AddOSMethods(isolate, os_templ);
-  global_template->Set(isolate, "os", os_templ);
+  global_template->Set(
+      String::NewFromUtf8(isolate, "os", NewStringType::kNormal)
+          .ToLocalChecked(),
+      os_templ);
 
   if (i::FLAG_expose_async_hooks) {
     Local<ObjectTemplate> async_hooks_templ = ObjectTemplate::New(isolate);
     async_hooks_templ->Set(
-        isolate, "createHook",
+        String::NewFromUtf8(isolate, "createHook", NewStringType::kNormal)
+            .ToLocalChecked(),
         FunctionTemplate::New(isolate, AsyncHooksCreateHook));
     async_hooks_templ->Set(
-        isolate, "executionAsyncId",
+        String::NewFromUtf8(isolate, "executionAsyncId", NewStringType::kNormal)
+            .ToLocalChecked(),
         FunctionTemplate::New(isolate, AsyncHooksExecutionAsyncId));
     async_hooks_templ->Set(
-        isolate, "triggerAsyncId",
+        String::NewFromUtf8(isolate, "triggerAsyncId", NewStringType::kNormal)
+            .ToLocalChecked(),
         FunctionTemplate::New(isolate, AsyncHooksTriggerAsyncId));
-    global_template->Set(isolate, "async_hooks", async_hooks_templ);
+    global_template->Set(
+        String::NewFromUtf8(isolate, "async_hooks", NewStringType::kNormal)
+            .ToLocalChecked(),
+        async_hooks_templ);
   }
 
   return global_template;
 }
 
-static void PrintMessageCallback(Local<Message> message, Local<Value> error) {
+static void PrintNonErrorsMessageCallback(Local<Message> message,
+                                          Local<Value> error) {
+  // Nothing to do here for errors, exceptions thrown up to the shell will be
+  // reported
+  // separately by {Shell::ReportException} after they are caught.
+  // Do print other kinds of messages.
   switch (message->ErrorLevel()) {
     case v8::Isolate::kMessageWarning:
     case v8::Isolate::kMessageLog:
@@ -1985,7 +1899,7 @@ static void PrintMessageCallback(Local<Message> message, Local<Value> error) {
     }
 
     case v8::Isolate::kMessageError: {
-      Shell::ReportException(message->GetIsolate(), message, error);
+      // Ignore errors, printed elsewhere.
       return;
     }
 
@@ -2009,27 +1923,17 @@ static void PrintMessageCallback(Local<Message> message, Local<Value> error) {
   printf("%s:%i: %s\n", filename_string, linenum, msg_string);
 }
 
-void Shell::Initialize(Isolate* isolate, D8Console* console,
-                       bool isOnMainThread) {
-  if (isOnMainThread) {
-    // Set up counters
-    if (i::FLAG_map_counters[0] != '\0') {
-      MapCounters(isolate, i::FLAG_map_counters);
-    }
-    // Disable default message reporting.
-    isolate->AddMessageListenerWithErrorLevel(
-        PrintMessageCallback,
-        v8::Isolate::kMessageError | v8::Isolate::kMessageWarning |
-            v8::Isolate::kMessageInfo | v8::Isolate::kMessageDebug |
-            v8::Isolate::kMessageLog);
+void Shell::Initialize(Isolate* isolate) {
+  // Set up counters
+  if (i::FLAG_map_counters[0] != '\0') {
+    MapCounters(isolate, i::FLAG_map_counters);
   }
-
-  isolate->SetHostImportModuleDynamicallyCallback(
-      Shell::HostImportModuleDynamically);
-  isolate->SetHostInitializeImportMetaObjectCallback(
-      Shell::HostInitializeImportMetaObject);
-
-  debug::SetConsoleDelegate(isolate, console);
+  // Disable default message reporting.
+  isolate->AddMessageListenerWithErrorLevel(
+      PrintNonErrorsMessageCallback,
+      v8::Isolate::kMessageError | v8::Isolate::kMessageWarning |
+          v8::Isolate::kMessageInfo | v8::Isolate::kMessageDebug |
+          v8::Isolate::kMessageLog);
 }
 
 Local<Context> Shell::CreateEvaluationContext(Isolate* isolate) {
@@ -2040,7 +1944,7 @@ Local<Context> Shell::CreateEvaluationContext(Isolate* isolate) {
   EscapableHandleScope handle_scope(isolate);
   Local<Context> context = Context::New(isolate, nullptr, global_template);
   DCHECK(!context.IsEmpty());
-  if (i::FLAG_perf_prof_annotate_wasm || i::FLAG_vtune_prof_annotate_wasm) {
+  if (i::FLAG_perf_prof_annotate_wasm) {
     isolate->SetWasmLoadSourceMapCallback(ReadFile);
   }
   InitializeModuleEmbedderData(context);
@@ -2051,12 +1955,14 @@ Local<Context> Shell::CreateEvaluationContext(Isolate* isolate) {
     Local<Array> array = Array::New(isolate, size);
     for (int i = 0; i < size; i++) {
       Local<String> arg =
-          v8::String::NewFromUtf8(isolate, args[i]).ToLocalChecked();
+          v8::String::NewFromUtf8(isolate, args[i], v8::NewStringType::kNormal)
+              .ToLocalChecked();
       Local<Number> index = v8::Number::New(isolate, i);
       array->Set(context, index, arg).FromJust();
     }
-    Local<String> name = String::NewFromUtf8Literal(
-        isolate, "arguments", NewStringType::kInternalized);
+    Local<String> name =
+        String::NewFromUtf8(isolate, "arguments", NewStringType::kInternalized)
+            .ToLocalChecked();
     context->Global()->Set(context, name, array).FromJust();
   }
   return handle_scope.Escape(context);
@@ -2181,7 +2087,7 @@ void Shell::OnExit(v8::Isolate* isolate) {
 
     if (i::FLAG_dump_counters_nvp) {
       // Dump counters as name-value pairs.
-      for (const auto& pair : counters) {
+      for (auto pair : counters) {
         std::string key = pair.first;
         Counter* counter = pair.second;
         if (counter->is_histogram()) {
@@ -2202,7 +2108,7 @@ void Shell::OnExit(v8::Isolate* isolate) {
                 << std::string(kValueBoxSize - 6, ' ') << "|\n";
       std::cout << "+" << std::string(kNameBoxSize, '-') << "+"
                 << std::string(kValueBoxSize, '-') << "+\n";
-      for (const auto& pair : counters) {
+      for (auto pair : counters) {
         std::string key = pair.first;
         Counter* counter = pair.second;
         if (counter->is_histogram()) {
@@ -2274,6 +2180,23 @@ static char* ReadChars(const char* name, int* size_out) {
   return chars;
 }
 
+struct DataAndPersistent {
+  uint8_t* data;
+  int byte_length;
+  Global<ArrayBuffer> handle;
+};
+
+static void ReadBufferWeakCallback(
+    const v8::WeakCallbackInfo<DataAndPersistent>& data) {
+  int byte_length = data.GetParameter()->byte_length;
+  data.GetIsolate()->AdjustAmountOfExternalAllocatedMemory(
+      -static_cast<intptr_t>(byte_length));
+
+  delete[] data.GetParameter()->data;
+  data.GetParameter()->handle.Reset();
+  delete data.GetParameter();
+}
+
 void Shell::ReadBuffer(const v8::FunctionCallbackInfo<v8::Value>& args) {
   static_assert(sizeof(char) == sizeof(uint8_t),
                 "char and uint8_t should both have 1 byte");
@@ -2285,20 +2208,19 @@ void Shell::ReadBuffer(const v8::FunctionCallbackInfo<v8::Value>& args) {
     return;
   }
 
-  uint8_t* data = reinterpret_cast<uint8_t*>(ReadChars(*filename, &length));
-  if (data == nullptr) {
+  DataAndPersistent* data = new DataAndPersistent;
+  data->data = reinterpret_cast<uint8_t*>(ReadChars(*filename, &length));
+  if (data->data == nullptr) {
+    delete data;
     Throw(isolate, "Error reading file");
     return;
   }
-  std::unique_ptr<v8::BackingStore> backing_store =
-      ArrayBuffer::NewBackingStore(
-          data, length,
-          [](void* data, size_t length, void*) {
-            delete[] reinterpret_cast<uint8_t*>(data);
-          },
-          nullptr);
-  Local<v8::ArrayBuffer> buffer =
-      ArrayBuffer::New(isolate, std::move(backing_store));
+  data->byte_length = length;
+  Local<v8::ArrayBuffer> buffer = ArrayBuffer::New(isolate, data->data, length);
+  data->handle.Reset(isolate, buffer);
+  data->handle.SetWeak(data, ReadBufferWeakCallback,
+                       v8::WeakCallbackType::kParameter);
+  isolate->AdjustAmountOfExternalAllocatedMemory(length);
 
   args.GetReturnValue().Set(buffer);
 }
@@ -2330,7 +2252,9 @@ void Shell::RunShell(Isolate* isolate) {
       v8::Local<v8::Context>::New(isolate, evaluation_context_);
   v8::Context::Scope context_scope(context);
   PerIsolateData::RealmScope realm_scope(PerIsolateData::Get(isolate));
-  Local<String> name = String::NewFromUtf8Literal(isolate, "(d8)");
+  Local<String> name =
+      String::NewFromUtf8(isolate, "(d8)", NewStringType::kNormal)
+          .ToLocalChecked();
   printf("V8 version %s\n", V8::GetVersion());
   while (true) {
     HandleScope inner_scope(isolate);
@@ -2382,8 +2306,9 @@ class InspectorFrontend final : public v8_inspector::V8Inspector::Channel {
                    reinterpret_cast<const uint16_t*>(string.characters16()),
                    v8::NewStringType::kNormal, length))
             .ToLocalChecked();
-    Local<String> callback_name = v8::String::NewFromUtf8Literal(
-        isolate_, "receive", NewStringType::kInternalized);
+    Local<String> callback_name =
+        v8::String::NewFromUtf8(isolate_, "receive", v8::NewStringType::kNormal)
+            .ToLocalChecked();
     Local<Context> context = context_.Get(isolate_);
     Local<Value> callback =
         context->Global()->Get(context, callback_name).ToLocalChecked();
@@ -2395,10 +2320,14 @@ class InspectorFrontend final : public v8_inspector::V8Inspector::Channel {
 #ifdef DEBUG
       if (try_catch.HasCaught()) {
         Local<Object> exception = Local<Object>::Cast(try_catch.Exception());
-        Local<String> key = v8::String::NewFromUtf8Literal(
-            isolate_, "message", NewStringType::kInternalized);
-        Local<String> expected = v8::String::NewFromUtf8Literal(
-            isolate_, "Maximum call stack size exceeded");
+        Local<String> key = v8::String::NewFromUtf8(isolate_, "message",
+                                                    v8::NewStringType::kNormal)
+                                .ToLocalChecked();
+        Local<String> expected =
+            v8::String::NewFromUtf8(isolate_,
+                                    "Maximum call stack size exceeded",
+                                    v8::NewStringType::kNormal)
+                .ToLocalChecked();
         Local<Value> value = exception->Get(context, key).ToLocalChecked();
         DCHECK(value->StrictEquals(expected));
       }
@@ -2427,37 +2356,13 @@ class InspectorClient : public v8_inspector::V8InspectorClient {
         FunctionTemplate::New(isolate_, SendInspectorMessage)
             ->GetFunction(context)
             .ToLocalChecked();
-    Local<String> function_name = String::NewFromUtf8Literal(
-        isolate_, "send", NewStringType::kInternalized);
+    Local<String> function_name =
+        String::NewFromUtf8(isolate_, "send", NewStringType::kNormal)
+            .ToLocalChecked();
     CHECK(context->Global()->Set(context, function_name, function).FromJust());
 
     context_.Reset(isolate_, context);
   }
-
-  void runMessageLoopOnPause(int contextGroupId) override {
-    v8::Isolate::AllowJavascriptExecutionScope allow_script(isolate_);
-    v8::HandleScope handle_scope(isolate_);
-    Local<String> callback_name = v8::String::NewFromUtf8Literal(
-        isolate_, "handleInspectorMessage", NewStringType::kInternalized);
-    Local<Context> context = context_.Get(isolate_);
-    Local<Value> callback =
-        context->Global()->Get(context, callback_name).ToLocalChecked();
-    if (!callback->IsFunction()) return;
-
-    v8::TryCatch try_catch(isolate_);
-    try_catch.SetVerbose(true);
-    is_paused = true;
-
-    while (is_paused) {
-      USE(Local<Function>::Cast(callback)->Call(context, Undefined(isolate_), 0,
-                                                {}));
-      if (try_catch.HasCaught()) {
-        is_paused = false;
-      }
-    }
-  }
-
-  void quitMessageLoopOnPause() override { is_paused = false; }
 
  private:
   static v8_inspector::V8InspectorSession* GetSession(Local<Context> context) {
@@ -2497,7 +2402,6 @@ class InspectorClient : public v8_inspector::V8InspectorClient {
   std::unique_ptr<v8_inspector::V8Inspector> inspector_;
   std::unique_ptr<v8_inspector::V8InspectorSession> session_;
   std::unique_ptr<v8_inspector::V8Inspector::Channel> channel_;
-  bool is_paused = false;
   Global<Context> context_;
   Isolate* isolate_;
 };
@@ -2523,9 +2427,12 @@ bool SourceGroup::Execute(Isolate* isolate) {
     if (strcmp(arg, "-e") == 0 && i + 1 < end_offset_) {
       // Execute argument given to -e option directly.
       HandleScope handle_scope(isolate);
-      Local<String> file_name = String::NewFromUtf8Literal(isolate, "unnamed");
+      Local<String> file_name =
+          String::NewFromUtf8(isolate, "unnamed", NewStringType::kNormal)
+              .ToLocalChecked();
       Local<String> source =
-          String::NewFromUtf8(isolate, argv_[i + 1]).ToLocalChecked();
+          String::NewFromUtf8(isolate, argv_[i + 1], NewStringType::kNormal)
+              .ToLocalChecked();
       Shell::set_script_executed();
       if (!Shell::ExecuteString(isolate, source, file_name,
                                 Shell::kNoPrintResult, Shell::kReportExceptions,
@@ -2559,7 +2466,8 @@ bool SourceGroup::Execute(Isolate* isolate) {
     // Use all other arguments as names of files to load and run.
     HandleScope handle_scope(isolate);
     Local<String> file_name =
-        String::NewFromUtf8(isolate, arg).ToLocalChecked();
+        String::NewFromUtf8(isolate, arg, NewStringType::kNormal)
+            .ToLocalChecked();
     Local<String> source = ReadFile(isolate, arg);
     if (source.IsEmpty()) {
       printf("Error reading '%s'\n", arg);
@@ -2587,10 +2495,15 @@ void SourceGroup::ExecuteInThread() {
   Isolate::CreateParams create_params;
   create_params.array_buffer_allocator = Shell::array_buffer_allocator;
   Isolate* isolate = Isolate::New(create_params);
+  isolate->SetHostCleanupFinalizationGroupCallback(
+      Shell::HostCleanupFinalizationGroup);
+  isolate->SetHostImportModuleDynamicallyCallback(
+      Shell::HostImportModuleDynamically);
+  isolate->SetHostInitializeImportMetaObjectCallback(
+      Shell::HostInitializeImportMetaObject);
   Shell::SetWaitUntilDone(isolate, false);
   D8Console console(isolate);
-  Shell::Initialize(isolate, &console, false);
-
+  debug::SetConsoleDelegate(isolate, &console);
   for (int i = 0; i < Shell::options.stress_runs; ++i) {
     next_semaphore_.Wait();
     {
@@ -2633,6 +2546,12 @@ void SourceGroup::WaitForThread() {
 void SourceGroup::JoinThread() {
   if (thread_ == nullptr) return;
   thread_->Join();
+}
+
+ExternalizedContents::~ExternalizedContents() {
+  if (data_ != nullptr) {
+    deleter_(data_, length_, deleter_data_);
+  }
 }
 
 void SerializationDataQueue::Enqueue(std::unique_ptr<SerializationData> data) {
@@ -2729,8 +2648,14 @@ void Worker::ExecuteInThread() {
   Isolate::CreateParams create_params;
   create_params.array_buffer_allocator = Shell::array_buffer_allocator;
   Isolate* isolate = Isolate::New(create_params);
+  isolate->SetHostCleanupFinalizationGroupCallback(
+      Shell::HostCleanupFinalizationGroup);
+  isolate->SetHostImportModuleDynamicallyCallback(
+      Shell::HostImportModuleDynamically);
+  isolate->SetHostInitializeImportMetaObjectCallback(
+      Shell::HostInitializeImportMetaObject);
   D8Console console(isolate);
-  Shell::Initialize(isolate, &console, false);
+  debug::SetConsoleDelegate(isolate, &console);
   {
     Isolate::Scope iscope(isolate);
     {
@@ -2751,26 +2676,29 @@ void Worker::ExecuteInThread() {
                 &postmessage_fun)) {
           global
               ->Set(context,
-                    v8::String::NewFromUtf8Literal(
-                        isolate, "postMessage", NewStringType::kInternalized),
+                    String::NewFromUtf8(isolate, "postMessage",
+                                        NewStringType::kNormal)
+                        .ToLocalChecked(),
                     postmessage_fun)
               .FromJust();
         }
 
         // First run the script
         Local<String> file_name =
-            String::NewFromUtf8Literal(isolate, "unnamed");
+            String::NewFromUtf8(isolate, "unnamed", NewStringType::kNormal)
+                .ToLocalChecked();
         Local<String> source =
-            String::NewFromUtf8(isolate, script_).ToLocalChecked();
+            String::NewFromUtf8(isolate, script_, NewStringType::kNormal)
+                .ToLocalChecked();
         if (Shell::ExecuteString(
                 isolate, source, file_name, Shell::kNoPrintResult,
                 Shell::kReportExceptions, Shell::kProcessMessageQueue)) {
           // Get the message handler
           Local<Value> onmessage =
               global
-                  ->Get(context,
-                        String::NewFromUtf8Literal(
-                            isolate, "onmessage", NewStringType::kInternalized))
+                  ->Get(context, String::NewFromUtf8(isolate, "onmessage",
+                                                     NewStringType::kNormal)
+                                     .ToLocalChecked())
                   .ToLocalChecked();
           if (onmessage->IsFunction()) {
             Local<Function> onmessage_fun = Local<Function>::Cast(onmessage);
@@ -2784,7 +2712,6 @@ void Worker::ExecuteInThread() {
                 break;
               }
               v8::TryCatch try_catch(isolate);
-              try_catch.SetVerbose(true);
               HandleScope scope(isolate);
               Local<Value> value;
               if (Shell::DeserializeValue(isolate, std::move(data))
@@ -2793,6 +2720,9 @@ void Worker::ExecuteInThread() {
                 MaybeLocal<Value> result =
                     onmessage_fun->Call(context, global, 1, argv);
                 USE(result);
+              }
+              if (try_catch.HasCaught()) {
+                Shell::ReportException(isolate, &try_catch);
               }
             }
           }
@@ -2851,17 +2781,21 @@ bool Shell::SetOptions(int argc, char* argv[]) {
                strcmp(argv[i], "--no-stress-opt") == 0) {
       options.stress_opt = false;
       argv[i] = nullptr;
-    } else if (strcmp(argv[i], "--stress-snapshot") == 0) {
-      options.stress_snapshot = true;
+    } else if (strcmp(argv[i], "--stress-deopt") == 0) {
+      options.stress_deopt = true;
       argv[i] = nullptr;
-    } else if (strcmp(argv[i], "--nostress-snapshot") == 0 ||
-               strcmp(argv[i], "--no-stress-snapshot") == 0) {
-      options.stress_snapshot = false;
+    } else if (strcmp(argv[i], "--stress-background-compile") == 0) {
+      options.stress_background_compile = true;
+      argv[i] = nullptr;
+    } else if (strcmp(argv[i], "--nostress-background-compile") == 0 ||
+               strcmp(argv[i], "--no-stress-background-compile") == 0) {
+      options.stress_background_compile = false;
       argv[i] = nullptr;
     } else if (strcmp(argv[i], "--noalways-opt") == 0 ||
                strcmp(argv[i], "--no-always-opt") == 0) {
       // No support for stressing if we can't use --always-opt.
       options.stress_opt = false;
+      options.stress_deopt = false;
     } else if (strcmp(argv[i], "--logfile-per-isolate") == 0) {
       logfile_per_isolate = true;
       argv[i] = nullptr;
@@ -2907,6 +2841,9 @@ bool Shell::SetOptions(int argc, char* argv[]) {
       options.icu_locale = argv[i] + 13;
       argv[i] = nullptr;
 #ifdef V8_USE_EXTERNAL_STARTUP_DATA
+    } else if (strncmp(argv[i], "--natives_blob=", 15) == 0) {
+      options.natives_blob = argv[i] + 15;
+      argv[i] = nullptr;
     } else if (strncmp(argv[i], "--snapshot_blob=", 16) == 0) {
       options.snapshot_blob = argv[i] + 16;
       argv[i] = nullptr;
@@ -2971,16 +2908,6 @@ bool Shell::SetOptions(int argc, char* argv[]) {
       // Delay execution of tasks by 0-100ms randomly (based on --random-seed).
       options.stress_delay_tasks = true;
       argv[i] = nullptr;
-    } else if (strcmp(argv[i], "--cpu-profiler") == 0) {
-      options.cpu_profiler = true;
-      argv[i] = nullptr;
-    } else if (strcmp(argv[i], "--cpu-profiler-print") == 0) {
-      options.cpu_profiler = true;
-      options.cpu_profiler_print = true;
-      argv[i] = nullptr;
-    } else if (strcmp(argv[i], "--fuzzy-module-file-extensions") == 0) {
-      options.fuzzy_module_file_extensions = true;
-      argv[i] = nullptr;
     }
   }
 
@@ -2988,9 +2915,6 @@ bool Shell::SetOptions(int argc, char* argv[]) {
   options.mock_arraybuffer_allocator = i::FLAG_mock_arraybuffer_allocator;
   options.mock_arraybuffer_allocator_limit =
       i::FLAG_mock_arraybuffer_allocator_limit;
-#if V8_OS_LINUX
-  options.multi_mapped_mock_allocator = i::FLAG_multi_mapped_mock_allocator;
-#endif
 
   // Set up isolated source groups.
   options.isolate_sources = new SourceGroup[options.num_isolates];
@@ -3022,7 +2946,7 @@ bool Shell::SetOptions(int argc, char* argv[]) {
   return true;
 }
 
-int Shell::RunMain(Isolate* isolate, bool last_run) {
+int Shell::RunMain(Isolate* isolate, int argc, char* argv[], bool last_run) {
   for (int i = 1; i < options.num_isolates; ++i) {
     options.isolate_sources[i].StartExecuteInThread();
   }
@@ -3050,18 +2974,6 @@ int Shell::RunMain(Isolate* isolate, bool last_run) {
       DisposeModuleEmbedderData(context);
     }
     WriteLcovData(isolate, options.lcov_file);
-    if (last_run && options.stress_snapshot) {
-      static constexpr bool kClearRecompilableData = true;
-      i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(isolate);
-      i::Handle<i::Context> i_context = Utils::OpenHandle(*context);
-      // TODO(jgruber,v8:10500): Don't deoptimize once we support serialization
-      // of optimized code.
-      i::Deoptimizer::DeoptimizeAll(i_isolate);
-      i::Snapshot::ClearReconstructableDataForSerialization(
-          i_isolate, kClearRecompilableData);
-      i::Snapshot::SerializeDeserializeAndVerifyForTesting(i_isolate,
-                                                           i_context);
-    }
   }
   CollectGarbage(isolate);
   for (int i = 1; i < options.num_isolates; ++i) {
@@ -3112,10 +3024,27 @@ bool RunSetTimeoutCallback(Isolate* isolate, bool* did_run) {
   try_catch.SetVerbose(true);
   Context::Scope context_scope(context);
   if (callback->Call(context, Undefined(isolate), 0, nullptr).IsEmpty()) {
+    Shell::ReportException(isolate, &try_catch);
     return false;
   }
   *did_run = true;
   return true;
+}
+
+bool RunCleanupFinalizationGroupCallback(Isolate* isolate, bool* did_run) {
+  PerIsolateData* data = PerIsolateData::Get(isolate);
+  HandleScope handle_scope(isolate);
+  while (true) {
+    Local<FinalizationGroup> fg;
+    if (!data->GetCleanupFinalizationGroup().ToLocal(&fg)) return true;
+    *did_run = true;
+    TryCatch try_catch(isolate);
+    try_catch.SetVerbose(true);
+    if (FinalizationGroup::Cleanup(fg).IsNothing()) {
+      Shell::ReportException(isolate, &try_catch);
+      return false;
+    }
+  }
 }
 
 bool ProcessMessages(
@@ -3128,28 +3057,23 @@ bool ProcessMessages(
     while (v8::platform::PumpMessageLoop(g_default_platform, isolate,
                                          behavior())) {
       MicrotasksScope::PerformCheckpoint(isolate);
-
-      if (i::FLAG_verify_predictable) {
-        // In predictable mode we push all background tasks into the foreground
-        // task queue of the {kProcessGlobalPredictablePlatformWorkerTaskQueue}
-        // isolate. We execute the tasks after one foreground task has been
-        // executed.
-        while (v8::platform::PumpMessageLoop(
-            g_default_platform,
-            kProcessGlobalPredictablePlatformWorkerTaskQueue, behavior())) {
-        }
-      }
+      isolate->ClearKeptObjects();
     }
     if (g_default_platform->IdleTasksEnabled(isolate)) {
       v8::platform::RunIdleTasks(g_default_platform, isolate,
                                  50.0 / base::Time::kMillisecondsPerSecond);
+    }
+    bool ran_finalization_callback = false;
+    if (!RunCleanupFinalizationGroupCallback(isolate,
+                                             &ran_finalization_callback)) {
+      return false;
     }
     bool ran_set_timeout = false;
     if (!RunSetTimeoutCallback(isolate, &ran_set_timeout)) {
       return false;
     }
 
-    if (!ran_set_timeout) return true;
+    if (!ran_set_timeout && !ran_finalization_callback) return true;
   }
   return true;
 }
@@ -3209,10 +3133,11 @@ class Serializer : public ValueSerializer::Delegate {
 
   std::unique_ptr<SerializationData> Release() { return std::move(data_); }
 
-  void AppendBackingStoresTo(std::vector<std::shared_ptr<BackingStore>>* to) {
-    to->insert(to->end(), std::make_move_iterator(backing_stores_.begin()),
-               std::make_move_iterator(backing_stores_.end()));
-    backing_stores_.clear();
+  void AppendExternalizedContentsTo(std::vector<ExternalizedContents>* to) {
+    to->insert(to->end(),
+               std::make_move_iterator(externalized_contents_.begin()),
+               std::make_move_iterator(externalized_contents_.end()));
+    externalized_contents_.clear();
   }
 
  protected:
@@ -3232,8 +3157,8 @@ class Serializer : public ValueSerializer::Delegate {
 
     size_t index = shared_array_buffers_.size();
     shared_array_buffers_.emplace_back(isolate_, shared_array_buffer);
-    data_->sab_backing_stores_.push_back(
-        shared_array_buffer->GetBackingStore());
+    data_->shared_array_buffer_contents_.push_back(
+        MaybeExternalize(shared_array_buffer));
     return Just<uint32_t>(static_cast<uint32_t>(index));
   }
 
@@ -3248,7 +3173,7 @@ class Serializer : public ValueSerializer::Delegate {
 
     size_t index = wasm_modules_.size();
     wasm_modules_.emplace_back(isolate_, module);
-    data_->compiled_wasm_modules_.push_back(module->GetCompiledModule());
+    data_->transferrable_modules_.push_back(module->GetTransferrableModule());
     return Just<uint32_t>(static_cast<uint32_t>(index));
   }
 
@@ -3304,6 +3229,17 @@ class Serializer : public ValueSerializer::Delegate {
     }
   }
 
+  template <typename T>
+  typename T::Contents MaybeExternalize(Local<T> array_buffer) {
+    if (array_buffer->IsExternal()) {
+      return array_buffer->GetContents();
+    } else {
+      typename T::Contents contents = array_buffer->Externalize();
+      externalized_contents_.emplace_back(contents);
+      return contents;
+    }
+  }
+
   Maybe<bool> FinalizeTransfer() {
     for (const auto& global_array_buffer : array_buffers_) {
       Local<ArrayBuffer> array_buffer =
@@ -3313,9 +3249,9 @@ class Serializer : public ValueSerializer::Delegate {
         return Nothing<bool>();
       }
 
-      auto backing_store = array_buffer->GetBackingStore();
-      data_->backing_stores_.push_back(std::move(backing_store));
+      ArrayBuffer::Contents contents = MaybeExternalize(array_buffer);
       array_buffer->Detach();
+      data_->array_buffer_contents_.push_back(contents);
     }
 
     return Just(true);
@@ -3327,7 +3263,7 @@ class Serializer : public ValueSerializer::Delegate {
   std::vector<Global<ArrayBuffer>> array_buffers_;
   std::vector<Global<SharedArrayBuffer>> shared_array_buffers_;
   std::vector<Global<WasmModuleObject>> wasm_modules_;
-  std::vector<std::shared_ptr<v8::BackingStore>> backing_stores_;
+  std::vector<ExternalizedContents> externalized_contents_;
   size_t current_memory_usage_;
 
   DISALLOW_COPY_AND_ASSIGN(Serializer);
@@ -3349,9 +3285,9 @@ class Deserializer : public ValueDeserializer::Delegate {
     }
 
     uint32_t index = 0;
-    for (const auto& backing_store : data_->backing_stores()) {
+    for (const auto& contents : data_->array_buffer_contents()) {
       Local<ArrayBuffer> array_buffer =
-          ArrayBuffer::New(isolate_, std::move(backing_store));
+          ArrayBuffer::New(isolate_, contents.Data(), contents.ByteLength());
       deserializer_.TransferArrayBuffer(index++, array_buffer);
     }
 
@@ -3361,9 +3297,11 @@ class Deserializer : public ValueDeserializer::Delegate {
   MaybeLocal<SharedArrayBuffer> GetSharedArrayBufferFromId(
       Isolate* isolate, uint32_t clone_id) override {
     DCHECK_NOT_NULL(data_);
-    if (clone_id < data_->sab_backing_stores().size()) {
-      return SharedArrayBuffer::New(
-          isolate_, std::move(data_->sab_backing_stores().at(clone_id)));
+    if (clone_id < data_->shared_array_buffer_contents().size()) {
+      const SharedArrayBuffer::Contents contents =
+          data_->shared_array_buffer_contents().at(clone_id);
+      return SharedArrayBuffer::New(isolate_, contents.Data(),
+                                    contents.ByteLength());
     }
     return MaybeLocal<SharedArrayBuffer>();
   }
@@ -3371,9 +3309,11 @@ class Deserializer : public ValueDeserializer::Delegate {
   MaybeLocal<WasmModuleObject> GetWasmModuleFromId(
       Isolate* isolate, uint32_t transfer_id) override {
     DCHECK_NOT_NULL(data_);
-    if (transfer_id >= data_->compiled_wasm_modules().size()) return {};
-    return WasmModuleObject::FromCompiledModule(
-        isolate_, data_->compiled_wasm_modules().at(transfer_id));
+    if (transfer_id < data_->transferrable_modules().size()) {
+      return WasmModuleObject::FromTransferrableModule(
+          isolate_, data_->transferrable_modules().at(transfer_id));
+    }
+    return MaybeLocal<WasmModuleObject>();
   }
 
  private:
@@ -3382,52 +3322,6 @@ class Deserializer : public ValueDeserializer::Delegate {
   std::unique_ptr<SerializationData> data_;
 
   DISALLOW_COPY_AND_ASSIGN(Deserializer);
-};
-
-class D8Testing {
- public:
-  /**
-   * Get the number of runs of a given test that is required to get the full
-   * stress coverage.
-   */
-  static int GetStressRuns() {
-    if (internal::FLAG_stress_runs != 0) return internal::FLAG_stress_runs;
-#ifdef DEBUG
-    // In debug mode the code runs much slower so stressing will only make two
-    // runs.
-    return 2;
-#else
-    return 5;
-#endif
-  }
-
-  /**
-   * Indicate the number of the run which is about to start. The value of run
-   * should be between 0 and one less than the result from GetStressRuns()
-   */
-  static void PrepareStressRun(int run) {
-    static const char* kLazyOptimizations =
-        "--prepare-always-opt "
-        "--max-inlined-bytecode-size=999999 "
-        "--max-inlined-bytecode-size-cumulative=999999 "
-        "--noalways-opt";
-    static const char* kForcedOptimizations = "--always-opt";
-
-    if (run == GetStressRuns() - 1) {
-      V8::SetFlagsFromString(kForcedOptimizations);
-    } else {
-      V8::SetFlagsFromString(kLazyOptimizations);
-    }
-  }
-
-  /**
-   * Force deoptimization of all functions.
-   */
-  static void DeoptimizeAll(Isolate* isolate) {
-    i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(isolate);
-    i::HandleScope scope(i_isolate);
-    i::Deoptimizer::DeoptimizeAll(i_isolate);
-  }
 };
 
 std::unique_ptr<SerializationData> Shell::SerializeValue(
@@ -3439,6 +3333,9 @@ std::unique_ptr<SerializationData> Shell::SerializeValue(
   if (serializer.WriteValue(context, value, transfer).To(&ok)) {
     data = serializer.Release();
   }
+  // Append externalized contents even when WriteValue fails.
+  base::MutexGuard lock_guard(workers_mutex_.Pointer());
+  serializer.AppendExternalizedContentsTo(&externalized_contents_);
   return data;
 }
 
@@ -3480,6 +3377,7 @@ void Shell::WaitForRunningWorkers() {
   base::MutexGuard lock_guard(workers_mutex_.Pointer());
   DCHECK(running_workers_.empty());
   allow_new_workers_ = true;
+  externalized_contents_.clear();
 }
 
 int Shell::Main(int argc, char* argv[]) {
@@ -3504,7 +3402,7 @@ int Shell::Main(int argc, char* argv[]) {
   std::unique_ptr<platform::tracing::TracingController> tracing;
   std::ofstream trace_file;
   if (options.trace_enabled && !i::FLAG_verify_predictable) {
-    tracing = std::make_unique<platform::tracing::TracingController>();
+    tracing = base::make_unique<platform::tracing::TracingController>();
     trace_file.open(options.trace_path ? options.trace_path : "v8_trace.json");
     DCHECK(trace_file.good());
 
@@ -3549,8 +3447,9 @@ int Shell::Main(int argc, char* argv[]) {
   }
   v8::V8::InitializePlatform(g_platform.get());
   v8::V8::Initialize();
-  if (options.snapshot_blob) {
-    v8::V8::InitializeExternalStartupDataFromFile(options.snapshot_blob);
+  if (options.natives_blob || options.snapshot_blob) {
+    v8::V8::InitializeExternalStartupData(options.natives_blob,
+                                          options.snapshot_blob);
   } else {
     v8::V8::InitializeExternalStartupData(argv[0]);
   }
@@ -3564,19 +3463,12 @@ int Shell::Main(int argc, char* argv[]) {
       memory_limit >= options.mock_arraybuffer_allocator_limit
           ? memory_limit
           : std::numeric_limits<size_t>::max());
-#if V8_OS_LINUX
-  MultiMappedAllocator multi_mapped_mock_allocator;
-#endif  // V8_OS_LINUX
   if (options.mock_arraybuffer_allocator) {
     if (memory_limit) {
       Shell::array_buffer_allocator = &mock_arraybuffer_allocator_with_limit;
     } else {
       Shell::array_buffer_allocator = &mock_arraybuffer_allocator;
     }
-#if V8_OS_LINUX
-  } else if (options.multi_mapped_mock_allocator) {
-    Shell::array_buffer_allocator = &multi_mapped_mock_allocator;
-#endif  // V8_OS_LINUX
   } else {
     Shell::array_buffer_allocator = &shell_array_buffer_allocator;
   }
@@ -3604,12 +3496,19 @@ int Shell::Main(int argc, char* argv[]) {
   }
 
   Isolate* isolate = Isolate::New(create_params);
+  isolate->SetHostCleanupFinalizationGroupCallback(
+      Shell::HostCleanupFinalizationGroup);
+  isolate->SetHostImportModuleDynamicallyCallback(
+      Shell::HostImportModuleDynamically);
+  isolate->SetHostInitializeImportMetaObjectCallback(
+      Shell::HostInitializeImportMetaObject);
 
+  D8Console console(isolate);
   {
-    D8Console console(isolate);
     Isolate::Scope scope(isolate);
-    Initialize(isolate, &console);
+    Initialize(isolate);
     PerIsolateData data(isolate);
+    debug::SetConsoleDelegate(isolate, &console);
 
     if (options.trace_enabled) {
       platform::tracing::TraceConfig* trace_config;
@@ -3626,31 +3525,26 @@ int Shell::Main(int argc, char* argv[]) {
       tracing_controller->StartTracing(trace_config);
     }
 
-    CpuProfiler* cpu_profiler;
-    if (options.cpu_profiler) {
-      cpu_profiler = CpuProfiler::New(isolate);
-      CpuProfilingOptions profile_options;
-      cpu_profiler->StartProfiling(String::Empty(isolate), profile_options);
-    }
-
-    if (options.stress_opt) {
-      options.stress_runs = D8Testing::GetStressRuns();
+    if (options.stress_opt || options.stress_deopt) {
+      Testing::SetStressRunType(options.stress_opt ? Testing::kStressTypeOpt
+                                                   : Testing::kStressTypeDeopt);
+      options.stress_runs = Testing::GetStressRuns();
       for (int i = 0; i < options.stress_runs && result == 0; i++) {
         printf("============ Stress %d/%d ============\n", i + 1,
                options.stress_runs);
-        D8Testing::PrepareStressRun(i);
+        Testing::PrepareStressRun(i);
         bool last_run = i == options.stress_runs - 1;
-        result = RunMain(isolate, last_run);
+        result = RunMain(isolate, argc, argv, last_run);
       }
       printf("======== Full Deoptimization =======\n");
-      D8Testing::DeoptimizeAll(isolate);
+      Testing::DeoptimizeAll(isolate);
     } else if (i::FLAG_stress_runs > 0) {
       options.stress_runs = i::FLAG_stress_runs;
       for (int i = 0; i < options.stress_runs && result == 0; i++) {
         printf("============ Run %d/%d ============\n", i + 1,
                options.stress_runs);
         bool last_run = i == options.stress_runs - 1;
-        result = RunMain(isolate, last_run);
+        result = RunMain(isolate, argc, argv, last_run);
       }
     } else if (options.code_cache_options !=
                ShellOptions::CodeCacheOptions::kNoProduceCache) {
@@ -3661,13 +3555,20 @@ int Shell::Main(int argc, char* argv[]) {
       i::FLAG_hash_seed ^= 1337;  // Use a different hash seed.
       Isolate* isolate2 = Isolate::New(create_params);
       i::FLAG_hash_seed ^= 1337;  // Restore old hash seed.
+      isolate2->SetHostCleanupFinalizationGroupCallback(
+          Shell::HostCleanupFinalizationGroup);
+      isolate2->SetHostImportModuleDynamicallyCallback(
+          Shell::HostImportModuleDynamically);
+      isolate2->SetHostInitializeImportMetaObjectCallback(
+          Shell::HostInitializeImportMetaObject);
       {
         D8Console console(isolate2);
-        Initialize(isolate2, &console);
+        Initialize(isolate2);
+        debug::SetConsoleDelegate(isolate2, &console);
         PerIsolateData data(isolate2);
         Isolate::Scope isolate_scope(isolate2);
 
-        result = RunMain(isolate2, false);
+        result = RunMain(isolate2, argc, argv, false);
       }
       isolate2->Dispose();
 
@@ -3680,11 +3581,11 @@ int Shell::Main(int argc, char* argv[]) {
 
       printf("============ Run: Consume code cache ============\n");
       // Second run to consume the cache in current isolate
-      result = RunMain(isolate, true);
+      result = RunMain(isolate, argc, argv, true);
       options.compile_options = v8::ScriptCompiler::kNoCompileOptions;
     } else {
       bool last_run = true;
-      result = RunMain(isolate, last_run);
+      result = RunMain(isolate, argc, argv, last_run);
     }
 
     // Run interactive shell if explicitly requested or if no script has been
@@ -3696,18 +3597,6 @@ int Shell::Main(int argc, char* argv[]) {
     if (i::FLAG_trace_ignition_dispatches &&
         i::FLAG_trace_ignition_dispatches_output_file != nullptr) {
       WriteIgnitionDispatchCountersFile(isolate);
-    }
-
-    if (options.cpu_profiler) {
-      CpuProfile* profile = cpu_profiler->StopProfiling(String::Empty(isolate));
-      if (options.cpu_profiler_print) {
-        const internal::ProfileNode* root =
-            reinterpret_cast<const internal::ProfileNode*>(
-                profile->GetTopDownRoot());
-        root->Print(0);
-      }
-      profile->Delete();
-      cpu_profiler->Dispose();
     }
 
     // Shut down contexts and collect garbage.
@@ -3737,4 +3626,3 @@ int main(int argc, char* argv[]) { return v8::Shell::Main(argc, argv); }
 
 #undef CHECK
 #undef DCHECK
-#undef TRACE_BS

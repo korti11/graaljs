@@ -145,7 +145,7 @@ void PatchProcessObject(const FunctionCallbackInfo<Value>& args) {
                 FIXED_ONE_BYTE_STRING(isolate, "title"),
                 ProcessTitleGetter,
                 env->owns_process_state() ? ProcessTitleSetter : nullptr,
-                Local<Value>(),
+                env->as_callback_data(),
                 DEFAULT,
                 None,
                 SideEffectType::kHasNoSideEffect)
@@ -196,7 +196,7 @@ void PatchProcessObject(const FunctionCallbackInfo<Value>& args) {
                           FIXED_ONE_BYTE_STRING(isolate, "debugPort"),
                           DebugPortGetter,
                           env->owns_process_state() ? DebugPortSetter : nullptr,
-                          Local<Value>())
+                          env->as_callback_data())
             .FromJust());
 }
 

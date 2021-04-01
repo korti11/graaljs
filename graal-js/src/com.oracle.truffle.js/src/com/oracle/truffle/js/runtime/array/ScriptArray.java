@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -371,24 +371,6 @@ public abstract class ScriptArray {
     }
 
     /**
-     * This function shifts all elements in the range from [0..limit[. Depending on the underlying
-     * implementation, the shift operation might be zero-copy. Can be used by e.g.
-     * Array.prototype.shift;
-     */
-    public ScriptArray shiftRangeImpl(DynamicObject object, long limit) {
-        return removeRangeImpl(object, 0, limit);
-    }
-
-    public final ScriptArray shiftRange(DynamicObject object, long from, BranchProfile errorBranch) {
-        assert from >= 0;
-        if (isSealed()) {
-            errorBranch.enter();
-            throw Errors.createTypeErrorCannotDeletePropertyOfSealedArray(from);
-        }
-        return shiftRangeImpl(object, from);
-    }
-
-    /**
      * This method grows the array by adding more elements of a given size. An offset parameter can
      * be used to specify where the new elements have to be added (starting from zero). The
      * operation is equivalent to shifting (right) the whole array or its part as defined by the
@@ -557,15 +539,25 @@ public abstract class ScriptArray {
 
     public abstract ScriptArray preventExtensions();
 
+    public abstract boolean isStatelessType();
+
     public final boolean isInstance(ScriptArray other) {
         CompilerAsserts.partialEvaluationConstant(this);
-        return this == other;
+        if (isStatelessType()) {
+            return this == other;
+        } else {
+            return this.getClass().isInstance(other);
+        }
     }
 
     public final ScriptArray cast(ScriptArray other) {
         CompilerAsserts.partialEvaluationConstant(this);
-        assert this == other;
-        return this;
+        if (isStatelessType()) {
+            assert this == other;
+            return this;
+        } else {
+            return this.getClass().cast(other);
+        }
     }
 
     public interface ProfileHolder {

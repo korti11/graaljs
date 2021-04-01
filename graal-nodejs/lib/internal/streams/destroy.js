@@ -1,67 +1,53 @@
 'use strict';
 
-// Backwards compat. cb() is undocumented and unused in core but
-// unfortunately might be used by modules.
+// Undocumented cb() API, needed for core, not for public API.
+// The cb() will be invoked synchronously if _destroy is synchronous.
 function destroy(err, cb) {
-  const r = this._readableState;
-  const w = this._writableState;
+  const readableDestroyed = this._readableState &&
+    this._readableState.destroyed;
+  const writableDestroyed = this._writableState &&
+    this._writableState.destroyed;
 
-  if ((w && w.destroyed) || (r && r.destroyed)) {
-    if (typeof cb === 'function') {
-      cb();
+  if (readableDestroyed || writableDestroyed) {
+    if (cb) {
+      cb(err);
+    } else if (err) {
+      if (!this._writableState) {
+        process.nextTick(emitErrorNT, this, err);
+      } else if (!this._writableState.errorEmitted) {
+        this._writableState.errorEmitted = true;
+        process.nextTick(emitErrorNT, this, err);
+      }
     }
 
     return this;
   }
 
-  if (err) {
-    // Avoid V8 leak, https://github.com/nodejs/node/pull/34103#issuecomment-652002364
-    err.stack;
-
-    if (w && !w.errored) {
-      w.errored = err;
-    }
-    if (r && !r.errored) {
-      r.errored = err;
-    }
-  }
-
   // We set destroyed to true before firing error callbacks in order
   // to make it re-entrance safe in case destroy() is called within callbacks
 
-  if (w) {
-    w.destroyed = true;
+  if (this._readableState) {
+    this._readableState.destroyed = true;
   }
-  if (r) {
-    r.destroyed = true;
+
+  // If this is a duplex stream mark the writable part as destroyed as well
+  if (this._writableState) {
+    this._writableState.destroyed = true;
   }
 
   this._destroy(err || null, (err) => {
-    if (err) {
-      // Avoid V8 leak, https://github.com/nodejs/node/pull/34103#issuecomment-652002364
-      err.stack;
-
-      if (w && !w.errored) {
-        w.errored = err;
+    if (!cb && err) {
+      if (!this._writableState) {
+        process.nextTick(emitErrorAndCloseNT, this, err);
+      } else if (!this._writableState.errorEmitted) {
+        this._writableState.errorEmitted = true;
+        process.nextTick(emitErrorAndCloseNT, this, err);
+      } else {
+        process.nextTick(emitCloseNT, this);
       }
-      if (r && !r.errored) {
-        r.errored = err;
-      }
-    }
-
-    if (w) {
-      w.closed = true;
-    }
-    if (r) {
-      r.closed = true;
-    }
-
-    if (typeof cb === 'function') {
+    } else if (cb) {
+      process.nextTick(emitCloseNT, this);
       cb(err);
-    }
-
-    if (err) {
-      process.nextTick(emitErrorCloseNT, this, err);
     } else {
       process.nextTick(emitCloseNT, this);
     }
@@ -70,120 +56,60 @@ function destroy(err, cb) {
   return this;
 }
 
-function emitErrorCloseNT(self, err) {
+function emitErrorAndCloseNT(self, err) {
   emitErrorNT(self, err);
   emitCloseNT(self);
 }
 
 function emitCloseNT(self) {
-  const r = self._readableState;
-  const w = self._writableState;
+  if (self._writableState && !self._writableState.emitClose)
+    return;
+  if (self._readableState && !self._readableState.emitClose)
+    return;
+  self.emit('close');
+}
 
-  if (r) {
-    r.closeEmitted = true;
+function undestroy() {
+  if (this._readableState) {
+    this._readableState.destroyed = false;
+    this._readableState.reading = false;
+    this._readableState.ended = false;
+    this._readableState.endEmitted = false;
   }
 
-  if ((w && w.emitClose) || (r && r.emitClose)) {
-    self.emit('close');
+  if (this._writableState) {
+    this._writableState.destroyed = false;
+    this._writableState.ended = false;
+    this._writableState.ending = false;
+    this._writableState.finalCalled = false;
+    this._writableState.prefinished = false;
+    this._writableState.finished = false;
+    this._writableState.errorEmitted = false;
   }
 }
 
 function emitErrorNT(self, err) {
-  const r = self._readableState;
-  const w = self._writableState;
-
-  if ((w && w.errorEmitted) || (r && r.errorEmitted)) {
-    return;
-  }
-
-  if (w) {
-    w.errorEmitted = true;
-  }
-  if (r) {
-    r.errorEmitted = true;
-  }
-
   self.emit('error', err);
 }
 
-function undestroy() {
-  const r = this._readableState;
-  const w = this._writableState;
-
-  if (r) {
-    r.closed = false;
-    r.closeEmitted = false;
-    r.destroyed = false;
-    r.errored = null;
-    r.errorEmitted = false;
-    r.reading = false;
-    r.ended = false;
-    r.endEmitted = false;
-  }
-
-  if (w) {
-    w.closed = false;
-    w.closeEmitted = false;
-    w.destroyed = false;
-    w.errored = null;
-    w.ended = false;
-    w.ending = false;
-    w.finalCalled = false;
-    w.prefinished = false;
-    w.finished = false;
-    w.errorEmitted = false;
-  }
-}
-
-function errorOrDestroy(stream, err, sync) {
+function errorOrDestroy(stream, err) {
   // We have tests that rely on errors being emitted
   // in the same tick, so changing this is semver major.
   // For now when you opt-in to autoDestroy we allow
   // the error to be emitted nextTick. In a future
   // semver major update we should change the default to this.
 
-  const r = stream._readableState;
-  const w = stream._writableState;
+  const rState = stream._readableState;
+  const wState = stream._writableState;
 
-  if ((w && w.destroyed) || (r && r.destroyed)) {
-    return this;
-  }
-
-  if ((r && r.autoDestroy) || (w && w.autoDestroy))
+  if ((rState && rState.autoDestroy) || (wState && wState.autoDestroy))
     stream.destroy(err);
-  else if (err) {
-    // Avoid V8 leak, https://github.com/nodejs/node/pull/34103#issuecomment-652002364
-    err.stack;
-
-    if (w && !w.errored) {
-      w.errored = err;
-    }
-    if (r && !r.errored) {
-      r.errored = err;
-    }
-
-    if (sync) {
-      process.nextTick(emitErrorNT, stream, err);
-    } else {
-      emitErrorNT(stream, err);
-    }
-  }
+  else
+    stream.emit('error', err);
 }
 
-function isRequest(stream) {
-  return stream && stream.setHeader && typeof stream.abort === 'function';
-}
-
-// Normalize destroy for legacy.
-function destroyer(stream, err) {
-  if (isRequest(stream)) return stream.abort();
-  if (isRequest(stream.req)) return stream.req.abort();
-  if (typeof stream.destroy === 'function') return stream.destroy(err);
-  if (typeof stream.close === 'function') return stream.close();
-}
 
 module.exports = {
-  destroyer,
   destroy,
   undestroy,
   errorOrDestroy

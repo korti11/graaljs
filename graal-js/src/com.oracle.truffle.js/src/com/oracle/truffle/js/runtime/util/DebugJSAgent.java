@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -79,12 +79,6 @@ public class DebugJSAgent extends JSAgent {
         this.spawnedAgent = new LinkedList<>();
     }
 
-    @Override
-    @TruffleBoundary
-    public String toString() {
-        return "DebugJSAgent{signifier=" + getSignifier() + "}";
-    }
-
     @TruffleBoundary
     public Object startNewAgent(String source) {
         final AtomicReference<Object> result = new AtomicReference<>(null);
@@ -121,7 +115,6 @@ public class DebugJSAgent extends JSAgent {
                         if (executor.jsAgent.quit) {
                             return;
                         }
-                        executor.jsAgent.processAllPromises(false);
                     }
                 } finally {
                     polyglotContext.leave();
@@ -130,7 +123,7 @@ public class DebugJSAgent extends JSAgent {
             }
         });
         thread.setDaemon(true);
-        thread.setName("Debug-JSAgent-Worker-Thread");
+        thread.setName("Debug-JSAgent-Worker");
         thread.start();
         try {
             barrier.await();

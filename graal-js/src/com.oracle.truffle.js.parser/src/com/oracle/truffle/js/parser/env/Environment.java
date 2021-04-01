@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -168,9 +168,8 @@ public abstract class Environment {
             } else if (current instanceof BlockEnvironment) {
                 scopeLevel++;
             } else if (current instanceof DebugEnvironment) {
-                if (allowDebug && ((DebugEnvironment) current).hasMember(name)) {
-                    ensureFrameLevelAvailable(frameLevel);
-                    return new DebugVarRef(name);
+                if (!allowDebug) {
+                    break;
                 }
             }
             current = current.getParent();
@@ -279,11 +278,6 @@ public abstract class Environment {
                     scopeLevel = 0;
                 } else if (current instanceof BlockEnvironment) {
                     scopeLevel++;
-                } else if (current instanceof DebugEnvironment) {
-                    if (((DebugEnvironment) current).hasMember(name)) {
-                        wrapClosure = makeDebugWrapClosure(wrapClosure, name);
-                        wrapFrameLevel = frameLevel;
-                    }
                 }
             }
             current = current.getParent();
@@ -392,28 +386,6 @@ public abstract class Environment {
         });
     }
 
-    private WrapClosure makeDebugWrapClosure(WrapClosure wrapClosure, String name) {
-        return WrapClosure.compose(wrapClosure, new WrapClosure() {
-            @Override
-            public JavaScriptNode apply(JavaScriptNode delegateNode, WrapAccess access) {
-                JSTargetableNode scopeAccessNode;
-                if (access == WrapAccess.Delete) {
-                    scopeAccessNode = factory.createDeleteProperty(null, factory.createConstantString(name), isStrictMode(), context);
-                } else if (access == WrapAccess.Write) {
-                    assert delegateNode instanceof WriteNode : delegateNode;
-                    scopeAccessNode = factory.createWriteProperty(null, name, null, context, true);
-                } else if (access == WrapAccess.Read) {
-                    assert delegateNode instanceof ReadNode || delegateNode instanceof RepeatableNode : delegateNode;
-                    scopeAccessNode = factory.createReadProperty(context, null, name);
-                } else {
-                    throw new IllegalArgumentException();
-                }
-                JavaScriptNode debugScope = factory.createDebugScope();
-                return factory.createDebugVarWrapper(name, delegateNode, debugScope, scopeAccessNode);
-            }
-        });
-    }
-
     private VarRef wrapIn(WrapClosure wrapClosure, int wrapFrameLevel, VarRef wrappee) {
         if (wrapClosure != null) {
             ensureFrameLevelAvailable(wrapFrameLevel);
@@ -429,7 +401,9 @@ public abstract class Environment {
     }
 
     private VarRef newFrameSlotVarRef(FrameSlot slot, int scopeLevel, int frameLevel, String name, Environment current) {
-        if (isMappedArgumentsParameter(slot, current)) {
+        if (current instanceof DebugEnvironment) {
+            return new LazyFrameSlotVarRef(slot, scopeLevel, frameLevel, name, current);
+        } else if (isMappedArgumentsParameter(slot, current)) {
             return new MappedArgumentVarRef(slot, scopeLevel, frameLevel, name, current);
         } else {
             return new FrameSlotVarRef(slot, scopeLevel, frameLevel, name, current);
@@ -1056,37 +1030,6 @@ public abstract class Environment {
         @Override
         public JavaScriptNode createWriteNode(JavaScriptNode rhs) {
             return factory.createLazyWriteFrameSlot(frameSlot.getIdentifier(), rhs);
-        }
-    }
-
-    class DebugVarRef extends VarRef {
-        DebugVarRef(String name) {
-            super(name);
-        }
-
-        @Override
-        public JavaScriptNode createReadNode() {
-            return factory.createDebugVarWrapper(name, factory.createConstantUndefined(), factory.createDebugScope(), factory.createReadProperty(context, null, name));
-        }
-
-        @Override
-        public JavaScriptNode createWriteNode(JavaScriptNode rhs) {
-            return factory.createWriteConstantVariable(rhs, isStrictMode());
-        }
-
-        @Override
-        public JavaScriptNode createDeleteNode() {
-            return factory.createConstantBoolean(false);
-        }
-
-        @Override
-        public boolean isFunctionLocal() {
-            return false;
-        }
-
-        @Override
-        public boolean isGlobal() {
-            return false;
         }
     }
 

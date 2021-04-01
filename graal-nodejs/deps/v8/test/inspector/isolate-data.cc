@@ -61,9 +61,8 @@ IsolateData::IsolateData(TaskRunner* task_runner,
     : task_runner_(task_runner),
       setup_global_tasks_(std::move(setup_global_tasks)) {
   v8::Isolate::CreateParams params;
-  array_buffer_allocator_.reset(
-      v8::ArrayBuffer::Allocator::NewDefaultAllocator());
-  params.array_buffer_allocator = array_buffer_allocator_.get();
+  params.array_buffer_allocator =
+      v8::ArrayBuffer::Allocator::NewDefaultAllocator();
   params.snapshot_blob = startup_data;
   params.only_terminate_in_safe_scope = true;
   isolate_.reset(v8::Isolate::New(params));
@@ -76,9 +75,10 @@ IsolateData::IsolateData(TaskRunner* task_runner,
   v8::HandleScope handle_scope(isolate_.get());
   not_inspectable_private_.Reset(
       isolate_.get(),
-      v8::Private::ForApi(
-          isolate_.get(),
-          v8::String::NewFromUtf8Literal(isolate_.get(), "notInspectable")));
+      v8::Private::ForApi(isolate_.get(), v8::String::NewFromUtf8(
+                                              isolate_.get(), "notInspectable",
+                                              v8::NewStringType::kNormal)
+                                              .ToLocalChecked()));
 }
 
 IsolateData* IsolateData::FromContext(v8::Local<v8::Context> context) {
@@ -309,7 +309,9 @@ void IsolateData::PromiseRejectHandler(v8::PromiseRejectMessage data) {
   if (context.IsEmpty()) return;
   v8::Local<v8::Promise> promise = data.GetPromise();
   v8::Local<v8::Private> id_private = v8::Private::ForApi(
-      isolate, v8::String::NewFromUtf8Literal(isolate, "id"));
+      isolate,
+      v8::String::NewFromUtf8(isolate, "id", v8::NewStringType::kNormal)
+          .ToLocalChecked());
 
   if (data.GetEvent() == v8::kPromiseHandlerAddedAfterReject) {
     v8::Local<v8::Value> id;
@@ -370,8 +372,9 @@ std::vector<int> IsolateData::GetSessionIds(int context_group_id) {
 bool IsolateData::formatAccessorsAsProperties(v8::Local<v8::Value> object) {
   v8::Local<v8::Context> context = isolate()->GetCurrentContext();
   v8::Local<v8::Private> shouldFormatAccessorsPrivate = v8::Private::ForApi(
-      isolate(),
-      v8::String::NewFromUtf8Literal(isolate(), "allowAccessorFormatting"));
+      isolate(), v8::String::NewFromUtf8(isolate(), "allowAccessorFormatting",
+                                         v8::NewStringType::kNormal)
+                     .ToLocalChecked());
   CHECK(object->IsObject());
   return object.As<v8::Object>()
       ->HasPrivate(context, shouldFormatAccessorsPrivate)
@@ -457,14 +460,13 @@ namespace {
 class StringBufferImpl : public v8_inspector::StringBuffer {
  public:
   StringBufferImpl(v8::Isolate* isolate, v8::Local<v8::String> string)
-      : data_(ToVector(isolate, string)) {}
-
-  v8_inspector::StringView string() const override {
-    return v8_inspector::StringView(data_.begin(), data_.length());
-  }
+      : data_(ToVector(isolate, string)),
+        view_(data_.begin(), data_.length()) {}
+  const v8_inspector::StringView& string() override { return view_; }
 
  private:
   v8::internal::Vector<uint16_t> data_;
+  v8_inspector::StringView view_;
 };
 }  // anonymous namespace
 

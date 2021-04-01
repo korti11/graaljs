@@ -11,7 +11,7 @@ const assert = require('assert');
 // large Buffers.
 const buffer = require('buffer');
 const oldkMaxLength = buffer.kMaxLength;
-buffer.kMaxLength = 64;
+buffer.kMaxLength = 128;
 const zlib = require('zlib');
 buffer.kMaxLength = oldkMaxLength;
 

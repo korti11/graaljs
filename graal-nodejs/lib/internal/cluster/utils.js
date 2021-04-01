@@ -1,8 +1,7 @@
 'use strict';
 
 const {
-  ReflectApply,
-  SafeMap,
+  Map,
 } = primordials;
 
 module.exports = {
@@ -10,7 +9,7 @@ module.exports = {
   internal
 };
 
-const callbacks = new SafeMap();
+const callbacks = new Map();
 let seq = 0;
 
 function sendHelper(proc, message, handle, cb) {
@@ -45,6 +44,6 @@ function internal(worker, cb) {
       }
     }
 
-    ReflectApply(fn, worker, arguments);
+    fn.apply(worker, arguments);
   };
 }

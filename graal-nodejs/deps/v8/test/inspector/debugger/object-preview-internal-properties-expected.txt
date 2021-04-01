@@ -42,7 +42,7 @@ expression: Promise.resolve(42)
 {
     name : [[PromiseStatus]]
     type : string
-    value : fulfilled
+    value : resolved
 }
 {
     name : [[PromiseValue]]
@@ -251,7 +251,7 @@ expression: Promise.resolve(42)
 {
     name : [[PromiseStatus]]
     type : string
-    value : fulfilled
+    value : resolved
 }
 {
     name : [[PromiseValue]]
@@ -308,6 +308,5 @@ expression: new Proxy(() => {}, { get: () => x++ })
 {
     name : name
     type : string
-    value : 
+    value :
 }
-

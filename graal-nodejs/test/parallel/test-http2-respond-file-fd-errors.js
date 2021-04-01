@@ -7,7 +7,6 @@ const fixtures = require('../common/fixtures');
 const assert = require('assert');
 const http2 = require('http2');
 const fs = require('fs');
-const { inspect } = require('util');
 
 const optionsWithTypeError = {
   offset: 'number',
@@ -66,7 +65,7 @@ server.on('stream', common.mustCall((stream) => {
         {
           name: 'TypeError',
           code: 'ERR_INVALID_OPT_VALUE',
-          message: `The value "${inspect(types[type])}" is invalid ` +
+          message: `The value "${String(types[type])}" is invalid ` +
                    `for option "${option}"`
         }
       );

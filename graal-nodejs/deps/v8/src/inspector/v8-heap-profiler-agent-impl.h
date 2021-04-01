@@ -5,8 +5,6 @@
 #ifndef V8_INSPECTOR_V8_HEAP_PROFILER_AGENT_IMPL_H_
 #define V8_INSPECTOR_V8_HEAP_PROFILER_AGENT_IMPL_H_
 
-#include <memory>
-
 #include "src/base/macros.h"
 #include "src/inspector/protocol/Forward.h"
 #include "src/inspector/protocol/HeapProfiler.h"
@@ -31,14 +29,11 @@ class V8HeapProfilerAgentImpl : public protocol::HeapProfiler::Backend {
 
   Response enable() override;
   Response startTrackingHeapObjects(Maybe<bool> trackAllocations) override;
-  Response stopTrackingHeapObjects(
-      Maybe<bool> reportProgress,
-      Maybe<bool> treatGlobalObjectsAsRoots) override;
+  Response stopTrackingHeapObjects(Maybe<bool> reportProgress) override;
 
   Response disable() override;
 
-  Response takeHeapSnapshot(Maybe<bool> reportProgress,
-                            Maybe<bool> treatGlobalObjectsAsRoots) override;
+  Response takeHeapSnapshot(Maybe<bool> reportProgress) override;
 
   Response getObjectByHeapObjectId(
       const String16& heapSnapshotObjectId, Maybe<String16> objectGroup,

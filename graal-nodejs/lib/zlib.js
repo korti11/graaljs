@@ -22,7 +22,6 @@
 'use strict';
 
 const {
-  ArrayBuffer,
   Error,
   MathMax,
   NumberIsFinite,
@@ -34,7 +33,6 @@ const {
   ObjectKeys,
   ObjectSetPrototypeOf,
   Symbol,
-  Uint32Array,
 } = primordials;
 
 const {
@@ -47,7 +45,7 @@ const {
   },
   hideStackFrames
 } = require('internal/errors');
-const { Transform, finished } = require('stream');
+const Transform = require('_stream_transform');
 const {
   deprecate
 } = require('internal/util');
@@ -64,7 +62,6 @@ const {
 const { owner_symbol } = require('internal/async_hooks').symbols;
 
 const kFlushFlag = Symbol('kFlushFlag');
-const kError = Symbol('kError');
 
 const constants = internalBinding('constants').zlib;
 const {
@@ -125,11 +122,6 @@ function zlibBufferOnData(chunk) {
   else
     this.buffers.push(chunk);
   this.nread += chunk.length;
-  if (this.nread > this._maxOutputLength) {
-    this.close();
-    this.removeAllListeners('end');
-    this.cb(new ERR_BUFFER_TOO_LARGE(this._maxOutputLength));
-  }
 }
 
 function zlibBufferOnError(err) {
@@ -139,14 +131,19 @@ function zlibBufferOnError(err) {
 
 function zlibBufferOnEnd() {
   let buf;
-  if (this.nread === 0) {
+  let err;
+  if (this.nread >= kMaxLength) {
+    err = new ERR_BUFFER_TOO_LARGE();
+  } else if (this.nread === 0) {
     buf = Buffer.alloc(0);
   } else {
     const bufs = this.buffers;
     buf = (bufs.length === 1 ? bufs[0] : Buffer.concat(bufs, this.nread));
   }
   this.close();
-  if (this._info)
+  if (err)
+    this.cb(err);
+  else if (this._info)
     this.cb(null, { buffer: buf, engine: this });
   else
     this.cb(null, buf);
@@ -176,13 +173,14 @@ function zlibOnError(message, errno, code) {
   const self = this[owner_symbol];
   // There is no way to cleanly recover.
   // Continuing only obscures problems.
+  _close(self);
+  self._hadError = true;
 
   // eslint-disable-next-line no-restricted-syntax
   const error = new Error(message);
   error.errno = errno;
   error.code = code;
-  self.destroy(error);
-  self[kError] = error;
+  self.emit('error', error);
 }
 
 // 1. Returns false for undefined and NaN
@@ -232,7 +230,6 @@ const checkRangesOrGetDefault = hideStackFrames(
 // The base class for all Zlib-style streams.
 function ZlibBase(opts, mode, handle, { flush, finishFlush, fullFlush }) {
   let chunkSize = Z_DEFAULT_CHUNK;
-  let maxOutputLength = kMaxLength;
   // The ZlibBase class is not exported to user land, the mode should only be
   // passed in by us.
   assert(typeof mode === 'number');
@@ -255,10 +252,6 @@ function ZlibBase(opts, mode, handle, { flush, finishFlush, fullFlush }) {
       opts.finishFlush, 'options.finishFlush',
       Z_NO_FLUSH, Z_BLOCK, finishFlush);
 
-    maxOutputLength = checkRangesOrGetDefault(
-      opts.maxOutputLength, 'options.maxOutputLength',
-      1, kMaxLength, kMaxLength);
-
     if (opts.encoding || opts.objectMode || opts.writableObjectMode) {
       opts = { ...opts };
       opts.encoding = null;
@@ -267,8 +260,8 @@ function ZlibBase(opts, mode, handle, { flush, finishFlush, fullFlush }) {
     }
   }
 
-  Transform.call(this, { autoDestroy: true, ...opts });
-  this[kError] = null;
+  Transform.call(this, opts);
+  this._hadError = false;
   this.bytesWritten = 0;
   this._handle = handle;
   handle[owner_symbol] = this;
@@ -281,8 +274,8 @@ function ZlibBase(opts, mode, handle, { flush, finishFlush, fullFlush }) {
   this._defaultFlushFlag = flush;
   this._finishFlushFlag = finishFlush;
   this._defaultFullFlushFlag = fullFlush;
+  this.once('end', _close.bind(null, this));
   this._info = opts && opts.info;
-  this._maxOutputLength = maxOutputLength;
 }
 ObjectSetPrototypeOf(ZlibBase.prototype, Transform.prototype);
 ObjectSetPrototypeOf(ZlibBase, Transform);
@@ -356,15 +349,17 @@ const kFlushBuffers = [];
 }
 
 ZlibBase.prototype.flush = function(kind, callback) {
+  const ws = this._writableState;
+
   if (typeof kind === 'function' || (kind === undefined && !callback)) {
     callback = kind;
     kind = this._defaultFullFlushFlag;
   }
 
-  if (this.writableFinished) {
+  if (ws.ended) {
     if (callback)
       process.nextTick(callback);
-  } else if (this.writableEnded) {
+  } else if (ws.ending) {
     if (callback)
       this.once('end', callback);
   } else {
@@ -373,7 +368,7 @@ ZlibBase.prototype.flush = function(kind, callback) {
 };
 
 ZlibBase.prototype.close = function(callback) {
-  if (callback) finished(this, callback);
+  _close(this, callback);
   this.destroy();
 };
 
@@ -391,7 +386,8 @@ ZlibBase.prototype._transform = function(chunk, encoding, cb) {
   }
 
   // For the last chunk, also apply `_finishFlushFlag`.
-  if (this.writableEnded && this.writableLength === chunk.byteLength) {
+  const ws = this._writableState;
+  if ((ws.ending || ws.ended) && ws.length === chunk.byteLength) {
     flushFlag = maxFlush(flushFlag, this._finishFlushFlag);
   }
   processChunk(this, chunk, flushFlag, cb);
@@ -436,8 +432,6 @@ function processChunkSync(self, chunk, flushFlag) {
                      availOutBefore); // out_len
     if (error)
       throw error;
-    else if (self[kError])
-      throw self[kError];
 
     availOutAfter = state[0];
     availInAfter = state[1];
@@ -454,12 +448,6 @@ function processChunkSync(self, chunk, flushFlag) {
       else
         buffers.push(out);
       nread += out.byteLength;
-
-      if (nread > self._maxOutputLength) {
-        _close(self);
-        throw new ERR_BUFFER_TOO_LARGE(self._maxOutputLength);
-      }
-
     } else {
       assert(have === 0, 'have should not go down');
     }
@@ -485,6 +473,10 @@ function processChunkSync(self, chunk, flushFlag) {
 
   self.bytesWritten = inputRead;
   _close(self);
+
+  if (nread >= kMaxLength) {
+    throw new ERR_BUFFER_TOO_LARGE();
+  }
 
   if (nread === 0)
     return Buffer.alloc(0);
@@ -520,7 +512,7 @@ function processCallback() {
   const self = this[owner_symbol];
   const state = self._writeState;
 
-  if (self.destroyed) {
+  if (self._hadError || self.destroyed) {
     this.buffer = null;
     this.cb();
     return;
@@ -586,7 +578,10 @@ function processCallback() {
   this.cb();
 }
 
-function _close(engine) {
+function _close(engine, callback) {
+  if (callback)
+    process.nextTick(callback);
+
   // Caller may invoke .close after a zlib error (which will null _handle).
   if (!engine._handle)
     return;
@@ -657,13 +652,18 @@ function Zlib(opts, mode) {
   // to come up with a good solution that doesn't break our internal API,
   // and with it all supported npm versions at the time of writing.
   this._writeState = new Uint32Array(2);
-  handle.init(windowBits,
-              level,
-              memLevel,
-              strategy,
-              this._writeState,
-              processCallback,
-              dictionary);
+  if (!handle.init(windowBits,
+                   level,
+                   memLevel,
+                   strategy,
+                   this._writeState,
+                   processCallback,
+                   dictionary)) {
+    // TODO(addaleax): Sometimes we generate better error codes in C++ land,
+    // e.g. ERR_BROTLI_PARAM_SET_FAILED -- it's hard to access them with
+    // the current bindings setup, though.
+    throw new ERR_ZLIB_INITIALIZATION_FAILED();
+  }
 
   ZlibBase.call(this, opts, mode, handle, zlibDefaultOpts);
 
@@ -680,7 +680,7 @@ ObjectSetPrototypeOf(Zlib, ZlibBase);
 function paramsAfterFlushCallback(level, strategy, callback) {
   assert(this._handle, 'zlib binding closed');
   this._handle.params(level, strategy);
-  if (!this.destroyed) {
+  if (!this._hadError) {
     this._level = level;
     this._strategy = strategy;
     if (callback) callback();
@@ -809,9 +809,6 @@ function Brotli(opts, mode) {
     new binding.BrotliDecoder(mode) : new binding.BrotliEncoder(mode);
 
   this._writeState = new Uint32Array(2);
-  // TODO(addaleax): Sometimes we generate better error codes in C++ land,
-  // e.g. ERR_BROTLI_PARAM_SET_FAILED -- it's hard to access them with
-  // the current bindings setup, though.
   if (!handle.init(brotliInitParamsArray,
                    this._writeState,
                    processCallback)) {

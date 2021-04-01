@@ -2,7 +2,6 @@
 
 const {
   Array,
-  Int8Array,
   Number,
   ObjectCreate,
   ObjectDefineProperties,
@@ -12,7 +11,6 @@ const {
   ObjectKeys,
   ReflectGetOwnPropertyDescriptor,
   ReflectOwnKeys,
-  String,
   Symbol,
   SymbolIterator,
   SymbolToStringTag,
@@ -29,7 +27,6 @@ const { getConstructorOf, removeColors } = require('internal/util');
 const {
   ERR_ARG_NOT_ITERABLE,
   ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CALLBACK,
   ERR_INVALID_FILE_URL_HOST,
   ERR_INVALID_FILE_URL_PATH,
@@ -361,8 +358,11 @@ class URL {
     if (typeof depth === 'number' && depth < 0)
       return this;
 
-    const constructor = getConstructorOf(this) || URL;
-    const obj = ObjectCreate({ constructor });
+    const ctor = getConstructorOf(this);
+
+    const obj = ObjectCreate({
+      constructor: ctor === null ? URL : ctor
+    });
 
     obj.href = this.href;
     obj.origin = this.origin;
@@ -383,7 +383,7 @@ class URL {
       obj[context] = this[context];
     }
 
-    return `${constructor.name} ${inspect(obj, opts)}`;
+    return inspect(obj, opts);
   }
 }
 
@@ -818,7 +818,7 @@ function parseParams(qs) {
 
 // Adapted from querystring's implementation.
 // Ref: https://url.spec.whatwg.org/#concept-urlencoded-byte-serializer
-const noEscape = new Int8Array([
+const noEscape = [
 /*
   0, 1, 2, 3, 4, 5, 6, 7, 8, 9, A, B, C, D, E, F
 */
@@ -830,7 +830,7 @@ const noEscape = new Int8Array([
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, // 0x50 - 0x5F
   0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0x60 - 0x6F
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0  // 0x70 - 0x7F
-]);
+];
 
 // Special version of hexTable that uses `+` for U+0020 SPACE.
 const paramHexTable = hexTable.slice();
@@ -1369,59 +1369,33 @@ const backslashRegEx = /\\/g;
 const newlineRegEx = /\n/g;
 const carriageReturnRegEx = /\r/g;
 const tabRegEx = /\t/g;
-
-function encodePathChars(filepath) {
-  if (filepath.includes('%'))
-    filepath = filepath.replace(percentRegEx, '%25');
-  // In posix, backslash is a valid character in paths:
-  if (!isWindows && filepath.includes('\\'))
-    filepath = filepath.replace(backslashRegEx, '%5C');
-  if (filepath.includes('\n'))
-    filepath = filepath.replace(newlineRegEx, '%0A');
-  if (filepath.includes('\r'))
-    filepath = filepath.replace(carriageReturnRegEx, '%0D');
-  if (filepath.includes('\t'))
-    filepath = filepath.replace(tabRegEx, '%09');
-  return filepath;
-}
-
 function pathToFileURL(filepath) {
+  let resolved = path.resolve(filepath);
+  // path.resolve strips trailing slashes so we must add them back
+  const filePathLast = filepath.charCodeAt(filepath.length - 1);
+  if ((filePathLast === CHAR_FORWARD_SLASH ||
+       (isWindows && filePathLast === CHAR_BACKWARD_SLASH)) &&
+      resolved[resolved.length - 1] !== path.sep)
+    resolved += '/';
   const outURL = new URL('file://');
-  if (isWindows && filepath.startsWith('\\\\')) {
-    // UNC path format: \\server\share\resource
-    const paths = filepath.split('\\');
-    if (paths.length <= 3) {
-      throw new ERR_INVALID_ARG_VALUE(
-        'filepath',
-        filepath,
-        'Missing UNC resource path'
-      );
-    }
-    const hostname = paths[2];
-    if (hostname.length === 0) {
-      throw new ERR_INVALID_ARG_VALUE(
-        'filepath',
-        filepath,
-        'Empty UNC servername'
-      );
-    }
-    outURL.hostname = domainToASCII(hostname);
-    outURL.pathname = encodePathChars(paths.slice(3).join('/'));
-  } else {
-    let resolved = path.resolve(filepath);
-    // path.resolve strips trailing slashes so we must add them back
-    const filePathLast = filepath.charCodeAt(filepath.length - 1);
-    if ((filePathLast === CHAR_FORWARD_SLASH ||
-         (isWindows && filePathLast === CHAR_BACKWARD_SLASH)) &&
-        resolved[resolved.length - 1] !== path.sep)
-      resolved += '/';
-    outURL.pathname = encodePathChars(resolved);
-  }
+  if (resolved.includes('%'))
+    resolved = resolved.replace(percentRegEx, '%25');
+  // In posix, "/" is a valid character in paths
+  if (!isWindows && resolved.includes('\\'))
+    resolved = resolved.replace(backslashRegEx, '%5C');
+  if (resolved.includes('\n'))
+    resolved = resolved.replace(newlineRegEx, '%0A');
+  if (resolved.includes('\r'))
+    resolved = resolved.replace(carriageReturnRegEx, '%0D');
+  if (resolved.includes('\t'))
+    resolved = resolved.replace(tabRegEx, '%09');
+  outURL.pathname = resolved;
   return outURL;
 }
 
 function isURLInstance(fileURLOrPath) {
-  return fileURLOrPath != null && fileURLOrPath.href && fileURLOrPath.origin;
+  return fileURLOrPath != null && fileURLOrPath[searchParams] &&
+    fileURLOrPath[searchParams][searchParams];
 }
 
 function toPathIfFileURL(fileURLOrPath) {

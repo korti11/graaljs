@@ -80,7 +80,7 @@ public abstract class JSNonProxyObject extends JSClassObject {
     public final Object getMetaObjectImpl() {
         assert !JSGuards.isJSProxy(this);
         Object metaObject = JSRuntime.getDataProperty(this, JSObject.CONSTRUCTOR);
-        if (metaObject != null && metaObject instanceof JSFunctionObject && ((JSFunctionObject) metaObject).isMetaInstance(this)) {
+        if (metaObject != null && metaObject instanceof JSFunctionObject) {
             return metaObject;
         }
         return null;

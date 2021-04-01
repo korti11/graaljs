@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 // Flags: --wasm-max-mem-pages=49152
-// Save some memory on Linux; other platforms ignore this flag.
-// Flags: --multi-mapped-mock-allocator
 
 // This test makes sure things don't break once we support >2GB wasm memories.
 load("test/mjsunit/wasm/wasm-module-builder.js");
@@ -18,8 +16,8 @@ load("test/mjsunit/wasm/wasm-module-builder.js");
   builder.addMemory(num_pages, num_pages, true);
   builder.addFunction("geti", kSig_i_ii)
     .addBody([
-      kExprLocalGet, 0,
-      kExprLocalGet, 1,
+      kExprGetLocal, 0,
+      kExprGetLocal, 1,
       kExprI32Mul,
       kExprI32LoadMem, 0, 0,
     ])

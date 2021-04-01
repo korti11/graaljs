@@ -21,7 +21,7 @@
 #include "src/objects/slots.h"
 #include "src/objects/smi.h"
 #include "src/objects/visitors.h"
-#include "src/snapshot/embedded/embedded-data.h"
+#include "src/snapshot/snapshot.h"
 #include "src/strings/string-stream.h"
 #include "src/wasm/wasm-code-manager.h"
 #include "src/wasm/wasm-engine.h"
@@ -455,10 +455,7 @@ void SafeStackFrameIterator::Advance() {
       last_callback_scope = external_callback_scope_;
       external_callback_scope_ = external_callback_scope_->previous();
     }
-    if (frame_->is_java_script() || frame_->is_wasm() ||
-        frame_->is_wasm_to_js()) {
-      break;
-    }
+    if (frame_->is_java_script() || frame_->is_wasm()) break;
     if (frame_->is_exit() || frame_->is_builtin_exit()) {
       // Some of the EXIT frames may have ExternalCallbackScope allocated on
       // top of them. In that case the scope corresponds to the first EXIT
@@ -491,18 +488,15 @@ Code StackFrame::LookupCode() const {
 
 void StackFrame::IteratePc(RootVisitor* v, Address* pc_address,
                            Address* constant_pool_address, Code holder) {
-  Address old_pc = ReadPC(pc_address);
-  DCHECK(ReadOnlyHeap::Contains(holder) ||
-         holder.GetHeap()->GcSafeCodeContains(holder, old_pc));
-  unsigned pc_offset =
-      static_cast<unsigned>(old_pc - holder.InstructionStart());
+  Address pc = *pc_address;
+  DCHECK(holder.GetHeap()->GcSafeCodeContains(holder, pc));
+  unsigned pc_offset = static_cast<unsigned>(pc - holder.InstructionStart());
   Object code = holder;
   v->VisitRootPointer(Root::kTop, nullptr, FullObjectSlot(&code));
   if (code == holder) return;
   holder = Code::unchecked_cast(code);
-  Address pc = holder.InstructionStart() + pc_offset;
-  // TODO(v8:10026): avoid replacing a signed pointer.
-  PointerAuthentication::ReplacePC(pc_address, pc, kSystemPointerSize);
+  pc = holder.InstructionStart() + pc_offset;
+  *pc_address = pc;
   if (FLAG_enable_embedded_constant_pool && constant_pool_address) {
     *constant_pool_address = holder.constant_pool();
   }
@@ -523,7 +517,6 @@ StackFrame::Type StackFrame::ComputeType(const StackFrameIteratorBase* iterator,
       kSystemPointerSize);
   intptr_t marker = Memory<intptr_t>(
       state->fp + CommonFrameConstants::kContextOrFrameTypeOffset);
-  Address pc = StackFrame::ReadPC(state->pc_address);
   if (!iterator->can_access_heap_objects_) {
     // TODO(titzer): "can_access_heap_objects" is kind of bogus. It really
     // means that we are being called from the profiler, which can interrupt
@@ -538,13 +531,15 @@ StackFrame::Type StackFrame::ComputeType(const StackFrameIteratorBase* iterator,
     if (!StackFrame::IsTypeMarker(marker)) {
       if (maybe_function.IsSmi()) {
         return NATIVE;
-      } else if (IsInterpreterFramePc(iterator->isolate(), pc, state)) {
+      } else if (IsInterpreterFramePc(iterator->isolate(), *(state->pc_address),
+                                      state)) {
         return INTERPRETED;
       } else {
         return OPTIMIZED;
       }
     }
   } else {
+    Address pc = *(state->pc_address);
     // If the {pc} does not point into WebAssembly code we can rely on the
     // returned {wasm_code} to be null and fall back to {GetContainingCode}.
     wasm::WasmCodeRefScope code_ref_scope;
@@ -553,11 +548,21 @@ StackFrame::Type StackFrame::ComputeType(const StackFrameIteratorBase* iterator,
     if (wasm_code != nullptr) {
       switch (wasm_code->kind()) {
         case wasm::WasmCode::kFunction:
-          return WASM;
+          return WASM_COMPILED;
         case wasm::WasmCode::kWasmToCapiWrapper:
           return WASM_EXIT;
         case wasm::WasmCode::kWasmToJsWrapper:
           return WASM_TO_JS;
+        case wasm::WasmCode::kRuntimeStub:
+          // Some stubs, like e.g. {WasmCode::kWasmCompileLazy} build their own
+          // specialized frame which already carries a type marker.
+          // TODO(mstarzinger): This is only needed for the case where embedded
+          // builtins are disabled. It can be removed once all non-embedded
+          // builtins are gone.
+          if (StackFrame::IsTypeMarker(marker)) break;
+          return STUB;
+        case wasm::WasmCode::kInterpreterEntry:
+          return WASM_INTERPRETER_ENTRY;
         default:
           UNREACHABLE();
       }
@@ -590,6 +595,7 @@ StackFrame::Type StackFrame::ComputeType(const StackFrameIteratorBase* iterator,
           case Code::WASM_FUNCTION:
           case Code::WASM_TO_CAPI_FUNCTION:
           case Code::WASM_TO_JS_FUNCTION:
+          case Code::WASM_INTERPRETER_ENTRY:
             // Never appear as on-heap {Code} objects.
             UNREACHABLE();
           default:
@@ -616,10 +622,9 @@ StackFrame::Type StackFrame::ComputeType(const StackFrameIteratorBase* iterator,
     case CONSTRUCT:
     case ARGUMENTS_ADAPTOR:
     case WASM_TO_JS:
-    case WASM:
+    case WASM_COMPILED:
     case WASM_COMPILE_LAZY:
     case WASM_EXIT:
-    case WASM_DEBUG_BREAK:
       return candidate;
     case JS_TO_WASM:
     case OPTIMIZED:
@@ -893,7 +898,6 @@ void StandardFrame::ComputeCallerState(State* state) const {
   state->fp = caller_fp();
   state->pc_address = ResolveReturnAddressLocation(
       reinterpret_cast<Address*>(ComputePCAddress(fp())));
-  state->callee_fp = fp();
   state->callee_pc_address = pc_address();
   state->constant_pool_address =
       reinterpret_cast<Address*>(ComputeConstantPoolAddress(fp()));
@@ -967,21 +971,21 @@ void StandardFrame::IterateCompiledFrame(RootVisitor* v) const {
       case CONSTRUCT:
       case JS_TO_WASM:
       case C_WASM_ENTRY:
-      case WASM_DEBUG_BREAK:
         frame_header_size = TypedFrameConstants::kFixedFrameSizeFromFp;
         break;
       case WASM_TO_JS:
-      case WASM:
+      case WASM_COMPILED:
+      case WASM_INTERPRETER_ENTRY:
       case WASM_COMPILE_LAZY:
-        frame_header_size = WasmFrameConstants::kFixedFrameSizeFromFp;
+        frame_header_size = WasmCompiledFrameConstants::kFixedFrameSizeFromFp;
         break;
       case WASM_EXIT:
         // The last value in the frame header is the calling PC, which should
         // not be visited.
         static_assert(WasmExitFrameConstants::kFixedSlotCountFromFp ==
-                          WasmFrameConstants::kFixedSlotCountFromFp + 1,
-                      "WasmExitFrame has one slot more than WasmFrame");
-        frame_header_size = WasmFrameConstants::kFixedFrameSizeFromFp;
+                          WasmCompiledFrameConstants::kFixedSlotCountFromFp + 1,
+                      "WasmExitFrame has one slot more than WasmCompiledFrame");
+        frame_header_size = WasmCompiledFrameConstants::kFixedFrameSizeFromFp;
         break;
       case OPTIMIZED:
       case INTERPRETED:
@@ -1075,12 +1079,13 @@ Address StubFrame::GetCallerStackPointer() const {
   return fp() + ExitFrameConstants::kCallerSPOffset;
 }
 
-int StubFrame::LookupExceptionHandlerInTable() {
+int StubFrame::LookupExceptionHandlerInTable(int* stack_slots) {
   Code code = LookupCode();
   DCHECK(code.is_turbofanned());
   DCHECK_EQ(code.kind(), Code::BUILTIN);
   HandlerTable table(code);
   int pc_offset = static_cast<int>(pc() - code.InstructionStart());
+  *stack_slots = code.stack_slots();
   return table.LookupReturn(pc_offset);
 }
 
@@ -1266,7 +1271,6 @@ void JavaScriptFrame::CollectFunctionAndOffsetForICStats(JSFunction function,
   if (maybe_script.IsScript()) {
     Script script = Script::cast(maybe_script);
     ic_info.line_num = script.GetLineNumber(source_pos) + 1;
-    ic_info.column_num = script.GetColumnNumber(source_pos);
     ic_info.script_name = ic_stats->GetOrCacheScriptName(script);
   }
 }
@@ -1320,7 +1324,7 @@ Object JavaScriptBuiltinContinuationFrame::context() const {
 void JavaScriptBuiltinContinuationWithCatchFrame::SetException(
     Object exception) {
   Address exception_argument_slot =
-      fp() + BuiltinContinuationFrameConstants::kFixedFrameSizeAboveFp +
+      fp() + JavaScriptFrameConstants::kLastParameterOffset +
       kSystemPointerSize;  // Skip over return value slot.
 
   // Only allow setting exception if previous value was the hole.
@@ -1392,30 +1396,36 @@ Handle<Context> FrameSummary::JavaScriptFrameSummary::native_context() const {
 }
 
 FrameSummary::WasmFrameSummary::WasmFrameSummary(
-    Isolate* isolate, Handle<WasmInstanceObject> instance, wasm::WasmCode* code,
-    int code_offset, bool at_to_number_conversion)
-    : FrameSummaryBase(isolate, WASM),
+    Isolate* isolate, FrameSummary::Kind kind,
+    Handle<WasmInstanceObject> instance, bool at_to_number_conversion)
+    : FrameSummaryBase(isolate, kind),
       wasm_instance_(instance),
-      at_to_number_conversion_(at_to_number_conversion),
-      code_(code),
-      code_offset_(code_offset) {}
+      at_to_number_conversion_(at_to_number_conversion) {}
 
 Handle<Object> FrameSummary::WasmFrameSummary::receiver() const {
   return wasm_instance_->GetIsolate()->global_proxy();
 }
 
-uint32_t FrameSummary::WasmFrameSummary::function_index() const {
-  return code()->index();
-}
+#define WASM_SUMMARY_DISPATCH(type, name)                                      \
+  type FrameSummary::WasmFrameSummary::name() const {                          \
+    DCHECK(kind() == Kind::WASM_COMPILED || kind() == Kind::WASM_INTERPRETED); \
+    return kind() == Kind::WASM_COMPILED                                       \
+               ? static_cast<const WasmCompiledFrameSummary*>(this)->name()    \
+               : static_cast<const WasmInterpretedFrameSummary*>(this)         \
+                     ->name();                                                 \
+  }
 
-int FrameSummary::WasmFrameSummary::byte_offset() const {
-  return code_->GetSourcePositionBefore(code_offset());
-}
+WASM_SUMMARY_DISPATCH(uint32_t, function_index)
+WASM_SUMMARY_DISPATCH(int, byte_offset)
+
+#undef WASM_SUMMARY_DISPATCH
 
 int FrameSummary::WasmFrameSummary::SourcePosition() const {
-  const wasm::WasmModule* module = wasm_instance()->module_object().module();
-  return GetSourcePosition(module, function_index(), byte_offset(),
-                           at_to_number_conversion());
+  Handle<WasmModuleObject> module_object(wasm_instance()->module_object(),
+                                         isolate());
+  return WasmModuleObject::GetSourcePosition(module_object, function_index(),
+                                             byte_offset(),
+                                             at_to_number_conversion());
 }
 
 Handle<Script> FrameSummary::WasmFrameSummary::script() const {
@@ -1433,6 +1443,42 @@ Handle<String> FrameSummary::WasmFrameSummary::FunctionName() const {
 Handle<Context> FrameSummary::WasmFrameSummary::native_context() const {
   return handle(wasm_instance()->native_context(), isolate());
 }
+
+FrameSummary::WasmCompiledFrameSummary::WasmCompiledFrameSummary(
+    Isolate* isolate, Handle<WasmInstanceObject> instance, wasm::WasmCode* code,
+    int code_offset, bool at_to_number_conversion)
+    : WasmFrameSummary(isolate, WASM_COMPILED, instance,
+                       at_to_number_conversion),
+      code_(code),
+      code_offset_(code_offset) {}
+
+uint32_t FrameSummary::WasmCompiledFrameSummary::function_index() const {
+  return code()->index();
+}
+
+int FrameSummary::WasmCompiledFrameSummary::GetWasmSourcePosition(
+    const wasm::WasmCode* code, int offset) {
+  int position = 0;
+  // Subtract one because the current PC is one instruction after the call site.
+  offset--;
+  for (SourcePositionTableIterator iterator(code->source_positions());
+       !iterator.done() && iterator.code_offset() <= offset;
+       iterator.Advance()) {
+    position = iterator.source_position().ScriptOffset();
+  }
+  return position;
+}
+
+int FrameSummary::WasmCompiledFrameSummary::byte_offset() const {
+  return GetWasmSourcePosition(code_, code_offset());
+}
+
+FrameSummary::WasmInterpretedFrameSummary::WasmInterpretedFrameSummary(
+    Isolate* isolate, Handle<WasmInstanceObject> instance,
+    uint32_t function_index, int byte_offset)
+    : WasmFrameSummary(isolate, WASM_INTERPRETED, instance, false),
+      function_index_(function_index),
+      byte_offset_(byte_offset) {}
 
 FrameSummary::~FrameSummary() {
 #define FRAME_SUMMARY_DESTR(kind, type, field, desc) \
@@ -1473,16 +1519,19 @@ FrameSummary FrameSummary::Get(const StandardFrame* frame, int index) {
   return frames[index];
 }
 
-#define FRAME_SUMMARY_DISPATCH(ret, name)   \
-  ret FrameSummary::name() const {          \
-    switch (base_.kind()) {                 \
-      case JAVA_SCRIPT:                     \
-        return java_script_summary_.name(); \
-      case WASM:                            \
-        return wasm_summary_.name();        \
-      default:                              \
-        UNREACHABLE();                      \
-    }                                       \
+#define FRAME_SUMMARY_DISPATCH(ret, name)        \
+  ret FrameSummary::name() const {               \
+    switch (base_.kind()) {                      \
+      case JAVA_SCRIPT:                          \
+        return java_script_summary_.name();      \
+      case WASM_COMPILED:                        \
+        return wasm_compiled_summary_.name();    \
+      case WASM_INTERPRETED:                     \
+        return wasm_interpreted_summary_.name(); \
+      default:                                   \
+        UNREACHABLE();                           \
+        return ret{};                            \
+    }                                            \
   }
 
 FRAME_SUMMARY_DISPATCH(Handle<Object>, receiver)
@@ -1578,7 +1627,7 @@ void OptimizedFrame::Summarize(std::vector<FrameSummary>* frames) const {
 }
 
 int OptimizedFrame::LookupExceptionHandlerInTable(
-    int* data, HandlerTable::CatchPrediction* prediction) {
+    int* stack_slots, HandlerTable::CatchPrediction* prediction) {
   // We cannot perform exception prediction on optimized code. Instead, we need
   // to use FrameSummary to find the corresponding code offset in unoptimized
   // code to perform prediction there.
@@ -1586,7 +1635,7 @@ int OptimizedFrame::LookupExceptionHandlerInTable(
   Code code = LookupCode();
   HandlerTable table(code);
   int pc_offset = static_cast<int>(pc() - code.InstructionStart());
-  DCHECK_NULL(data);  // Data is not used and will not return a value.
+  if (stack_slots) *stack_slots = code.stack_slots();
 
   // When the return pc has been replaced by a trampoline there won't be
   // a handler for this trampoline. Thus we need to use the return pc that
@@ -1624,12 +1673,11 @@ DeoptimizationData OptimizedFrame::GetDeoptimizationData(
   return DeoptimizationData();
 }
 
-#ifndef V8_REVERSE_JSARGS
 Object OptimizedFrame::receiver() const {
   Code code = LookupCode();
   if (code.kind() == Code::BUILTIN) {
-    intptr_t argc = static_cast<int>(
-        Memory<intptr_t>(fp() + OptimizedBuiltinFrameConstants::kArgCOffset));
+    Address argc_ptr = fp() + OptimizedBuiltinFrameConstants::kArgCOffset;
+    intptr_t argc = *reinterpret_cast<intptr_t*>(argc_ptr);
     intptr_t args_size =
         (StandardFrameConstants::kFixedSlotCountAboveFp + argc) *
         kSystemPointerSize;
@@ -1639,7 +1687,6 @@ Object OptimizedFrame::receiver() const {
     return JavaScriptFrame::receiver();
   }
 }
-#endif
 
 void OptimizedFrame::GetFunctions(
     std::vector<SharedFunctionInfo>* functions) const {
@@ -1738,7 +1785,7 @@ void InterpretedFrame::PatchBytecodeOffset(int new_offset) {
   DCHECK_EQ(InterpreterFrameConstants::kBytecodeOffsetFromFp,
             InterpreterFrameConstants::kExpressionsOffset -
                 index * kSystemPointerSize);
-  int raw_offset = BytecodeArray::kHeaderSize - kHeapObjectTag + new_offset;
+  int raw_offset = new_offset + BytecodeArray::kHeaderSize - kHeapObjectTag;
   SetExpression(index, Smi::FromInt(raw_offset));
 }
 
@@ -1810,8 +1857,8 @@ Address InternalFrame::GetCallerStackPointer() const {
 
 Code InternalFrame::unchecked_code() const { return Code(); }
 
-void WasmFrame::Print(StringStream* accumulator, PrintMode mode,
-                      int index) const {
+void WasmCompiledFrame::Print(StringStream* accumulator, PrintMode mode,
+                              int index) const {
   PrintIndex(accumulator, mode, index);
   accumulator->Add("WASM [");
   accumulator->PrintName(script().name());
@@ -1838,61 +1885,43 @@ void WasmFrame::Print(StringStream* accumulator, PrintMode mode,
   if (mode != OVERVIEW) accumulator->Add("\n");
 }
 
-Code WasmFrame::unchecked_code() const {
+Code WasmCompiledFrame::unchecked_code() const {
   return isolate()->FindCodeObject(pc());
 }
 
-void WasmFrame::Iterate(RootVisitor* v) const { IterateCompiledFrame(v); }
+void WasmCompiledFrame::Iterate(RootVisitor* v) const {
+  IterateCompiledFrame(v);
+}
 
-Address WasmFrame::GetCallerStackPointer() const {
+Address WasmCompiledFrame::GetCallerStackPointer() const {
   return fp() + ExitFrameConstants::kCallerSPOffset;
 }
 
-wasm::WasmCode* WasmFrame::wasm_code() const {
+wasm::WasmCode* WasmCompiledFrame::wasm_code() const {
   return isolate()->wasm_engine()->code_manager()->LookupCode(pc());
 }
 
-WasmInstanceObject WasmFrame::wasm_instance() const {
-  const int offset = WasmFrameConstants::kWasmInstanceOffset;
+WasmInstanceObject WasmCompiledFrame::wasm_instance() const {
+  const int offset = WasmCompiledFrameConstants::kWasmInstanceOffset;
   Object instance(Memory<Address>(fp() + offset));
   return WasmInstanceObject::cast(instance);
 }
 
-wasm::NativeModule* WasmFrame::native_module() const {
-  return module_object().native_module();
-}
-
-WasmModuleObject WasmFrame::module_object() const {
+WasmModuleObject WasmCompiledFrame::module_object() const {
   return wasm_instance().module_object();
 }
 
-uint32_t WasmFrame::function_index() const {
-  return FrameSummary::GetSingle(this).AsWasm().function_index();
+uint32_t WasmCompiledFrame::function_index() const {
+  return FrameSummary::GetSingle(this).AsWasmCompiled().function_index();
 }
 
-Script WasmFrame::script() const { return module_object().script(); }
+Script WasmCompiledFrame::script() const { return module_object().script(); }
 
-int WasmFrame::position() const {
-  wasm::WasmCodeRefScope code_ref_scope;
-  const wasm::WasmModule* module = wasm_instance().module_object().module();
-  return GetSourcePosition(module, function_index(), byte_offset(),
-                           at_to_number_conversion());
+int WasmCompiledFrame::position() const {
+  return FrameSummary::GetSingle(this).SourcePosition();
 }
 
-int WasmFrame::byte_offset() const {
-  wasm::WasmCode* code = wasm_code();
-  int offset = static_cast<int>(pc() - code->instruction_start());
-  return code->GetSourcePositionBefore(offset);
-}
-
-bool WasmFrame::is_inspectable() const {
-  wasm::WasmCodeRefScope code_ref_scope;
-  return wasm_code()->is_inspectable();
-}
-
-Object WasmFrame::context() const { return wasm_instance().native_context(); }
-
-void WasmFrame::Summarize(std::vector<FrameSummary>* functions) const {
+void WasmCompiledFrame::Summarize(std::vector<FrameSummary>* functions) const {
   DCHECK(functions->empty());
   // The {WasmCode*} escapes this scope via the {FrameSummary}, which is fine,
   // since this code object is part of our stack.
@@ -1900,12 +1929,12 @@ void WasmFrame::Summarize(std::vector<FrameSummary>* functions) const {
   wasm::WasmCode* code = wasm_code();
   int offset = static_cast<int>(pc() - code->instruction_start());
   Handle<WasmInstanceObject> instance(wasm_instance(), isolate());
-  FrameSummary::WasmFrameSummary summary(isolate(), instance, code, offset,
-                                         at_to_number_conversion());
+  FrameSummary::WasmCompiledFrameSummary summary(
+      isolate(), instance, code, offset, at_to_number_conversion());
   functions->push_back(summary);
 }
 
-bool WasmFrame::at_to_number_conversion() const {
+bool WasmCompiledFrame::at_to_number_conversion() const {
   // Check whether our callee is a WASM_TO_JS frame, and this frame is at the
   // ToNumber conversion call.
   wasm::WasmCode* code =
@@ -1914,43 +1943,84 @@ bool WasmFrame::at_to_number_conversion() const {
           : nullptr;
   if (!code || code->kind() != wasm::WasmCode::kWasmToJsWrapper) return false;
   int offset = static_cast<int>(callee_pc() - code->instruction_start());
-  int pos = code->GetSourcePositionBefore(offset);
+  int pos = FrameSummary::WasmCompiledFrameSummary::GetWasmSourcePosition(
+      code, offset);
+  DCHECK(pos == 0 || pos == 1);
   // The imported call has position 0, ToNumber has position 1.
-  // If there is no source position available, this is also not a ToNumber call.
-  DCHECK(pos == wasm::kNoCodePosition || pos == 0 || pos == 1);
-  return pos == 1;
+  return !!pos;
 }
 
-int WasmFrame::LookupExceptionHandlerInTable() {
+int WasmCompiledFrame::LookupExceptionHandlerInTable(int* stack_slots) {
+  DCHECK_NOT_NULL(stack_slots);
   wasm::WasmCode* code =
       isolate()->wasm_engine()->code_manager()->LookupCode(pc());
   if (!code->IsAnonymous() && code->handler_table_size() > 0) {
     HandlerTable table(code->handler_table(), code->handler_table_size(),
                        HandlerTable::kReturnAddressBasedEncoding);
     int pc_offset = static_cast<int>(pc() - code->instruction_start());
+    *stack_slots = static_cast<int>(code->stack_slots());
     return table.LookupReturn(pc_offset);
   }
   return -1;
 }
 
-void WasmDebugBreakFrame::Iterate(RootVisitor* v) const {
-  // Nothing to iterate here. This will change once we support references in
-  // Liftoff.
+void WasmInterpreterEntryFrame::Iterate(RootVisitor* v) const {
+  IterateCompiledFrame(v);
 }
 
-Code WasmDebugBreakFrame::unchecked_code() const { return Code(); }
-
-void WasmDebugBreakFrame::Print(StringStream* accumulator, PrintMode mode,
-                                int index) const {
+void WasmInterpreterEntryFrame::Print(StringStream* accumulator, PrintMode mode,
+                                      int index) const {
   PrintIndex(accumulator, mode, index);
-  accumulator->Add("WASM DEBUG BREAK");
+  accumulator->Add("WASM INTERPRETER ENTRY [");
+  Script script = this->script();
+  accumulator->PrintName(script.name());
+  accumulator->Add("]");
   if (mode != OVERVIEW) accumulator->Add("\n");
 }
 
-Address WasmDebugBreakFrame::GetCallerStackPointer() const {
-  // WasmDebugBreak does not receive any arguments, hence the stack pointer of
-  // the caller is at a fixed offset from the frame pointer.
-  return fp() + WasmDebugBreakFrameConstants::kCallerSPOffset;
+void WasmInterpreterEntryFrame::Summarize(
+    std::vector<FrameSummary>* functions) const {
+  Handle<WasmInstanceObject> instance(wasm_instance(), isolate());
+  std::vector<std::pair<uint32_t, int>> interpreted_stack =
+      instance->debug_info().GetInterpretedStack(fp());
+
+  for (auto& e : interpreted_stack) {
+    FrameSummary::WasmInterpretedFrameSummary summary(isolate(), instance,
+                                                      e.first, e.second);
+    functions->push_back(summary);
+  }
+}
+
+Code WasmInterpreterEntryFrame::unchecked_code() const { return Code(); }
+
+WasmInstanceObject WasmInterpreterEntryFrame::wasm_instance() const {
+  const int offset = WasmCompiledFrameConstants::kWasmInstanceOffset;
+  Object instance(Memory<Address>(fp() + offset));
+  return WasmInstanceObject::cast(instance);
+}
+
+WasmDebugInfo WasmInterpreterEntryFrame::debug_info() const {
+  return wasm_instance().debug_info();
+}
+
+WasmModuleObject WasmInterpreterEntryFrame::module_object() const {
+  return wasm_instance().module_object();
+}
+
+Script WasmInterpreterEntryFrame::script() const {
+  return module_object().script();
+}
+
+int WasmInterpreterEntryFrame::position() const {
+  return FrameSummary::GetBottom(this).AsWasmInterpreted().SourcePosition();
+}
+
+Object WasmInterpreterEntryFrame::context() const {
+  return wasm_instance().native_context();
+}
+
+Address WasmInterpreterEntryFrame::GetCallerStackPointer() const {
+  return fp() + ExitFrameConstants::kCallerSPOffset;
 }
 
 Code WasmCompileLazyFrame::unchecked_code() const { return Code(); }

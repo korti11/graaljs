@@ -121,14 +121,14 @@ CallDescriptor* CreateRandomCallDescriptor(Zone* zone, size_t return_count,
   wasm::FunctionSig::Builder builder(zone, return_count, param_count);
   for (size_t i = 0; i < param_count; i++) {
     MachineType type = RandomType(input);
-    builder.AddParam(wasm::ValueType::For(type));
+    builder.AddParam(wasm::ValueTypes::ValueTypeFor(type));
   }
   // Read the end byte of the parameters.
   input->NextInt8(1);
 
   for (size_t i = 0; i < return_count; i++) {
     MachineType type = RandomType(input);
-    builder.AddReturn(wasm::ValueType::For(type));
+    builder.AddReturn(wasm::ValueTypes::ValueTypeFor(type));
   }
 
   return compiler::GetWasmCallDescriptor(zone, builder.Build());
@@ -142,10 +142,8 @@ std::shared_ptr<wasm::NativeModule> AllocateNativeModule(i::Isolate* isolate,
   // We have to add the code object to a NativeModule, because the
   // WasmCallDescriptor assumes that code is on the native heap and not
   // within a code object.
-  auto native_module = isolate->wasm_engine()->NewNativeModule(
-      isolate, i::wasm::WasmFeatures::All(), std::move(module), code_size);
-  native_module->SetWireBytes({});
-  return native_module;
+  return isolate->wasm_engine()->NewNativeModule(
+      isolate, i::wasm::kAllWasmFeatures, code_size, false, std::move(module));
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {

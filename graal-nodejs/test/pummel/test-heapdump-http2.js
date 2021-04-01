@@ -14,7 +14,7 @@ const http2 = require('http2');
 
 const server = http2.createServer();
 server.on('stream', (stream) => {
-  stream.respondWithFile(process.execPath);
+  stream.respondWithFile(__filename);
 });
 server.listen(0, () => {
   const client = http2.connect(`http://localhost:${server.address().port}`);

@@ -56,18 +56,12 @@ function download() {
       if (res.complete) res.readable = true;
       callback();
     };
-    if (!abortRequest) {
-      res.on('end', common.mustCall(() => {
-        reqCountdown.dec();
-      }));
-    } else {
-      res.on('aborted', common.mustCall(() => {
-        aborted = true;
-        reqCountdown.dec();
-        writable.end();
-      }));
-    }
-
+    res.on('end', common.mustCall(() => {
+      reqCountdown.dec();
+    }));
+    res.on('aborted', () => {
+      aborted = true;
+    });
     res.on('error', common.mustNotCall());
     writable.on('finish', () => {
       assert.strictEqual(aborted, abortRequest);

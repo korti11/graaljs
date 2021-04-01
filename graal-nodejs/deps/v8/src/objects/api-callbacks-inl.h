@@ -22,28 +22,37 @@ namespace v8 {
 namespace internal {
 
 TQ_OBJECT_CONSTRUCTORS_IMPL(AccessCheckInfo)
-TQ_OBJECT_CONSTRUCTORS_IMPL(AccessorInfo)
+OBJECT_CONSTRUCTORS_IMPL(AccessorInfo, Struct)
 TQ_OBJECT_CONSTRUCTORS_IMPL(InterceptorInfo)
 
 TQ_OBJECT_CONSTRUCTORS_IMPL(CallHandlerInfo)
+
+CAST_ACCESSOR(AccessorInfo)
+
+ACCESSORS(AccessorInfo, name, Name, kNameOffset)
+SMI_ACCESSORS(AccessorInfo, flags, kFlagsOffset)
+ACCESSORS(AccessorInfo, expected_receiver_type, Object,
+          kExpectedReceiverTypeOffset)
 
 ACCESSORS_CHECKED2(AccessorInfo, getter, Object, kGetterOffset, true,
                    Foreign::IsNormalized(value))
 ACCESSORS_CHECKED2(AccessorInfo, setter, Object, kSetterOffset, true,
                    Foreign::IsNormalized(value))
+ACCESSORS(AccessorInfo, js_getter, Object, kJsGetterOffset)
+ACCESSORS(AccessorInfo, data, Object, kDataOffset)
 
 bool AccessorInfo::has_getter() {
-  bool result = getter() != Smi::zero();
+  bool result = getter() != Smi::kZero;
   DCHECK_EQ(result,
-            getter() != Smi::zero() &&
+            getter() != Smi::kZero &&
                 Foreign::cast(getter()).foreign_address() != kNullAddress);
   return result;
 }
 
 bool AccessorInfo::has_setter() {
-  bool result = setter() != Smi::zero();
+  bool result = setter() != Smi::kZero;
   DCHECK_EQ(result,
-            setter() != Smi::zero() &&
+            setter() != Smi::kZero &&
                 Foreign::cast(setter()).foreign_address() != kNullAddress);
   return result;
 }
@@ -87,13 +96,14 @@ bool AccessorInfo::HasExpectedReceiverType() {
   return expected_receiver_type().IsFunctionTemplateInfo();
 }
 
+TQ_SMI_ACCESSORS(InterceptorInfo, flags)
 BOOL_ACCESSORS(InterceptorInfo, flags, can_intercept_symbols,
-               CanInterceptSymbolsBit::kShift)
-BOOL_ACCESSORS(InterceptorInfo, flags, all_can_read, AllCanReadBit::kShift)
-BOOL_ACCESSORS(InterceptorInfo, flags, non_masking, NonMaskingBit::kShift)
-BOOL_ACCESSORS(InterceptorInfo, flags, is_named, NamedBit::kShift)
-BOOL_ACCESSORS(InterceptorInfo, flags, has_no_side_effect,
-               HasNoSideEffectBit::kShift)
+               kCanInterceptSymbolsBit)
+BOOL_ACCESSORS(InterceptorInfo, flags, all_can_read, kAllCanReadBit)
+BOOL_ACCESSORS(InterceptorInfo, flags, non_masking, kNonMasking)
+BOOL_ACCESSORS(InterceptorInfo, flags, is_named, kNamed)
+BOOL_ACCESSORS(InterceptorInfo, flags, has_no_side_effect, kHasNoSideEffect)
+
 
 bool CallHandlerInfo::IsSideEffectFreeCallHandlerInfo() const {
   ReadOnlyRoots roots = GetReadOnlyRoots();

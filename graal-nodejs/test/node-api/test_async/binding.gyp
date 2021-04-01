@@ -2,7 +2,7 @@
   "targets": [
     {
       "target_name": "test_async",
-      "sources": [ "test_async.c" ]
+      "sources": [ "test_async.cc" ]
     }
   ]
 }

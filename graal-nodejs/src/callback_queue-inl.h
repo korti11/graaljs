@@ -10,8 +10,8 @@ namespace node {
 template <typename R, typename... Args>
 template <typename Fn>
 std::unique_ptr<typename CallbackQueue<R, Args...>::Callback>
-CallbackQueue<R, Args...>::CreateCallback(Fn&& fn, CallbackFlags::Flags flags) {
-  return std::make_unique<CallbackImpl<Fn>>(std::move(fn), flags);
+CallbackQueue<R, Args...>::CreateCallback(Fn&& fn, bool refed) {
+  return std::make_unique<CallbackImpl<Fn>>(std::move(fn), refed);
 }
 
 template <typename R, typename... Args>
@@ -22,8 +22,8 @@ CallbackQueue<R, Args...>::Shift() {
     head_ = ret->get_next();
     if (!head_)
       tail_ = nullptr;  // The queue is now empty.
-    size_--;
   }
+  size_--;
   return ret;
 }
 
@@ -57,12 +57,12 @@ size_t CallbackQueue<R, Args...>::size() const {
 }
 
 template <typename R, typename... Args>
-CallbackQueue<R, Args...>::Callback::Callback(CallbackFlags::Flags flags)
-  : flags_(flags) {}
+CallbackQueue<R, Args...>::Callback::Callback(bool refed)
+  : refed_(refed) {}
 
 template <typename R, typename... Args>
-CallbackFlags::Flags CallbackQueue<R, Args...>::Callback::flags() const {
-  return flags_;
+bool CallbackQueue<R, Args...>::Callback::is_refed() const {
+  return refed_;
 }
 
 template <typename R, typename... Args>
@@ -80,8 +80,8 @@ void CallbackQueue<R, Args...>::Callback::set_next(
 template <typename R, typename... Args>
 template <typename Fn>
 CallbackQueue<R, Args...>::CallbackImpl<Fn>::CallbackImpl(
-    Fn&& callback, CallbackFlags::Flags flags)
-  : Callback(flags),
+    Fn&& callback, bool refed)
+  : Callback(refed),
     callback_(std::move(callback)) {}
 
 template <typename R, typename... Args>

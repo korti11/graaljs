@@ -5,8 +5,6 @@
 #ifndef V8_OBJECTS_OBJECT_LIST_MACROS_H_
 #define V8_OBJECTS_OBJECT_LIST_MACROS_H_
 
-#include "torque-generated/instance-types-tq.h"
-
 namespace v8 {
 namespace internal {
 
@@ -43,7 +41,6 @@ class HeapNumber;
 class ObjectHashTable;
 class ObjectTemplateInfo;
 class ObjectVisitor;
-class OSROptimizedCodeCache;
 class PreparseData;
 class PropertyArray;
 class PropertyCell;
@@ -82,13 +79,15 @@ class ZoneForwardList;
   V(AllocationSite)                            \
   V(ArrayList)                                 \
   V(BigInt)                                    \
-  V(BigIntBase)                                \
   V(BigIntWrapper)                             \
   V(ObjectBoilerplateDescription)              \
   V(Boolean)                                   \
   V(BooleanWrapper)                            \
+  V(BreakPoint)                                \
+  V(BreakPointInfo)                            \
   V(ByteArray)                                 \
   V(BytecodeArray)                             \
+  V(CachedTemplateObject)                      \
   V(CallHandlerInfo)                           \
   V(Callable)                                  \
   V(Cell)                                      \
@@ -126,8 +125,8 @@ class ZoneForwardList;
   V(HandlerTable)                              \
   V(HeapNumber)                                \
   V(InternalizedString)                        \
-  V(JSAggregateError)                          \
   V(JSArgumentsObject)                         \
+  V(JSArgumentsObjectWithLength)               \
   V(JSArray)                                   \
   V(JSArrayBuffer)                             \
   V(JSArrayBufferView)                         \
@@ -139,13 +138,12 @@ class ZoneForwardList;
   V(JSCollection)                              \
   V(JSCollectionIterator)                      \
   V(JSContextExtensionObject)                  \
-  V(JSCustomElementsObject)                    \
   V(JSDataView)                                \
   V(JSDate)                                    \
   V(JSError)                                   \
-  V(JSFinalizationRegistry)                    \
+  V(JSFinalizationGroup)                       \
+  V(JSFinalizationGroupCleanupIterator)        \
   V(JSFunction)                                \
-  V(JSFunctionOrBoundFunction)                 \
   V(JSGeneratorObject)                         \
   V(JSGlobalObject)                            \
   V(JSGlobalProxy)                             \
@@ -159,10 +157,11 @@ class ZoneForwardList;
   V(JSProxy)                                   \
   V(JSReceiver)                                \
   V(JSRegExp)                                  \
+  V(JSRegExpResult)                            \
   V(JSRegExpStringIterator)                    \
   V(JSSet)                                     \
   V(JSSetIterator)                             \
-  V(JSSpecialObject)                           \
+  V(JSSloppyArgumentsObject)                   \
   V(JSStringIterator)                          \
   V(JSTypedArray)                              \
   V(JSWeakCollection)                          \
@@ -186,12 +185,11 @@ class ZoneForwardList;
   V(OrderedHashMap)                            \
   V(OrderedHashSet)                            \
   V(OrderedNameDictionary)                     \
-  V(OSROptimizedCodeCache)                     \
   V(PreparseData)                              \
-  V(PrimitiveHeapObject)                       \
   V(PromiseReactionJobTask)                    \
   V(PropertyArray)                             \
   V(PropertyCell)                              \
+  V(PropertyDescriptorObject)                  \
   V(RegExpMatchInfo)                           \
   V(ScopeInfo)                                 \
   V(ScriptContextTable)                        \
@@ -226,19 +224,15 @@ class ZoneForwardList;
   V(UncompiledDataWithoutPreparseData)         \
   V(Undetectable)                              \
   V(UniqueName)                                \
-  V(WasmArray)                                 \
   V(WasmExceptionObject)                       \
-  V(WasmExceptionPackage)                      \
   V(WasmGlobalObject)                          \
   V(WasmInstanceObject)                        \
   V(WasmMemoryObject)                          \
   V(WasmModuleObject)                          \
-  V(WasmStruct)                                \
   V(WasmTableObject)                           \
   V(WeakFixedArray)                            \
   V(WeakArrayList)                             \
-  V(WeakCell)                                  \
-  TORQUE_INTERNAL_CLASS_LIST(V)
+  V(WeakCell)
 
 #ifdef V8_INTL_SUPPORT
 #define HEAP_OBJECT_ORDINARY_TYPE_LIST(V) \
@@ -246,7 +240,6 @@ class ZoneForwardList;
   V(JSV8BreakIterator)                    \
   V(JSCollator)                           \
   V(JSDateTimeFormat)                     \
-  V(JSDisplayNames)                       \
   V(JSListFormat)                         \
   V(JSLocale)                             \
   V(JSNumberFormat)                       \
@@ -263,26 +256,9 @@ class ZoneForwardList;
 // Logical sub-types of heap objects that don't correspond to a C++ class but
 // represent some specialization in terms of additional constraints.
 #define HEAP_OBJECT_SPECIALIZED_TYPE_LIST(V) \
-  V(AwaitContext)                            \
-  V(BlockContext)                            \
   V(CallableApiObject)                       \
   V(CallableJSProxy)                         \
-  V(CatchContext)                            \
-  V(DebugEvaluateContext)                    \
-  V(EvalContext)                             \
-  V(FreeSpaceOrFiller)                       \
-  V(FunctionContext)                         \
-  V(JSApiObject)                             \
-  V(JSMapKeyIterator)                        \
-  V(JSMapKeyValueIterator)                   \
-  V(JSMapValueIterator)                      \
-  V(JSSetKeyValueIterator)                   \
-  V(JSSetValueIterator)                      \
-  V(JSSpecialApiObject)                      \
-  V(ModuleContext)                           \
-  V(NonNullForeign)                          \
-  V(ScriptContext)                           \
-  V(WithContext)
+  V(NonNullForeign)
 
 #define HEAP_OBJECT_TYPE_LIST(V)    \
   HEAP_OBJECT_ORDINARY_TYPE_LIST(V) \

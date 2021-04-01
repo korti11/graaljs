@@ -19,8 +19,7 @@ class TestConfig(object):
                run_skipped,
                shell_dir,
                timeout,
-               verbose,
-               regenerate_expected_files=False):
+               verbose):
     self.command_prefix = command_prefix
     self.extra_flags = extra_flags
     self.isolates = isolates
@@ -33,4 +32,3 @@ class TestConfig(object):
     self.shell_dir = shell_dir
     self.timeout = timeout
     self.verbose = verbose
-    self.regenerate_expected_files = regenerate_expected_files

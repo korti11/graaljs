@@ -43,3 +43,5 @@ assertSame(3, array.length);
 assertSame(array[0], 0);
 assertSame(array[1], 4);
 assertSame(array[2], undefined);
+
+true;

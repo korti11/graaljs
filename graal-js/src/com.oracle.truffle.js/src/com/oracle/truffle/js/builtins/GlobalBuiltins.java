@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -78,7 +78,6 @@ import com.oracle.truffle.api.interop.TruffleObject;
 import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.io.TruffleProcessBuilder;
 import com.oracle.truffle.api.library.CachedLibrary;
-import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.profiles.BranchProfile;
 import com.oracle.truffle.api.profiles.ConditionProfile;
@@ -255,7 +254,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
                 case quit:
                     return JSGlobalExitNodeGen.create(context, builtin, args().fixedArgs(1).createArgumentNodes(context));
                 case readline:
-                    return JSGlobalReadLineNodeGen.create(context, builtin, false, new JavaScriptNode[]{JSConstantNode.createUndefined()});
+                    return JSGlobalReadLineNodeGen.create(context, builtin, new JavaScriptNode[]{JSConstantNode.createUndefined()});
                 case read:
                     return JSGlobalReadFullyNodeGen.create(context, builtin, args().fixedArgs(1).createArgumentNodes(context));
                 case readbuffer:
@@ -375,7 +374,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
                 case quit:
                     return JSGlobalExitNodeGen.create(context, builtin, args().fixedArgs(1).createArgumentNodes(context));
                 case readLine:
-                    return JSGlobalReadLineNodeGen.create(context, builtin, true, args().fixedArgs(1).createArgumentNodes(context));
+                    return JSGlobalReadLineNodeGen.create(context, builtin, args().fixedArgs(1).createArgumentNodes(context));
                 case readFully:
                     return JSGlobalReadFullyNodeGen.create(context, builtin, args().fixedArgs(1).createArgumentNodes(context));
                 case parseToJSON:
@@ -896,33 +895,33 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
         }
 
         @Specialization(guards = "isUndefined(radix0)")
-        protected int parseIntNoRadix(int value, @SuppressWarnings("unused") Object radix0) {
-            return value;
+        protected int parseIntNoRadix(int thing, @SuppressWarnings("unused") Object radix0) {
+            return thing;
         }
 
         @Specialization(guards = "!isUndefined(radix0)")
-        protected Object parseIntInt(int value, Object radix0,
+        protected Object parseIntInt(int thing, Object radix0,
                         @Cached("create()") BranchProfile needsRadixConversion) {
             int radix = toInt32(radix0);
             if (radix == 10 || radix == 0) {
-                return value;
+                return thing;
             }
             if (radix < 2 || radix > 36) {
                 needsNaN.enter();
                 return Double.NaN;
             }
             needsRadixConversion.enter();
-            return convertToRadix(value, radix);
+            return convertToRadix(thing, radix);
         }
 
-        @Specialization(guards = {"hasRegularToStringInInt32Range(value)", "isUndefined(radix0)"})
-        protected int parseIntDoubleToInt(double value, @SuppressWarnings("unused") Object radix0) {
-            return (int) value;
+        @Specialization(guards = {"hasRegularToStringInInt32Range(thing)", "isUndefined(radix0)"})
+        protected int parseIntDoubleToInt(double thing, @SuppressWarnings("unused") Object radix0) {
+            return (int) thing;
         }
 
-        @Specialization(guards = {"hasRegularToString(value)", "isUndefined(radix0)"})
-        protected double parseIntDoubleNoRadix(double value, @SuppressWarnings("unused") Object radix0) {
-            return JSRuntime.truncateDouble(value);
+        @Specialization(guards = {"hasRegularToString(thing)", "isUndefined(radix0)"})
+        protected double parseIntDoubleNoRadix(double thing, @SuppressWarnings("unused") Object radix0) {
+            return JSRuntime.truncateDouble2(thing);
         }
 
         // double specializations should not be used for numbers
@@ -936,8 +935,8 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
             return (Integer.MIN_VALUE - 1.0 < value && value <= -1) || (value == 0) || (1e-6 <= value && value < Integer.MAX_VALUE + 1.0);
         }
 
-        @Specialization(guards = "hasRegularToString(value)")
-        protected double parseIntDouble(double value, Object radix0,
+        @Specialization(guards = "hasRegularToString(thing)")
+        protected double parseIntDouble(double thing, Object radix0,
                         @Cached("create()") BranchProfile needsRadixConversion) {
             int radix = toInt32(radix0);
             if (radix == 0) {
@@ -946,7 +945,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
                 needsNaN.enter();
                 return Double.NaN;
             }
-            double truncated = JSRuntime.truncateDouble(value);
+            double truncated = JSRuntime.truncateDouble2(thing);
             if (radix == 10) {
                 return truncated;
             } else {
@@ -1019,16 +1018,16 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
             }
         }
 
-        protected static boolean isShortStringInt10(Object input, Object radix) {
-            return JSRuntime.isString(input) && JSRuntime.toStringIsString(input).length() < 15 && radix instanceof Integer && ((Integer) radix) == 10;
+        protected static boolean isShortStringInt10(Object thing, Object radix) {
+            return JSRuntime.isString(thing) && JSRuntime.toStringIsString(thing).length() < 15 && radix instanceof Integer && ((Integer) radix) == 10;
         }
 
-        @Specialization(guards = "!isShortStringInt10(input, radix0)")
-        protected Object parseIntGeneric(Object input, Object radix0,
+        @Specialization(guards = "!isShortStringInt10(thing, radix0)")
+        protected Object parseIntGeneric(Object thing, Object radix0,
                         @Cached("create()") JSToStringNode toStringNode,
                         @Cached("create()") BranchProfile needsRadix16,
                         @Cached("create()") BranchProfile needsDontFitLong) {
-            String inputStr = toStringNode.executeString(input);
+            String inputStr = toStringNode.executeString(thing);
 
             int firstIdx = JSRuntime.firstNonWhitespaceIndex(inputStr, false);
             int lastIdx = JSRuntime.lastNonWhitespaceIndex(inputStr, false) + 1;
@@ -1087,10 +1086,10 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
             return negate ? -value : value;
         }
 
-        private static Object convertToRadix(int inputValue, int radix) {
+        private static Object convertToRadix(int thing, int radix) {
             assert radix >= 2 && radix <= 36;
-            boolean negative = inputValue < 0;
-            long value = inputValue;
+            boolean negative = thing < 0;
+            long value = thing;
             if (negative) {
                 value = -value;
             }
@@ -1111,10 +1110,10 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
             return JSRuntime.longToIntOrDouble(result);
         }
 
-        private static double convertToRadix(double inputValue, int radix) {
+        private static double convertToRadix(double thing, int radix) {
             assert (radix >= 2 && radix <= 36);
-            boolean negative = inputValue < 0;
-            double value = negative ? -inputValue : inputValue;
+            boolean negative = thing < 0;
+            double value = negative ? -thing : thing;
             double result = 0;
             double radixVal = 1;
             while (value != 0) {
@@ -1141,10 +1140,10 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
         }
 
         @TruffleBoundary
-        private static int validStringLastIdx(String inputString, int radix, int firstIdx, int lastIdx) {
+        private static int validStringLastIdx(String thing, int radix, int firstIdx, int lastIdx) {
             int pos = firstIdx;
             while (pos < lastIdx) {
-                char c = inputString.charAt(pos);
+                char c = thing.charAt(pos);
                 if (JSRuntime.valueInRadix(c, radix) == -1) {
                     break;
                 }
@@ -1199,7 +1198,6 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
      * {@link EvalNode}.
      */
     public abstract static class JSGlobalIndirectEvalNode extends JSBuiltinNode {
-        @Child private IndirectCallNode callNode = IndirectCallNode.create();
 
         public JSGlobalIndirectEvalNode(JSContext context, JSBuiltin builtin) {
             super(context, builtin);
@@ -1208,7 +1206,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
         @Specialization
         protected Object indirectEvalString(String source) {
             JSRealm realm = getContext().getRealm();
-            return parseIndirectEval(realm, source).runEval(callNode, realm);
+            return indirectEvalImpl(realm, source);
         }
 
         @Specialization(guards = "isForeignObject(source)", limit = "3")
@@ -1226,7 +1224,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
         }
 
         @TruffleBoundary(transferToInterpreterOnException = false)
-        private ScriptNode parseIndirectEval(JSRealm realm, String sourceCode) {
+        private Object indirectEvalImpl(JSRealm realm, String source) {
             String sourceName = null;
             if (isCallerSensitive()) {
                 sourceName = EvalNode.findAndFormatEvalOrigin(realm.getCallNode(), realm.getContext());
@@ -1234,8 +1232,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
             if (sourceName == null) {
                 sourceName = Evaluator.EVAL_SOURCE_NAME;
             }
-            Source source = Source.newBuilder(JavaScriptLanguage.ID, sourceCode, sourceName).build();
-            return getContext().getEvaluator().parseEval(getContext(), this, source);
+            return getContext().getEvaluator().evaluate(realm, this, Source.newBuilder(JavaScriptLanguage.ID, source, sourceName).build());
         }
 
         @Specialization
@@ -1353,7 +1350,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
         }
     }
 
-    @ImportStatic({JSInteropUtil.class, JSConfig.class})
+    @ImportStatic(value = JSInteropUtil.class)
     public abstract static class JSGlobalLoadNode extends JSLoadOperation {
 
         public JSGlobalLoadNode(JSContext context, JSBuiltin builtin) {
@@ -1373,7 +1370,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
 
         @Specialization(guards = "isForeignObject(scriptObj)")
         protected Object loadTruffleObject(Object scriptObj, Object[] args,
-                        @CachedLibrary(limit = "InteropLibraryLimit") InteropLibrary interop) {
+                        @CachedLibrary(limit = "3") InteropLibrary interop) {
             JSRealm realm = getContext().getRealm();
             TruffleLanguage.Env env = realm.getEnv();
             if (env.isHostObject(scriptObj)) {
@@ -1450,7 +1447,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
         protected Object loadFromPath(String path, JSRealm realm, Object[] args) {
             JSRealm childRealm = realm.createChildRealm();
             TruffleContext childContext = childRealm.getTruffleContext();
-            Object prev = childContext.enter(this);
+            Object prev = childContext.enter();
             try {
                 DynamicObject argObj = JSArgumentsArray.createStrictSlow(childRealm, args);
                 // TODO: should be a child realm array
@@ -1458,7 +1455,7 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
                 Source source = sourceFromPath(path, childRealm);
                 return runImpl(childRealm, source);
             } finally {
-                childContext.leave(this, prev);
+                childContext.leave(prev);
             }
         }
     }
@@ -1512,16 +1509,12 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
      */
     public abstract static class JSGlobalReadLineNode extends JSGlobalOperation {
 
-        // null for Nashorn, undefined for V8
-        private final boolean returnNullWhenEmpty;
-
-        public JSGlobalReadLineNode(JSContext context, JSBuiltin builtin, boolean returnNullWhenEmpty) {
+        public JSGlobalReadLineNode(JSContext context, JSBuiltin builtin) {
             super(context, builtin);
-            this.returnNullWhenEmpty = returnNullWhenEmpty;
         }
 
         @Specialization
-        protected Object readLine(Object prompt) {
+        protected String readLine(Object prompt) {
             String promptString = null;
             if (prompt != Undefined.instance) {
                 promptString = toString1(prompt);
@@ -1530,14 +1523,13 @@ public class GlobalBuiltins extends JSBuiltinsContainer.SwitchEnum<GlobalBuiltin
         }
 
         @TruffleBoundary
-        private Object doReadLine(String promptString) {
+        private String doReadLine(String promptString) {
             if (promptString != null) {
                 getContext().getRealm().getOutputWriter().print(promptString);
             }
             try {
                 final BufferedReader inReader = new BufferedReader(new InputStreamReader(getContext().getRealm().getEnv().in()));
-                String result = inReader.readLine();
-                return result == null ? (returnNullWhenEmpty ? Null.instance : Undefined.instance) : result;
+                return inReader.readLine();
             } catch (Exception ex) {
                 throw Errors.createError(ex.getMessage());
             }

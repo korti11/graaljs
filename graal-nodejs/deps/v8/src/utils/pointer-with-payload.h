@@ -46,7 +46,7 @@ class PointerWithPayload {
   static constexpr uintptr_t kPointerMask = ~kPayloadMask;
 
  public:
-  PointerWithPayload() = default;
+  PointerWithPayload() {}
 
   explicit PointerWithPayload(PointerType* pointer)
       : pointer_(reinterpret_cast<uintptr_t>(pointer)) {

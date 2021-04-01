@@ -138,9 +138,10 @@ void OptionsParser<Options>::Implies(const char* from,
                                      const char* to) {
   auto it = options_.find(to);
   CHECK_NE(it, options_.end());
-  CHECK(it->second.type == kBoolean || it->second.type == kV8Option);
-  implications_.emplace(
-      from, Implication{it->second.type, to, it->second.field, true});
+  CHECK_EQ(it->second.type, kBoolean);
+  implications_.emplace(from, Implication {
+    it->second.field, true
+  });
 }
 
 template <typename Options>
@@ -149,8 +150,9 @@ void OptionsParser<Options>::ImpliesNot(const char* from,
   auto it = options_.find(to);
   CHECK_NE(it, options_.end());
   CHECK_EQ(it->second.type, kBoolean);
-  implications_.emplace(
-      from, Implication{it->second.type, to, it->second.field, false});
+  implications_.emplace(from, Implication {
+    it->second.field, false
+  });
 }
 
 template <typename Options>
@@ -194,11 +196,9 @@ template <typename ChildOptions>
 auto OptionsParser<Options>::Convert(
     typename OptionsParser<ChildOptions>::Implication original,
     ChildOptions* (Options::* get_child)()) {
-  return Implication{
-      original.type,
-      original.name,
-      Convert(original.target_field, get_child),
-      original.target_value,
+  return Implication {
+    Convert(original.target_field, get_child),
+    original.target_value
   };
 }
 
@@ -366,21 +366,17 @@ void OptionsParser<Options>::Parse(
       break;
     }
 
-    {
-      auto implications = implications_.equal_range(name);
-      for (auto it = implications.first; it != implications.second; ++it) {
-        if (it->second.type == kV8Option) {
-          v8_args->push_back(it->second.name);
-        } else {
-          *it->second.target_field->template Lookup<bool>(options) =
-              it->second.target_value;
-        }
-      }
-    }
-
     if (it == options_.end()) {
       v8_args->push_back(arg);
       continue;
+    }
+
+    {
+      auto implications = implications_.equal_range(name);
+      for (auto it = implications.first; it != implications.second; ++it) {
+        *it->second.target_field->template Lookup<bool>(options) =
+            it->second.target_value;
+      }
     }
 
     const OptionInfo& info = it->second;

@@ -1,11 +1,8 @@
 'use strict';
 
 const {
-  ArrayPrototypeJoin,
-  FunctionPrototype,
+  Map,
   ObjectAssign,
-  ReflectApply,
-  SafeMap,
 } = primordials;
 
 const assert = require('internal/assert');
@@ -15,9 +12,9 @@ const { owner_symbol } = require('internal/async_hooks').symbols;
 const Worker = require('internal/cluster/worker');
 const { internal, sendHelper } = require('internal/cluster/utils');
 const cluster = new EventEmitter();
-const handles = new SafeMap();
-const indexes = new SafeMap();
-const noop = FunctionPrototype;
+const handles = new Map();
+const indexes = new Map();
+const noop = () => {};
 
 module.exports = cluster;
 
@@ -52,7 +49,7 @@ cluster._setupWorker = function() {
     if (message.act === 'newconn')
       onconnection(message, handle);
     else if (message.act === 'disconnect')
-      ReflectApply(_disconnect, worker, [true]);
+      _disconnect.call(worker, true);
   }
 };
 
@@ -65,13 +62,10 @@ cluster._getServer = function(obj, options, cb) {
       process.platform !== 'win32')
     address = path.resolve(address);
 
-  const indexesKey = ArrayPrototypeJoin(
-    [
-      address,
-      options.port,
-      options.addressType,
-      options.fd,
-    ], ':');
+  const indexesKey = [address,
+                      options.port,
+                      options.addressType,
+                      options.fd ].join(':');
 
   let index = indexes.get(indexesKey);
 
@@ -125,7 +119,7 @@ function shared(message, handle, indexesKey, cb) {
     send({ act: 'close', key });
     handles.delete(key);
     indexes.delete(indexesKey);
-    return ReflectApply(close, handle, arguments);
+    return close.apply(handle, arguments);
   };
   assert(handles.has(key) === false);
   handles.set(key, handle);
@@ -234,9 +228,9 @@ function _disconnect(masterInitiated) {
 
 // Extend generic Worker with methods specific to worker processes.
 Worker.prototype.disconnect = function() {
-  if (this.state !== 'disconnecting' && this.state !== 'destroying') {
+  if (![ 'disconnecting', 'destroying' ].includes(this.state)) {
     this.state = 'disconnecting';
-    ReflectApply(_disconnect, this, []);
+    _disconnect.call(this);
   }
 
   return this;

@@ -258,8 +258,9 @@ LayoutDescriptor LayoutDescriptor::Trim(Heap* heap, Map map,
 bool LayoutDescriptor::IsConsistentWithMap(Map map, bool check_tail) {
   if (FLAG_unbox_double_fields) {
     DescriptorArray descriptors = map.instance_descriptors();
+    int nof_descriptors = map.NumberOfOwnDescriptors();
     int last_field_index = 0;
-    for (InternalIndex i : map.IterateOwnDescriptors()) {
+    for (int i = 0; i < nof_descriptors; i++) {
       PropertyDetails details = descriptors.GetDetails(i);
       if (details.location() != kField) continue;
       FieldIndex field_index = FieldIndex::ForDescriptor(map, i);

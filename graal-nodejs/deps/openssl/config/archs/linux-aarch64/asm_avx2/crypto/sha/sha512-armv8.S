@@ -59,7 +59,6 @@
 .text
 
 
-.hidden	OPENSSL_armcap_P
 .globl	sha512_block_data_order
 .type	sha512_block_data_order,%function
 .align	6
@@ -1615,4 +1614,7 @@ sha512_block_armv8:
 	ldr	x29,[sp],#16
 	ret
 .size	sha512_block_armv8,.-sha512_block_armv8
+#endif
+#ifndef	__KERNEL__
+.comm	OPENSSL_armcap_P,4,4
 #endif

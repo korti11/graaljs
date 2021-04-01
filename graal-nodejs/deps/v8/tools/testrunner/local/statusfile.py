@@ -60,6 +60,7 @@ for key in [SKIP, FAIL, PASS, CRASH, SLOW, FAIL_OK, NO_VARIANTS, FAIL_SLOPPY,
 # Support arches, modes to be written as keywords instead of strings.
 VARIABLES = {ALWAYS: True}
 for var in ["debug", "release", "big", "little", "android",
+            "android_arm", "android_arm64", "android_ia32", "android_x64",
             "arm", "arm64", "ia32", "mips", "mipsel", "mips64", "mips64el",
             "x64", "ppc", "ppc64", "s390", "s390x", "macos", "windows",
             "linux", "aix", "r1", "r2", "r3", "r5", "r6"]:
@@ -299,8 +300,6 @@ JS_TEST_PATHS = {
   'webkit': [[]],
 }
 
-FILE_EXTENSIONS = [".js", ".mjs"]
-
 def PresubmitCheck(path):
   with open(path) as f:
     contents = ReadContent(f.read())
@@ -327,11 +326,8 @@ def PresubmitCheck(path):
         _assert('*' not in rule or (rule.count('*') == 1 and rule[-1] == '*'),
                 "Only the last character of a rule key can be a wildcard")
         if basename in JS_TEST_PATHS  and '*' not in rule:
-          def _any_exist(paths):
-            return any(os.path.exists(os.path.join(os.path.dirname(path),
-                                      *(paths + [rule + ext])))
-                       for ext in FILE_EXTENSIONS)
-          _assert(any(_any_exist(paths)
+          _assert(any(os.path.exists(os.path.join(os.path.dirname(path),
+                                                  *(paths + [rule + ".js"])))
                       for paths in JS_TEST_PATHS[basename]),
                   "missing file for %s test %s" % (basename, rule))
     return status["success"]

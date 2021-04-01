@@ -23,3 +23,5 @@ assertTrue(stringBuilder instanceof java.lang.StringBuilder);
 assertTrue(stringBuilder instanceof java.lang.CharSequence);
 assertTrue(stringBuilder instanceof java.lang.Object);
 assertFalse(stringBuilder instanceof java.lang.Runnable);
+
+true;

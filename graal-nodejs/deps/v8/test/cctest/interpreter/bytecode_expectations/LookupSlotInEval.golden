@@ -17,8 +17,9 @@ snippet: "
 "
 frame size: 0
 parameter count: 1
-bytecode array length: 5
+bytecode array length: 6
 bytecodes: [
+  /*   10 E> */ B(StackCheck),
   /*   15 S> */ B(LdaLookupGlobalSlot), U8(0), U8(0), U8(1),
   /*   24 S> */ B(Return),
 ]
@@ -39,8 +40,9 @@ snippet: "
 "
 frame size: 0
 parameter count: 1
-bytecode array length: 7
+bytecode array length: 8
 bytecodes: [
+  /*   10 E> */ B(StackCheck),
   /*   15 S> */ B(LdaSmi), I8(10),
   /*   17 E> */ B(StaLookupSlot), U8(0), U8(0),
                 B(LdaUndefined),
@@ -63,8 +65,9 @@ snippet: "
 "
 frame size: 0
 parameter count: 1
-bytecode array length: 7
+bytecode array length: 8
 bytecodes: [
+  /*   10 E> */ B(StackCheck),
   /*   29 S> */ B(LdaSmi), I8(10),
   /*   31 E> */ B(StaLookupSlot), U8(0), U8(1),
                 B(LdaUndefined),
@@ -87,8 +90,9 @@ snippet: "
 "
 frame size: 0
 parameter count: 1
-bytecode array length: 6
+bytecode array length: 7
 bytecodes: [
+  /*   10 E> */ B(StackCheck),
   /*   15 S> */ B(LdaLookupGlobalSlotInsideTypeof), U8(0), U8(0), U8(1),
                 B(TypeOf),
   /*   31 S> */ B(Return),

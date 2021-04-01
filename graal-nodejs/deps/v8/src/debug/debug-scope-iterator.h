@@ -39,7 +39,8 @@ class DebugScopeIterator final : public debug::ScopeIterator {
 
 class DebugWasmScopeIterator final : public debug::ScopeIterator {
  public:
-  DebugWasmScopeIterator(Isolate* isolate, WasmFrame* frame);
+  DebugWasmScopeIterator(Isolate* isolate, StandardFrame* frame,
+                         int inlined_frame_index);
 
   bool Done() override;
   void Advance() override;
@@ -55,7 +56,8 @@ class DebugWasmScopeIterator final : public debug::ScopeIterator {
                         v8::Local<v8::Value> value) override;
  private:
   Isolate* isolate_;
-  WasmFrame* frame_;
+  StandardFrame* frame_;
+  int inlined_frame_index_;
   ScopeType type_;
 };
 }  // namespace internal

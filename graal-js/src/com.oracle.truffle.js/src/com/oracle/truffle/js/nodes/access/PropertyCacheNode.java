@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -76,6 +76,7 @@ import com.oracle.truffle.js.runtime.builtins.JSProxy;
 import com.oracle.truffle.js.runtime.builtins.JSRegExp;
 import com.oracle.truffle.js.runtime.builtins.JSString;
 import com.oracle.truffle.js.runtime.builtins.PrototypeSupplier;
+import com.oracle.truffle.js.runtime.java.adapter.JavaSuperAdapter;
 import com.oracle.truffle.js.runtime.objects.JSDynamicObject;
 import com.oracle.truffle.js.runtime.objects.JSLazyString;
 import com.oracle.truffle.js.runtime.objects.JSObject;
@@ -159,7 +160,7 @@ public abstract class PropertyCacheNode<T extends PropertyCacheNode.CacheNode<T>
 
         @Override
         public boolean accept(Object thisObj) {
-            return shape.getLayoutClass().isInstance(thisObj) && shape.check((DynamicObject) thisObj);
+            return shape.getLayout().getType().isInstance(thisObj) && shape.check((DynamicObject) thisObj);
         }
 
         public int getDepth() {
@@ -231,6 +232,24 @@ public abstract class PropertyCacheNode<T extends PropertyCacheNode.CacheNode<T>
         }
     }
 
+    protected static final class JavaSuperAdapterCheckNode extends ReceiverCheckNode {
+        private final Class<?> type;
+
+        protected JavaSuperAdapterCheckNode(JavaSuperAdapter adapter) {
+            this.type = adapter.getAdapter().getClass();
+        }
+
+        @Override
+        public boolean accept(Object thisObj) {
+            return thisObj instanceof JavaSuperAdapter && ((JavaSuperAdapter) thisObj).getAdapter().getClass() == type;
+        }
+
+        @Override
+        public DynamicObject getStore(Object thisObj) {
+            throw Errors.shouldNotReachHere();
+        }
+    }
+
     /**
      * Check the object shape by identity comparison.
      */
@@ -245,7 +264,7 @@ public abstract class PropertyCacheNode<T extends PropertyCacheNode.CacheNode<T>
 
         @Override
         public DynamicObject getStore(Object thisObj) {
-            return getShape().getLayoutClass().cast(thisObj);
+            return getShape().getLayout().getType().cast(thisObj);
         }
 
         @Override
@@ -1037,16 +1056,16 @@ public abstract class PropertyCacheNode<T extends PropertyCacheNode.CacheNode<T>
             return copy;
         }
 
-        protected final boolean isGeneric() {
+        protected boolean isGeneric() {
             return receiverCheck == null;
         }
 
-        protected final boolean accepts(Object thisObj) {
-            return receiverCheck == null || receiverCheck.accept(thisObj);
+        protected boolean accepts(Object thisObj) {
+            return receiverCheck.accept(thisObj);
         }
 
         protected boolean isValid() {
-            return receiverCheck == null || receiverCheck.isValid();
+            return receiverCheck.isValid();
         }
 
         protected boolean acceptsValue(Object value) {
@@ -1197,9 +1216,11 @@ public abstract class PropertyCacheNode<T extends PropertyCacheNode.CacheNode<T>
 
             if (JSConfig.MergeShapes && cachedCount > 0) {
                 // check if we're creating unnecessary polymorphism due to compatible types
-                if (tryMergeShapes(cacheShape, currentHead)) {
-                    DynamicObjectLibrary.getUncached().updateShape(store);
-                    return retryCache();
+                synchronized (store.getShape().getMutex()) {
+                    if (tryMergeShapes(cacheShape, currentHead)) {
+                        DynamicObjectLibrary.getUncached().updateShape(store);
+                        return retryCache();
+                    }
                 }
             }
 

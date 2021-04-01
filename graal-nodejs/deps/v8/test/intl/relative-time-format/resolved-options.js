@@ -156,3 +156,7 @@ assertEquals(
   assertThrows(() =>
      Intl.RelativeTimeFormat.prototype.resolvedOptions.call(receiver), TypeError);
 }
+
+assertEquals(
+    'ar',
+    (new Intl.RelativeTimeFormat(['i-default', 'ar'])).resolvedOptions().locale);

@@ -12,8 +12,9 @@ snippet: "
 "
 frame size: 2
 parameter count: 1
-bytecode array length: 24
+bytecode array length: 25
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
   /*   42 S> */ B(LdaZero),
                 B(Star), R(0),
   /*   49 S> */ B(LdaSmi), I8(1),
@@ -41,8 +42,9 @@ snippet: "
 "
 frame size: 2
 parameter count: 1
-bytecode array length: 11
+bytecode array length: 12
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
   /*   42 S> */ B(LdaSmi), I8(55),
                 B(Star), R(0),
   /*   54 S> */ B(LdaSmi), I8(100),
@@ -63,8 +65,9 @@ snippet: "
 "
 frame size: 2
 parameter count: 1
-bytecode array length: 26
+bytecode array length: 27
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
   /*   42 S> */ B(LdaSmi), I8(55),
                 B(Star), R(0),
   /*   46 S> */ B(LdaSmi), I8(100),
@@ -92,8 +95,9 @@ snippet: "
 "
 frame size: 2
 parameter count: 1
-bytecode array length: 27
+bytecode array length: 28
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
   /*   42 S> */ B(LdaSmi), I8(55),
                 B(Star), R(0),
   /*   46 S> */ B(LdaSmi), I8(56),
@@ -121,8 +125,9 @@ snippet: "
 "
 frame size: 3
 parameter count: 1
-bytecode array length: 35
+bytecode array length: 36
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
   /*   42 S> */ B(LdaSmi), I8(55),
                 B(Star), R(0),
   /*   54 S> */ B(LdaSmi), I8(1),
@@ -153,8 +158,9 @@ snippet: "
 "
 frame size: 2
 parameter count: 1
-bytecode array length: 35
+bytecode array length: 36
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
   /*   42 S> */ B(LdaSmi), I8(55),
                 B(Star), R(0),
   /*   54 S> */ B(LdaSmi), I8(1),
@@ -184,8 +190,9 @@ snippet: "
 "
 frame size: 4
 parameter count: 1
-bytecode array length: 72
+bytecode array length: 73
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
   /*   42 S> */ B(LdaSmi), I8(10),
                 B(Star), R(0),
   /*   50 S> */ B(LdaSmi), I8(20),
@@ -231,8 +238,9 @@ snippet: "
 "
 frame size: 3
 parameter count: 1
-bytecode array length: 42
+bytecode array length: 43
 bytecodes: [
+  /*   30 E> */ B(StackCheck),
   /*   42 S> */ B(LdaSmi), I8(17),
                 B(Star), R(0),
   /*   46 S> */ B(LdaSmi), I8(1),

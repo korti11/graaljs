@@ -10,10 +10,8 @@ const transform = new stream.Transform({
 });
 
 function _transform(chunk, encoding, cb) {
-  process.nextTick(() => {
-    assert.strictEqual(transform._writableState.needDrain, true);
-    cb();
-  });
+  assert.strictEqual(transform._writableState.needDrain, true);
+  cb();
 }
 
 assert.strictEqual(transform._writableState.needDrain, false);

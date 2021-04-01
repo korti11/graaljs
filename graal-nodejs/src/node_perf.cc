@@ -24,6 +24,7 @@ using v8::Isolate;
 using v8::Local;
 using v8::Map;
 using v8::MaybeLocal;
+using v8::NewStringType;
 using v8::Number;
 using v8::Object;
 using v8::PropertyAttribute;
@@ -59,14 +60,16 @@ inline void InitObject(const PerformanceEntry& entry, Local<Object> obj) {
   obj->DefineOwnProperty(context,
                          env->name_string(),
                          String::NewFromUtf8(isolate,
-                                             entry.name().c_str())
+                                             entry.name().c_str(),
+                                             NewStringType::kNormal)
                              .ToLocalChecked(),
                          attr)
       .Check();
   obj->DefineOwnProperty(context,
                          env->entry_type_string(),
                          String::NewFromUtf8(isolate,
-                                             entry.type().c_str())
+                                             entry.type().c_str(),
+                                             NewStringType::kNormal)
                              .ToLocalChecked(),
                          attr)
       .Check();
@@ -276,9 +279,9 @@ void MarkGarbageCollectionEnd(Isolate* isolate,
       static_cast<PerformanceGCFlags>(flags),
       state->performance_last_gc_start_mark,
       PERFORMANCE_NOW());
-  env->SetImmediate([entry = std::move(entry)](Environment* env) mutable {
+  env->SetUnrefImmediate([entry = std::move(entry)](Environment* env) mutable {
     PerformanceGCCallback(env, std::move(entry));
-  }, CallbackFlags::kUnrefed);
+  });
 }
 
 void GarbageCollectionCleanupHook(void* data) {
@@ -392,13 +395,6 @@ void Notify(const FunctionCallbackInfo<Value>& args) {
     USE(env->performance_entry_callback()->
       Call(env->context(), Undefined(env->isolate()), 1, &entry));
   }
-}
-
-// Return idle time of the event loop
-void LoopIdleTime(const FunctionCallbackInfo<Value>& args) {
-  Environment* env = Environment::GetCurrent(args);
-  uint64_t idle_time = uv_metrics_idle_time(env->event_loop());
-  args.GetReturnValue().Set(1.0 * idle_time / 1e6);
 }
 
 
@@ -590,7 +586,6 @@ void Initialize(Local<Object> target,
                  "removeGarbageCollectionTracking",
                  RemoveGarbageCollectionTracking);
   env->SetMethod(target, "notify", Notify);
-  env->SetMethod(target, "loopIdleTime", LoopIdleTime);
 
   Local<Object> constants = Object::New(isolate);
 
@@ -649,7 +644,6 @@ void Initialize(Local<Object> target,
   eldh->SetClassName(eldh_classname);
   eldh->InstanceTemplate()->SetInternalFieldCount(
       ELDHistogram::kInternalFieldCount);
-  eldh->Inherit(BaseObject::GetConstructorTemplate(env));
   env->SetProtoMethod(eldh, "exceeds", ELDHistogramExceeds);
   env->SetProtoMethod(eldh, "min", ELDHistogramMin);
   env->SetProtoMethod(eldh, "max", ELDHistogramMax);

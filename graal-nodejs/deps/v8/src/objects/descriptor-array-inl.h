@@ -24,9 +24,12 @@
 namespace v8 {
 namespace internal {
 
-TQ_OBJECT_CONSTRUCTORS_IMPL(DescriptorArray)
+OBJECT_CONSTRUCTORS_IMPL(DescriptorArray, HeapObject)
 TQ_OBJECT_CONSTRUCTORS_IMPL(EnumCache)
 
+CAST_ACCESSOR(DescriptorArray)
+
+ACCESSORS(DescriptorArray, enum_cache, EnumCache, kEnumCacheOffset)
 RELAXED_INT16_ACCESSORS(DescriptorArray, number_of_all_descriptors,
                         kNumberOfAllDescriptorsOffset)
 RELAXED_INT16_ACCESSORS(DescriptorArray, number_of_descriptors,
@@ -55,35 +58,33 @@ void DescriptorArray::CopyEnumCacheFrom(DescriptorArray array) {
   set_enum_cache(array.enum_cache());
 }
 
-InternalIndex DescriptorArray::Search(Name name, int valid_descriptors) {
+int DescriptorArray::Search(Name name, int valid_descriptors) {
   DCHECK(name.IsUniqueName());
-  return InternalIndex(
-      internal::Search<VALID_ENTRIES>(this, name, valid_descriptors, nullptr));
+  return internal::Search<VALID_ENTRIES>(this, name, valid_descriptors,
+                                         nullptr);
 }
 
-InternalIndex DescriptorArray::Search(Name name, Map map) {
+int DescriptorArray::Search(Name name, Map map) {
   DCHECK(name.IsUniqueName());
   int number_of_own_descriptors = map.NumberOfOwnDescriptors();
-  if (number_of_own_descriptors == 0) return InternalIndex::NotFound();
+  if (number_of_own_descriptors == 0) return kNotFound;
   return Search(name, number_of_own_descriptors);
 }
 
-InternalIndex DescriptorArray::SearchWithCache(Isolate* isolate, Name name,
-                                               Map map) {
+int DescriptorArray::SearchWithCache(Isolate* isolate, Name name, Map map) {
   DCHECK(name.IsUniqueName());
   int number_of_own_descriptors = map.NumberOfOwnDescriptors();
-  if (number_of_own_descriptors == 0) return InternalIndex::NotFound();
+  if (number_of_own_descriptors == 0) return kNotFound;
 
   DescriptorLookupCache* cache = isolate->descriptor_lookup_cache();
   int number = cache->Lookup(map, name);
 
   if (number == DescriptorLookupCache::kAbsent) {
-    InternalIndex result = Search(name, number_of_own_descriptors);
-    number = result.is_found() ? result.as_int() : DescriptorArray::kNotFound;
+    number = Search(name, number_of_own_descriptors);
     cache->Update(map, name, number);
   }
-  if (number == DescriptorArray::kNotFound) return InternalIndex::NotFound();
-  return InternalIndex(number);
+
+  return number;
 }
 
 ObjectSlot DescriptorArray::GetFirstPointerSlot() {
@@ -101,113 +102,109 @@ ObjectSlot DescriptorArray::GetDescriptorSlot(int descriptor) {
   return RawField(OffsetOfDescriptorAt(descriptor));
 }
 
-Name DescriptorArray::GetKey(InternalIndex descriptor_number) const {
-  const Isolate* isolate = GetIsolateForPtrCompr(*this);
+Name DescriptorArray::GetKey(int descriptor_number) const {
+  Isolate* isolate = GetIsolateForPtrCompr(*this);
   return GetKey(isolate, descriptor_number);
 }
 
-Name DescriptorArray::GetKey(const Isolate* isolate,
-                             InternalIndex descriptor_number) const {
-  DCHECK_LT(descriptor_number.as_int(), number_of_descriptors());
-  int entry_offset = OffsetOfDescriptorAt(descriptor_number.as_int());
+Name DescriptorArray::GetKey(Isolate* isolate, int descriptor_number) const {
+  DCHECK_LT(descriptor_number, number_of_descriptors());
+  int entry_offset = OffsetOfDescriptorAt(descriptor_number);
   return Name::cast(EntryKeyField::Relaxed_Load(isolate, *this, entry_offset));
 }
 
-void DescriptorArray::SetKey(InternalIndex descriptor_number, Name key) {
-  DCHECK_LT(descriptor_number.as_int(), number_of_descriptors());
-  int entry_offset = OffsetOfDescriptorAt(descriptor_number.as_int());
+void DescriptorArray::SetKey(int descriptor_number, Name key) {
+  DCHECK_LT(descriptor_number, number_of_descriptors());
+  int entry_offset = OffsetOfDescriptorAt(descriptor_number);
   EntryKeyField::Relaxed_Store(*this, entry_offset, key);
   WRITE_BARRIER(*this, entry_offset + kEntryKeyOffset, key);
 }
 
 int DescriptorArray::GetSortedKeyIndex(int descriptor_number) {
-  return GetDetails(InternalIndex(descriptor_number)).pointer();
+  return GetDetails(descriptor_number).pointer();
 }
 
 Name DescriptorArray::GetSortedKey(int descriptor_number) {
-  const Isolate* isolate = GetIsolateForPtrCompr(*this);
+  Isolate* isolate = GetIsolateForPtrCompr(*this);
   return GetSortedKey(isolate, descriptor_number);
 }
 
-Name DescriptorArray::GetSortedKey(const Isolate* isolate,
-                                   int descriptor_number) {
-  return GetKey(isolate, InternalIndex(GetSortedKeyIndex(descriptor_number)));
+Name DescriptorArray::GetSortedKey(Isolate* isolate, int descriptor_number) {
+  return GetKey(isolate, GetSortedKeyIndex(descriptor_number));
 }
 
 void DescriptorArray::SetSortedKey(int descriptor_number, int pointer) {
-  PropertyDetails details = GetDetails(InternalIndex(descriptor_number));
-  SetDetails(InternalIndex(descriptor_number), details.set_pointer(pointer));
+  PropertyDetails details = GetDetails(descriptor_number);
+  SetDetails(descriptor_number, details.set_pointer(pointer));
 }
 
-Object DescriptorArray::GetStrongValue(InternalIndex descriptor_number) {
-  const Isolate* isolate = GetIsolateForPtrCompr(*this);
+Object DescriptorArray::GetStrongValue(int descriptor_number) {
+  Isolate* isolate = GetIsolateForPtrCompr(*this);
   return GetStrongValue(isolate, descriptor_number);
 }
 
-Object DescriptorArray::GetStrongValue(const Isolate* isolate,
-                                       InternalIndex descriptor_number) {
+Object DescriptorArray::GetStrongValue(Isolate* isolate,
+                                       int descriptor_number) {
   return GetValue(isolate, descriptor_number).cast<Object>();
 }
 
-void DescriptorArray::SetValue(InternalIndex descriptor_number,
-                               MaybeObject value) {
-  DCHECK_LT(descriptor_number.as_int(), number_of_descriptors());
-  int entry_offset = OffsetOfDescriptorAt(descriptor_number.as_int());
+void DescriptorArray::SetValue(int descriptor_number, MaybeObject value) {
+  DCHECK_LT(descriptor_number, number_of_descriptors());
+  int entry_offset = OffsetOfDescriptorAt(descriptor_number);
   EntryValueField::Relaxed_Store(*this, entry_offset, value);
   WEAK_WRITE_BARRIER(*this, entry_offset + kEntryValueOffset, value);
 }
 
-MaybeObject DescriptorArray::GetValue(InternalIndex descriptor_number) {
-  const Isolate* isolate = GetIsolateForPtrCompr(*this);
+MaybeObject DescriptorArray::GetValue(int descriptor_number) {
+  Isolate* isolate = GetIsolateForPtrCompr(*this);
   return GetValue(isolate, descriptor_number);
 }
 
-MaybeObject DescriptorArray::GetValue(const Isolate* isolate,
-                                      InternalIndex descriptor_number) {
-  DCHECK_LT(descriptor_number.as_int(), number_of_descriptors());
-  int entry_offset = OffsetOfDescriptorAt(descriptor_number.as_int());
+MaybeObject DescriptorArray::GetValue(Isolate* isolate, int descriptor_number) {
+  DCHECK_LT(descriptor_number, number_of_descriptors());
+  int entry_offset = OffsetOfDescriptorAt(descriptor_number);
   return EntryValueField::Relaxed_Load(isolate, *this, entry_offset);
 }
 
-PropertyDetails DescriptorArray::GetDetails(InternalIndex descriptor_number) {
-  DCHECK_LT(descriptor_number.as_int(), number_of_descriptors());
-  int entry_offset = OffsetOfDescriptorAt(descriptor_number.as_int());
+PropertyDetails DescriptorArray::GetDetails(int descriptor_number) {
+  DCHECK_LT(descriptor_number, number_of_descriptors());
+  int entry_offset = OffsetOfDescriptorAt(descriptor_number);
   Smi details = EntryDetailsField::Relaxed_Load(*this, entry_offset);
   return PropertyDetails(details);
 }
 
-void DescriptorArray::SetDetails(InternalIndex descriptor_number,
+void DescriptorArray::SetDetails(int descriptor_number,
                                  PropertyDetails details) {
-  DCHECK_LT(descriptor_number.as_int(), number_of_descriptors());
-  int entry_offset = OffsetOfDescriptorAt(descriptor_number.as_int());
+  DCHECK_LT(descriptor_number, number_of_descriptors());
+  int entry_offset = OffsetOfDescriptorAt(descriptor_number);
   EntryDetailsField::Relaxed_Store(*this, entry_offset, details.AsSmi());
 }
 
-int DescriptorArray::GetFieldIndex(InternalIndex descriptor_number) {
+int DescriptorArray::GetFieldIndex(int descriptor_number) {
   DCHECK_EQ(GetDetails(descriptor_number).location(), kField);
   return GetDetails(descriptor_number).field_index();
 }
 
-FieldType DescriptorArray::GetFieldType(InternalIndex descriptor_number) {
-  const Isolate* isolate = GetIsolateForPtrCompr(*this);
+FieldType DescriptorArray::GetFieldType(int descriptor_number) {
+  Isolate* isolate = GetIsolateForPtrCompr(*this);
   return GetFieldType(isolate, descriptor_number);
 }
 
-FieldType DescriptorArray::GetFieldType(const Isolate* isolate,
-                                        InternalIndex descriptor_number) {
+FieldType DescriptorArray::GetFieldType(Isolate* isolate,
+                                        int descriptor_number) {
   DCHECK_EQ(GetDetails(descriptor_number).location(), kField);
   MaybeObject wrapped_type = GetValue(isolate, descriptor_number);
   return Map::UnwrapFieldType(wrapped_type);
 }
 
-void DescriptorArray::Set(InternalIndex descriptor_number, Name key,
-                          MaybeObject value, PropertyDetails details) {
+void DescriptorArray::Set(int descriptor_number, Name key, MaybeObject value,
+                          PropertyDetails details) {
   SetKey(descriptor_number, key);
   SetDetails(descriptor_number, details);
   SetValue(descriptor_number, value);
 }
 
-void DescriptorArray::Set(InternalIndex descriptor_number, Descriptor* desc) {
+void DescriptorArray::Set(int descriptor_number, Descriptor* desc) {
   Name key = *desc->GetKey();
   MaybeObject value = *desc->GetValue();
   Set(descriptor_number, key, value, desc->GetDetails());
@@ -218,7 +215,7 @@ void DescriptorArray::Append(Descriptor* desc) {
   int descriptor_number = number_of_descriptors();
   DCHECK_LE(descriptor_number + 1, number_of_all_descriptors());
   set_number_of_descriptors(descriptor_number + 1);
-  Set(InternalIndex(descriptor_number), desc);
+  Set(descriptor_number, desc);
 
   uint32_t hash = desc->GetKey()->Hash();
 

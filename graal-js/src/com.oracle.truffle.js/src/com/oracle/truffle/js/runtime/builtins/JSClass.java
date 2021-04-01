@@ -44,7 +44,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.ObjectType;
 import com.oracle.truffle.api.object.Shape;
@@ -131,36 +130,36 @@ public abstract class JSClass extends ObjectType {
      * 9.1.8 [[Get]] (P, Receiver).
      */
     public final Object get(DynamicObject thisObj, Object key) {
-        return JSRuntime.nullToUndefined(getHelper(thisObj, thisObj, key, null));
+        return JSRuntime.nullToUndefined(getHelper(thisObj, thisObj, key));
     }
 
     public Object get(DynamicObject thisObj, long index) {
-        return JSRuntime.nullToUndefined(getHelper(thisObj, thisObj, index, null));
+        return JSRuntime.nullToUndefined(getHelper(thisObj, thisObj, index));
     }
 
     @TruffleBoundary
-    public abstract Object getHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode);
+    public abstract Object getHelper(DynamicObject store, Object thisObj, Object key);
 
     @TruffleBoundary
-    public abstract Object getHelper(DynamicObject store, Object thisObj, long index, Node encapsulatingNode);
+    public abstract Object getHelper(DynamicObject store, Object thisObj, long index);
 
     @TruffleBoundary
-    public abstract Object getOwnHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode);
+    public abstract Object getOwnHelper(DynamicObject store, Object thisObj, Object key);
 
     @TruffleBoundary
-    public abstract Object getOwnHelper(DynamicObject store, Object thisObj, long index, Node encapsulatingNode);
+    public abstract Object getOwnHelper(DynamicObject store, Object thisObj, long index);
 
     @TruffleBoundary
-    public abstract Object getMethodHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode);
+    public abstract Object getMethodHelper(DynamicObject store, Object thisObj, Object key);
 
     /**
      * 9.1.9 [[Set]] (P, V, Receiver).
      */
     @TruffleBoundary
-    public abstract boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict, Node encapsulatingNode);
+    public abstract boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict);
 
     @TruffleBoundary
-    public abstract boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode);
+    public abstract boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict);
 
     /**
      * 9.1.10 [[Delete]] (P).
@@ -306,7 +305,7 @@ public abstract class JSClass extends ObjectType {
     }
 
     public static boolean isInstance(DynamicObject object, JSClass jsclass) {
-        return object.getShape().getDynamicType() == jsclass;
+        return object.getShape().getObjectType() == jsclass;
     }
 
     /**

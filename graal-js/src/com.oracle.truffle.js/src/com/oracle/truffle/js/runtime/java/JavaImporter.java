@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -41,11 +41,8 @@
 package com.oracle.truffle.js.runtime.java;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.TruffleLanguage;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.Shape;
-import com.oracle.truffle.js.lang.JavaScriptLanguage;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.JSRealm;
 import com.oracle.truffle.js.runtime.builtins.JSConstructor;
@@ -94,29 +91,21 @@ public final class JavaImporter extends JSNonProxy implements JSConstructorFacto
 
     @Override
     public boolean hasOwnProperty(DynamicObject thisObj, Object name) {
-        return getOwnHelper(thisObj, thisObj, name, null) != null;
+        return getOwnHelper(thisObj, thisObj, name) != null;
     }
 
     @TruffleBoundary
     @Override
-    public Object getOwnHelper(DynamicObject store, Object thisObj, Object name, Node encapsulatingNode) {
+    public Object getOwnHelper(DynamicObject store, Object thisObj, Object name) {
         if (name instanceof String) {
-            Object[] imports = getImports(store);
+            Object[] packages = getPackages(store);
             JSRealm realm = JSObject.getJSContext(store).getRealm();
-            // Nashorn searches the imports from the last one
-            for (int i = imports.length - 1; i >= 0; i--) {
-                Object anImport = imports[i];
-                if (anImport instanceof JavaPackageObject) {
-                    JavaPackageObject javaPackage = (JavaPackageObject) anImport;
+            for (Object pkg : packages) {
+                if (pkg instanceof JavaPackageObject) {
+                    JavaPackageObject javaPackage = (JavaPackageObject) pkg;
                     Object found = JavaPackage.getClass(realm, javaPackage, (String) name, Object.class);
                     if (found != null) {
                         return found;
-                    }
-                } else {
-                    TruffleLanguage.Env env = JavaScriptLanguage.getCurrentEnv();
-                    Object clazz = env.asHostObject(anImport);
-                    if (name.equals(((Class<?>) clazz).getSimpleName())) {
-                        return anImport;
                     }
                 }
             }
@@ -124,9 +113,9 @@ public final class JavaImporter extends JSNonProxy implements JSConstructorFacto
         return null;
     }
 
-    public static Object[] getImports(DynamicObject importer) {
+    public static Object[] getPackages(DynamicObject importer) {
         assert JavaImporter.isJavaImporter(importer);
-        return ((JavaImporterObject) importer).getImports();
+        return ((JavaImporterObject) importer).getPackages();
     }
 
     @Override

@@ -37,17 +37,6 @@ enum class Sensitivity {
   kUndefined,
 };
 
-// enum for "caseFirst" option.
-enum class CaseFirst { kUndefined, kUpper, kLower, kFalse };
-
-Maybe<CaseFirst> GetCaseFirst(Isolate* isolate, Handle<JSReceiver> options,
-                              const char* method) {
-  return Intl::GetStringOption<CaseFirst>(
-      isolate, options, "caseFirst", method, {"upper", "lower", "false"},
-      {CaseFirst::kUpper, CaseFirst::kLower, CaseFirst::kFalse},
-      CaseFirst::kUndefined);
-}
-
 // TODO(gsathya): Consider internalizing the value strings.
 void CreateDataPropertyForOptions(Isolate* isolate, Handle<JSObject> options,
                                   Handle<String> key, const char* value) {
@@ -213,21 +202,21 @@ Handle<JSObject> JSCollator::ResolvedOptions(Isolate* isolate,
 
 namespace {
 
-CaseFirst ToCaseFirst(const char* str) {
-  if (strcmp(str, "upper") == 0) return CaseFirst::kUpper;
-  if (strcmp(str, "lower") == 0) return CaseFirst::kLower;
-  if (strcmp(str, "false") == 0) return CaseFirst::kFalse;
-  return CaseFirst::kUndefined;
+Intl::CaseFirst ToCaseFirst(const char* str) {
+  if (strcmp(str, "upper") == 0) return Intl::CaseFirst::kUpper;
+  if (strcmp(str, "lower") == 0) return Intl::CaseFirst::kLower;
+  if (strcmp(str, "false") == 0) return Intl::CaseFirst::kFalse;
+  return Intl::CaseFirst::kUndefined;
 }
 
-UColAttributeValue ToUColAttributeValue(CaseFirst case_first) {
+UColAttributeValue ToUColAttributeValue(Intl::CaseFirst case_first) {
   switch (case_first) {
-    case CaseFirst::kUpper:
+    case Intl::CaseFirst::kUpper:
       return UCOL_UPPER_FIRST;
-    case CaseFirst::kLower:
+    case Intl::CaseFirst::kLower:
       return UCOL_LOWER_FIRST;
-    case CaseFirst::kFalse:
-    case CaseFirst::kUndefined:
+    case Intl::CaseFirst::kFalse:
+    case Intl::CaseFirst::kUndefined:
       return UCOL_OFF;
   }
 }
@@ -240,7 +229,8 @@ void SetNumericOption(icu::Collator* icu_collator, bool numeric) {
   CHECK(U_SUCCESS(status));
 }
 
-void SetCaseFirstOption(icu::Collator* icu_collator, CaseFirst case_first) {
+void SetCaseFirstOption(icu::Collator* icu_collator,
+                        Intl::CaseFirst case_first) {
   CHECK_NOT_NULL(icu_collator);
   UErrorCode status = U_ZERO_ERROR;
   icu_collator->setAttribute(UCOL_CASE_FIRST, ToUColAttributeValue(case_first),
@@ -253,8 +243,7 @@ void SetCaseFirstOption(icu::Collator* icu_collator, CaseFirst case_first) {
 // static
 MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
                                         Handle<Object> locales,
-                                        Handle<Object> options_obj,
-                                        const char* service) {
+                                        Handle<Object> options_obj) {
   // 1. Let requestedLocales be ? CanonicalizeLocaleList(locales).
   Maybe<std::vector<std::string>> maybe_requested_locales =
       Intl::CanonicalizeLocaleList(isolate, locales);
@@ -269,9 +258,9 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
   } else {
     // 3. Else
     // 3. a. Let options be ? ToObject(options).
-    ASSIGN_RETURN_ON_EXCEPTION(isolate, options_obj,
-                               Object::ToObject(isolate, options_obj, service),
-                               JSCollator);
+    ASSIGN_RETURN_ON_EXCEPTION(
+        isolate, options_obj,
+        Object::ToObject(isolate, options_obj, "Intl.Collator"), JSCollator);
   }
 
   // At this point, options_obj can either be a JSObject or a JSProxy only.
@@ -280,7 +269,7 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
   // 4. Let usage be ? GetOption(options, "usage", "string", « "sort",
   // "search" », "sort").
   Maybe<Usage> maybe_usage = Intl::GetStringOption<Usage>(
-      isolate, options, "usage", service, {"sort", "search"},
+      isolate, options, "usage", "Intl.Collator", {"sort", "search"},
       {Usage::SORT, Usage::SEARCH}, Usage::SORT);
   MAYBE_RETURN(maybe_usage, MaybeHandle<JSCollator>());
   Usage usage = maybe_usage.FromJust();
@@ -289,7 +278,7 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
   // « "lookup", "best fit" », "best fit").
   // 10. Set opt.[[localeMatcher]] to matcher.
   Maybe<Intl::MatcherOption> maybe_locale_matcher =
-      Intl::GetLocaleMatcher(isolate, options, service);
+      Intl::GetLocaleMatcher(isolate, options, "Intl.Collator");
   MAYBE_RETURN(maybe_locale_matcher, MaybeHandle<JSCollator>());
   Intl::MatcherOption matcher = maybe_locale_matcher.FromJust();
 
@@ -304,15 +293,16 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
   //
   // 13. Set opt.[[kn]] to numeric.
   bool numeric;
-  Maybe<bool> found_numeric =
-      Intl::GetBoolOption(isolate, options, "numeric", service, &numeric);
+  Maybe<bool> found_numeric = Intl::GetBoolOption(isolate, options, "numeric",
+                                                  "Intl.Collator", &numeric);
   MAYBE_RETURN(found_numeric, MaybeHandle<JSCollator>());
 
   // 14. Let caseFirst be ? GetOption(options, "caseFirst", "string",
   //     « "upper", "lower", "false" », undefined).
-  Maybe<CaseFirst> maybe_case_first = GetCaseFirst(isolate, options, service);
+  Maybe<Intl::CaseFirst> maybe_case_first =
+      Intl::GetCaseFirst(isolate, options, "Intl.Collator");
   MAYBE_RETURN(maybe_case_first, MaybeHandle<JSCollator>());
-  CaseFirst case_first = maybe_case_first.FromJust();
+  Intl::CaseFirst case_first = maybe_case_first.FromJust();
 
   // The relevant unicode extensions accepted by Collator as specified here:
   // https://tc39.github.io/ecma402/#sec-intl-collator-internal-slots
@@ -323,14 +313,9 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
   // 17. Let r be ResolveLocale(%Collator%.[[AvailableLocales]],
   // requestedLocales, opt, %Collator%.[[RelevantExtensionKeys]],
   // localeData).
-  Maybe<Intl::ResolvedLocale> maybe_resolve_locale =
+  Intl::ResolvedLocale r =
       Intl::ResolveLocale(isolate, JSCollator::GetAvailableLocales(),
                           requested_locales, matcher, relevant_extension_keys);
-  if (maybe_resolve_locale.IsNothing()) {
-    THROW_NEW_ERROR(isolate, NewRangeError(MessageTemplate::kIcuError),
-                    JSCollator);
-  }
-  Intl::ResolvedLocale r = maybe_resolve_locale.FromJust();
 
   // 18. Set collator.[[Locale]] to r.[[locale]].
   icu::Locale icu_locale = r.icu_locale;
@@ -378,11 +363,11 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
         icu::Collator::createInstance(no_extension_locale, status));
 
     if (U_FAILURE(status) || icu_collator.get() == nullptr) {
-      THROW_NEW_ERROR(isolate, NewRangeError(MessageTemplate::kIcuError),
-                      JSCollator);
+      FATAL("Failed to create ICU collator, are ICU data files missing?");
     }
   }
   DCHECK(U_SUCCESS(status));
+  CHECK_NOT_NULL(icu_collator.get());
 
   // 22. If relevantExtensionKeys contains "kn", then
   //     a. Set collator.[[Numeric]] to ! SameValue(r.[[kn]], "true").
@@ -406,7 +391,7 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
   // If the caseFirst value is passed in through the options object,
   // then we use it. Otherwise, we check if the caseFirst value is
   // passed in through the unicode extensions.
-  if (case_first != CaseFirst::kUndefined) {
+  if (case_first != Intl::CaseFirst::kUndefined) {
     SetCaseFirstOption(icu_collator.get(), case_first);
   } else {
     auto kf_extension_it = r.extensions.find("kf");
@@ -426,7 +411,7 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
   // 24. Let sensitivity be ? GetOption(options, "sensitivity",
   // "string", « "base", "accent", "case", "variant" », undefined).
   Maybe<Sensitivity> maybe_sensitivity = Intl::GetStringOption<Sensitivity>(
-      isolate, options, "sensitivity", service,
+      isolate, options, "sensitivity", "Intl.Collator",
       {"base", "accent", "case", "variant"},
       {Sensitivity::kBase, Sensitivity::kAccent, Sensitivity::kCase,
        Sensitivity::kVariant},
@@ -466,8 +451,9 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
   // 27.Let ignorePunctuation be ? GetOption(options,
   // "ignorePunctuation", "boolean", undefined, false).
   bool ignore_punctuation;
-  Maybe<bool> found_ignore_punctuation = Intl::GetBoolOption(
-      isolate, options, "ignorePunctuation", service, &ignore_punctuation);
+  Maybe<bool> found_ignore_punctuation =
+      Intl::GetBoolOption(isolate, options, "ignorePunctuation",
+                          "Intl.Collator", &ignore_punctuation);
   MAYBE_RETURN(found_ignore_punctuation, MaybeHandle<JSCollator>());
 
   // 28. Set collator.[[IgnorePunctuation]] to ignorePunctuation.
@@ -493,33 +479,18 @@ MaybeHandle<JSCollator> JSCollator::New(Isolate* isolate, Handle<Map> map,
 
 namespace {
 
-class CollatorAvailableLocales {
- public:
-  CollatorAvailableLocales() {
-    int32_t num_locales = 0;
-    const icu::Locale* icu_available_locales =
-        icu::Collator::getAvailableLocales(num_locales);
-    std::vector<std::string> locales;
-    for (int32_t i = 0; i < num_locales; ++i) {
-      locales.push_back(
-          Intl::ToLanguageTag(icu_available_locales[i]).FromJust());
-    }
+struct CheckColl {
+  static const char* key() { return nullptr; }
 #define U_ICUDATA_COLL U_ICUDATA_NAME U_TREE_SEPARATOR_STRING "coll"
-    set_ = Intl::BuildLocaleSet(locales, U_ICUDATA_COLL, nullptr);
+  static const char* path() { return U_ICUDATA_COLL; }
 #undef U_ICUDATA_COLL
-  }
-  virtual ~CollatorAvailableLocales() {}
-  const std::set<std::string>& Get() const { return set_; }
-
- private:
-  std::set<std::string> set_;
 };
 
 }  // namespace
 
 const std::set<std::string>& JSCollator::GetAvailableLocales() {
-  static base::LazyInstance<CollatorAvailableLocales>::type available_locales =
-      LAZY_INSTANCE_INITIALIZER;
+  static base::LazyInstance<Intl::AvailableLocales<icu::Collator, CheckColl>>::
+      type available_locales = LAZY_INSTANCE_INITIALIZER;
   return available_locales.Pointer()->Get();
 }
 

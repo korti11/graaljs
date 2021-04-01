@@ -16,7 +16,13 @@ namespace v8 {
 namespace internal {
 
 TQ_OBJECT_CONSTRUCTORS_IMPL(TemplateObjectDescription)
-TQ_OBJECT_CONSTRUCTORS_IMPL(CachedTemplateObject)
+OBJECT_CONSTRUCTORS_IMPL(CachedTemplateObject, Tuple3)
+
+CAST_ACCESSOR(CachedTemplateObject)
+
+SMI_ACCESSORS(CachedTemplateObject, slot_id, kSlotIdOffset)
+ACCESSORS(CachedTemplateObject, template_object, JSArray, kTemplateObjectOffset)
+ACCESSORS(CachedTemplateObject, next, HeapObject, kNextOffset)
 
 }  // namespace internal
 }  // namespace v8

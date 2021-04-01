@@ -295,6 +295,13 @@ void AstTraversalVisitor<Subclass>::VisitNativeFunctionLiteral(
 }
 
 template <class Subclass>
+void AstTraversalVisitor<Subclass>::VisitDoExpression(DoExpression* expr) {
+  PROCESS_EXPRESSION(expr);
+  RECURSE(VisitBlock(expr->block()));
+  RECURSE(VisitVariableProxy(expr->result()));
+}
+
+template <class Subclass>
 void AstTraversalVisitor<Subclass>::VisitConditional(Conditional* expr) {
   PROCESS_EXPRESSION(expr);
   RECURSE_EXPRESSION(Visit(expr->condition()));
@@ -389,6 +396,14 @@ void AstTraversalVisitor<Subclass>::VisitProperty(Property* expr) {
 }
 
 template <class Subclass>
+void AstTraversalVisitor<Subclass>::VisitResolvedProperty(
+    ResolvedProperty* expr) {
+  PROCESS_EXPRESSION(expr);
+  RECURSE_EXPRESSION(VisitVariableProxy(expr->object()));
+  RECURSE_EXPRESSION(VisitVariableProxy(expr->property()));
+}
+
+template <class Subclass>
 void AstTraversalVisitor<Subclass>::VisitCall(Call* expr) {
   PROCESS_EXPRESSION(expr);
   RECURSE_EXPRESSION(Visit(expr->expression()));
@@ -475,13 +490,7 @@ void AstTraversalVisitor<Subclass>::VisitClassLiteral(ClassLiteral* expr) {
   if (expr->instance_members_initializer_function() != nullptr) {
     RECURSE_EXPRESSION(Visit(expr->instance_members_initializer_function()));
   }
-  ZonePtrList<ClassLiteral::Property>* private_members =
-      expr->private_members();
-  for (int i = 0; i < private_members->length(); ++i) {
-    ClassLiteralProperty* prop = private_members->at(i);
-    RECURSE_EXPRESSION(Visit(prop->value()));
-  }
-  ZonePtrList<ClassLiteral::Property>* props = expr->public_members();
+  ZonePtrList<ClassLiteral::Property>* props = expr->properties();
   for (int i = 0; i < props->length(); ++i) {
     ClassLiteralProperty* prop = props->at(i);
     if (!prop->key()->IsLiteral()) {
@@ -509,6 +518,15 @@ template <class Subclass>
 void AstTraversalVisitor<Subclass>::VisitSpread(Spread* expr) {
   PROCESS_EXPRESSION(expr);
   RECURSE_EXPRESSION(Visit(expr->expression()));
+}
+
+template <class Subclass>
+void AstTraversalVisitor<Subclass>::VisitStoreInArrayLiteral(
+    StoreInArrayLiteral* expr) {
+  PROCESS_EXPRESSION(expr);
+  RECURSE_EXPRESSION(Visit(expr->array()));
+  RECURSE_EXPRESSION(Visit(expr->index()));
+  RECURSE_EXPRESSION(Visit(expr->value()));
 }
 
 template <class Subclass>

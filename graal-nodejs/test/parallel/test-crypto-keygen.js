@@ -16,7 +16,7 @@ const {
   sign,
   verify
 } = require('crypto');
-const { inspect, promisify } = require('util');
+const { promisify } = require('util');
 
 // Asserts that the size of the given key (in chars or bytes) is within 10% of
 // the expected size.
@@ -143,7 +143,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       type: 'pkcs1',
       format: 'pem'
     }
-  }, common.mustSucceed((publicKeyDER, privateKey) => {
+  }, common.mustCall((err, publicKeyDER, privateKey) => {
+    assert.ifError(err);
+
     assert(Buffer.isBuffer(publicKeyDER));
     assertApproximateSize(publicKeyDER, 74);
 
@@ -167,7 +169,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       cipher: 'aes-256-cbc',
       passphrase: 'secret'
     }
-  }, common.mustSucceed((publicKeyDER, privateKey) => {
+  }, common.mustCall((err, publicKeyDER, privateKey) => {
+    assert.ifError(err);
+
     assert(Buffer.isBuffer(publicKeyDER));
     assertApproximateSize(publicKeyDER, 74);
 
@@ -198,7 +202,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       cipher: 'aes-256-cbc',
       passphrase: 'secret'
     }
-  }, common.mustSucceed((publicKeyDER, privateKeyDER) => {
+  }, common.mustCall((err, publicKeyDER, privateKeyDER) => {
+    assert.ifError(err);
+
     assert(Buffer.isBuffer(publicKeyDER));
     assertApproximateSize(publicKeyDER, 74);
 
@@ -239,7 +245,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       type: 'pkcs8',
       format: 'der'
     }
-  }, common.mustSucceed((publicKeyDER, privateKeyDER) => {
+  }, common.mustCall((err, publicKeyDER, privateKeyDER) => {
+    assert.ifError(err);
+
     assert(Buffer.isBuffer(publicKeyDER));
     assertApproximateSize(publicKeyDER, 74);
 
@@ -264,7 +272,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     saltLength: 16,
     hash: 'sha256',
     mgf1Hash: 'sha256'
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(publicKey.type, 'public');
     assert.strictEqual(publicKey.asymmetricKeyType, 'rsa-pss');
 
@@ -311,7 +321,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       passphrase: 'secret',
       ...privateKeyEncoding
     }
-  }, common.mustSucceed((publicKey, privateKeyDER) => {
+  }, common.mustCall((err, publicKey, privateKeyDER) => {
+    assert.ifError(err);
+
     assert.strictEqual(typeof publicKey, 'string');
     assert(spkiExp.test(publicKey));
     // The private key is DER-encoded.
@@ -355,7 +367,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       type: 'sec1',
       format: 'pem'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(typeof publicKey, 'string');
     assert(spkiExp.test(publicKey));
     assert.strictEqual(typeof privateKey, 'string');
@@ -377,7 +391,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       type: 'sec1',
       format: 'pem'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(typeof publicKey, 'string');
     assert(spkiExp.test(publicKey));
     assert.strictEqual(typeof privateKey, 'string');
@@ -400,7 +416,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       cipher: 'aes-128-cbc',
       passphrase: 'secret'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(typeof publicKey, 'string');
     assert(spkiExp.test(publicKey));
     assert.strictEqual(typeof privateKey, 'string');
@@ -430,7 +448,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       cipher: 'aes-128-cbc',
       passphrase: 'secret'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(typeof publicKey, 'string');
     assert(spkiExp.test(publicKey));
     assert.strictEqual(typeof privateKey, 'string');
@@ -463,7 +483,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       cipher: 'aes-128-cbc',
       passphrase: 'top secret'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(typeof publicKey, 'string');
     assert(spkiExp.test(publicKey));
     assert.strictEqual(typeof privateKey, 'string');
@@ -497,7 +519,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       cipher: 'aes-128-cbc',
       passphrase: 'top secret'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(typeof publicKey, 'string');
     assert(spkiExp.test(publicKey));
     assert.strictEqual(typeof privateKey, 'string');
@@ -613,7 +637,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       type: 'pkcs1',
       format: 'pem'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(typeof publicKey, 'object');
     assert.strictEqual(publicKey.type, 'public');
     assert.strictEqual(publicKey.asymmetricKeyType, 'rsa');
@@ -632,7 +658,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       type: 'pkcs1',
       format: 'pem'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     // The public key should still be a string.
     assert.strictEqual(typeof publicKey, 'string');
 
@@ -677,14 +705,13 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${inspect(type)}" is invalid for option ` +
+      message: `The value "${type}" is invalid for option ` +
                '"publicKeyEncoding.type"'
     });
   }
 
   // Missing / invalid publicKeyEncoding.format.
   for (const format of [undefined, null, 0, false, 'a', {}]) {
-    const expected = typeof format === 'string' ? format : inspect(format);
     assert.throws(() => generateKeyPairSync('rsa', {
       modulusLength: 4096,
       publicKeyEncoding: {
@@ -698,7 +725,7 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${expected}" is invalid for option ` +
+      message: `The value "${format}" is invalid for option ` +
                '"publicKeyEncoding.format"'
     });
   }
@@ -734,14 +761,13 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${inspect(type)}" is invalid for option ` +
+      message: `The value "${type}" is invalid for option ` +
                '"privateKeyEncoding.type"'
     });
   }
 
   // Missing / invalid privateKeyEncoding.format.
   for (const format of [undefined, null, 0, false, 'a', {}]) {
-    const expected = typeof format === 'string' ? format : inspect(format);
     assert.throws(() => generateKeyPairSync('rsa', {
       modulusLength: 4096,
       publicKeyEncoding: {
@@ -755,7 +781,7 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${expected}" is invalid for option ` +
+      message: `The value "${format}" is invalid for option ` +
                '"privateKeyEncoding.format"'
     });
   }
@@ -776,7 +802,7 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${inspect(cipher)}" is invalid for option ` +
+      message: `The value "${cipher}" is invalid for option ` +
                '"privateKeyEncoding.cipher"'
     });
   }
@@ -839,29 +865,25 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
 {
   // Test invalid modulus lengths.
   for (const modulusLength of [undefined, null, 'a', true, {}, [], 512.1, -1]) {
-    const expected = typeof modulusLength === 'string' ?
-      modulusLength : inspect(modulusLength);
     assert.throws(() => generateKeyPair('rsa', {
       modulusLength
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${expected}" is invalid for option ` +
+      message: `The value "${modulusLength}" is invalid for option ` +
                '"modulusLength"'
     });
   }
 
   // Test invalid exponents.
   for (const publicExponent of ['a', true, {}, [], 3.5, -1]) {
-    const expected = typeof publicExponent === 'string' ?
-      publicExponent : inspect(publicExponent);
     assert.throws(() => generateKeyPair('rsa', {
       modulusLength: 4096,
       publicExponent
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${expected}" is invalid for option ` +
+      message: `The value "${publicExponent}" is invalid for option ` +
                '"publicExponent"'
     });
   }
@@ -871,29 +893,25 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
 {
   // Test invalid modulus lengths.
   for (const modulusLength of [undefined, null, 'a', true, {}, [], 4096.1]) {
-    const expected = typeof modulusLength === 'string' ?
-      modulusLength : inspect(modulusLength);
     assert.throws(() => generateKeyPair('dsa', {
       modulusLength
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${expected}" is invalid for option ` +
+      message: `The value "${modulusLength}" is invalid for option ` +
                '"modulusLength"'
     });
   }
 
   // Test invalid divisor lengths.
   for (const divisorLength of ['a', true, {}, [], 4096.1]) {
-    const expected = typeof divisorLength === 'string' ?
-      divisorLength : inspect(divisorLength);
     assert.throws(() => generateKeyPair('dsa', {
       modulusLength: 2048,
       divisorLength
     }), {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${expected}" is invalid for option ` +
+      message: `The value "${divisorLength}" is invalid for option ` +
                '"divisorLength"'
     });
   }
@@ -924,7 +942,7 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     }, {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${inspect(namedCurve)}" is invalid for option ` +
+      message: `The value "${namedCurve}" is invalid for option ` +
                '"namedCurve"'
     });
   }
@@ -934,14 +952,16 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     namedCurve: 'P-256',
     publicKeyEncoding: { type: 'spki', format: 'pem' },
     privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
   }));
 
   generateKeyPair('ec', {
     namedCurve: 'secp256k1',
     publicKeyEncoding: { type: 'spki', format: 'pem' },
     privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
   }));
 }
 
@@ -949,7 +969,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
 {
   if (!/^1\.1\.0/.test(process.versions.openssl)) {
     ['ed25519', 'ed448', 'x25519', 'x448'].forEach((keyType) => {
-      generateKeyPair(keyType, common.mustSucceed((publicKey, privateKey) => {
+      generateKeyPair(keyType, common.mustCall((err, publicKey, privateKey) => {
+        assert.ifError(err);
+
         assert.strictEqual(publicKey.type, 'public');
         assert.strictEqual(publicKey.asymmetricKeyType, keyType);
 
@@ -964,7 +986,9 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
 {
   generateKeyPair('dh', {
     primeLength: 1024
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    assert.ifError(err);
+
     assert.strictEqual(publicKey.type, 'public');
     assert.strictEqual(publicKey.asymmetricKeyType, 'dh');
 
@@ -1055,7 +1079,7 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
     }, {
       name: 'TypeError',
       code: 'ERR_INVALID_OPT_VALUE',
-      message: `The value "${inspect(hashValue)}" is invalid for option "hash"`
+      message: `The value "${hashValue}" is invalid for option "hash"`
     });
   }
 
@@ -1158,7 +1182,6 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
   );
 
   for (const mgf1Hash of [null, 0, false, {}, []]) {
-    const expected = inspect(mgf1Hash);
     assert.throws(
       () => {
         generateKeyPair('rsa-pss', {
@@ -1171,7 +1194,7 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
       {
         name: 'TypeError',
         code: 'ERR_INVALID_OPT_VALUE',
-        message: `The value "${expected}" is invalid for option "mgf1Hash"`
+        message: `The value "${mgf1Hash}" is invalid for option "mgf1Hash"`
       }
     );
   }

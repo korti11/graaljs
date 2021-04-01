@@ -9,7 +9,6 @@ Tests scripts hasing
     isModule : false
     length : 1
     scriptId : <scriptId>
-    scriptLanguage : JavaScript
     sourceMapURL : 
     startColumn : 0
     startLine : 0
@@ -25,7 +24,6 @@ Tests scripts hasing
     isModule : false
     length : 3
     scriptId : <scriptId>
-    scriptLanguage : JavaScript
     sourceMapURL : 
     startColumn : 0
     startLine : 0
@@ -41,7 +39,6 @@ Tests scripts hasing
     isModule : false
     length : 8106
     scriptId : <scriptId>
-    scriptLanguage : JavaScript
     sourceMapURL : 
     startColumn : 0
     startLine : 0

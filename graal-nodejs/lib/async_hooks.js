@@ -1,14 +1,7 @@
 'use strict';
 
 const {
-  ArrayPrototypeIncludes,
-  ArrayPrototypeIndexOf,
-  ArrayPrototypePush,
-  ArrayPrototypeSplice,
-  FunctionPrototypeBind,
   NumberIsSafeInteger,
-  ObjectDefineProperties,
-  ObjectIs,
   ReflectApply,
   Symbol,
 } = primordials;
@@ -16,7 +9,6 @@ const {
 const {
   ERR_ASYNC_CALLBACK,
   ERR_ASYNC_TYPE,
-  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ASYNC_ID
 } = require('internal/errors').codes;
 const { validateString } = require('internal/validators');
@@ -34,7 +26,6 @@ const {
   getHookArrays,
   enableHooks,
   disableHooks,
-  updatePromiseHookMode,
   executionAsyncResource,
   // Internal Embedder API
   newAsyncId,
@@ -90,7 +81,7 @@ class AsyncHook {
     const [hooks_array, hook_fields] = getHookArrays();
 
     // Each hook is only allowed to be added once.
-    if (ArrayPrototypeIncludes(hooks_array, this))
+    if (hooks_array.includes(this))
       return this;
 
     const prev_kTotals = hook_fields[kTotals];
@@ -104,13 +95,11 @@ class AsyncHook {
     hook_fields[kTotals] += hook_fields[kDestroy] += +!!this[destroy_symbol];
     hook_fields[kTotals] +=
         hook_fields[kPromiseResolve] += +!!this[promise_resolve_symbol];
-    ArrayPrototypePush(hooks_array, this);
+    hooks_array.push(this);
 
     if (prev_kTotals === 0 && hook_fields[kTotals] > 0) {
       enableHooks();
     }
-
-    updatePromiseHookMode();
 
     return this;
   }
@@ -118,7 +107,7 @@ class AsyncHook {
   disable() {
     const [hooks_array, hook_fields] = getHookArrays();
 
-    const index = ArrayPrototypeIndexOf(hooks_array, this);
+    const index = hooks_array.indexOf(this);
     if (index === -1)
       return this;
 
@@ -130,7 +119,7 @@ class AsyncHook {
     hook_fields[kTotals] += hook_fields[kDestroy] -= +!!this[destroy_symbol];
     hook_fields[kTotals] +=
         hook_fields[kPromiseResolve] -= +!!this[promise_resolve_symbol];
-    ArrayPrototypeSplice(hooks_array, index, 1);
+    hooks_array.splice(index, 1);
 
     if (prev_kTotals > 0 && hook_fields[kTotals] === 0) {
       disableHooks();
@@ -219,32 +208,6 @@ class AsyncResource {
   triggerAsyncId() {
     return this[trigger_async_id_symbol];
   }
-
-  bind(fn) {
-    if (typeof fn !== 'function')
-      throw new ERR_INVALID_ARG_TYPE('fn', 'Function', fn);
-    const ret = FunctionPrototypeBind(this.runInAsyncScope, this, fn);
-    ObjectDefineProperties(ret, {
-      'length': {
-        configurable: true,
-        enumerable: false,
-        value: fn.length,
-        writable: false,
-      },
-      'asyncResource': {
-        configurable: true,
-        enumerable: true,
-        value: this,
-        writable: true,
-      }
-    });
-    return ret;
-  }
-
-  static bind(fn, type) {
-    type = type || fn.name;
-    return (new AsyncResource(type || 'bound-anonymous-fn')).bind(fn);
-  }
 }
 
 const storageList = [];
@@ -258,7 +221,6 @@ const storageHook = createHook({
   }
 });
 
-const defaultAlsResourceOpts = { requireManualDestroy: true };
 class AsyncLocalStorage {
   constructor() {
     this.kResourceStore = Symbol('kResourceStore');
@@ -269,19 +231,10 @@ class AsyncLocalStorage {
     if (this.enabled) {
       this.enabled = false;
       // If this.enabled, the instance must be in storageList
-      ArrayPrototypeSplice(storageList,
-                           ArrayPrototypeIndexOf(storageList, this), 1);
+      storageList.splice(storageList.indexOf(this), 1);
       if (storageList.length === 0) {
         storageHook.disable();
       }
-    }
-  }
-
-  _enable() {
-    if (!this.enabled) {
-      this.enabled = true;
-      ArrayPrototypePush(storageList, this);
-      storageHook.enable();
     }
   }
 
@@ -294,21 +247,18 @@ class AsyncLocalStorage {
   }
 
   enterWith(store) {
-    this._enable();
+    if (!this.enabled) {
+      this.enabled = true;
+      storageList.push(this);
+      storageHook.enable();
+    }
     const resource = executionAsyncResource();
     resource[this.kResourceStore] = store;
   }
 
   run(store, callback, ...args) {
-    // Avoid creation of an AsyncResource if store is already active
-    if (ObjectIs(store, this.getStore())) {
-      return callback(...args);
-    }
-    const resource = new AsyncResource('AsyncLocalStorage',
-                                       defaultAlsResourceOpts);
-    // Calling emitDestroy before runInAsyncScope avoids a try/finally
-    // It is ok because emitDestroy only schedules calling the hook
-    return resource.emitDestroy().runInAsyncScope(() => {
+    const resource = new AsyncResource('AsyncLocalStorage');
+    return resource.runInAsyncScope(() => {
       this.enterWith(store);
       return callback(...args);
     });
@@ -318,17 +268,17 @@ class AsyncLocalStorage {
     if (!this.enabled) {
       return callback(...args);
     }
-    this.disable();
+    this.enabled = false;
     try {
       return callback(...args);
     } finally {
-      this._enable();
+      this.enabled = true;
     }
   }
 
   getStore() {
+    const resource = executionAsyncResource();
     if (this.enabled) {
-      const resource = executionAsyncResource();
       return resource[this.kResourceStore];
     }
   }

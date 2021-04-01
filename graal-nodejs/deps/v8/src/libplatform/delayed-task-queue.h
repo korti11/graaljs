@@ -6,7 +6,6 @@
 #define V8_LIBPLATFORM_DELAYED_TASK_QUEUE_H_
 
 #include <map>
-#include <memory>
 #include <queue>
 
 #include "include/libplatform/libplatform-export.h"

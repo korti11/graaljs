@@ -49,7 +49,6 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.FrameSlot;
 import com.oracle.truffle.api.frame.FrameUtil;
 import com.oracle.truffle.api.frame.MaterializedFrame;
-import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.Shape;
 import com.oracle.truffle.js.runtime.Boundaries;
@@ -142,9 +141,9 @@ public final class JSModuleNamespace extends JSNonProxy {
 
     @Override
     @TruffleBoundary
-    public Object getOwnHelper(DynamicObject store, Object thisObj, Object key, Node encapsulatingNode) {
+    public Object getOwnHelper(DynamicObject store, Object thisObj, Object key) {
         if (!(key instanceof String)) {
-            return super.getOwnHelper(store, thisObj, key, encapsulatingNode);
+            return super.getOwnHelper(store, thisObj, key);
         }
         Map<String, ExportResolution> exports = getExports(store);
         ExportResolution binding = exports.get(key);
@@ -302,7 +301,7 @@ public final class JSModuleNamespace extends JSNonProxy {
 
     @TruffleBoundary
     @Override
-    public boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    public boolean set(DynamicObject thisObj, Object key, Object value, Object receiver, boolean isStrict) {
         if (isStrict) {
             throw Errors.createTypeErrorNotExtensible(thisObj, key);
         }
@@ -311,7 +310,7 @@ public final class JSModuleNamespace extends JSNonProxy {
 
     @TruffleBoundary
     @Override
-    public boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict, Node encapsulatingNode) {
+    public boolean set(DynamicObject thisObj, long index, Object value, Object receiver, boolean isStrict) {
         if (isStrict) {
             throw Errors.createTypeErrorNotExtensible(thisObj, Boundaries.stringValueOf(index));
         }

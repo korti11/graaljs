@@ -27,7 +27,6 @@ const {
   Error,
   Number,
   NumberIsNaN,
-  NumberParseInt,
   ObjectDefineProperty,
   ObjectSetPrototypeOf,
   Symbol,
@@ -35,9 +34,8 @@ const {
 
 const EventEmitter = require('events');
 const stream = require('stream');
-let debug = require('internal/util/debuglog').debuglog('net', (fn) => {
-  debug = fn;
-});
+const { inspect } = require('internal/util/inspect');
+const debug = require('internal/util/debuglog').debuglog('net');
 const { deprecate } = require('internal/util');
 const {
   isIP,
@@ -289,13 +287,14 @@ function Socket(options) {
   else
     options = { ...options };
 
+  options.readable = options.readable || false;
+  options.writable = options.writable || false;
   const { allowHalfOpen } = options;
 
   // Prevent the "no-half-open enforcer" from being inherited from `Duplex`.
   options.allowHalfOpen = true;
   // For backwards compat do not emit close on destroy.
   options.emitClose = false;
-  options.autoDestroy = false;
   // Handle strings directly.
   options.decodeStrings = false;
   stream.Duplex.call(this, options);
@@ -553,7 +552,7 @@ ObjectDefineProperty(Socket.prototype, 'readyState', {
 ObjectDefineProperty(Socket.prototype, 'bufferSize', {
   get: function() {
     if (this._handle) {
-      return this.writableLength;
+      return this[kLastWriteQueueSize] + this.writableLength;
     }
   }
 });
@@ -654,6 +653,8 @@ Socket.prototype._destroy = function(exception, cb) {
   debug('destroy');
 
   this.connecting = false;
+
+  this.readable = this.writable = false;
 
   for (let s = this; s !== null; s = s._parent) {
     clearTimeout(s[kTimeout]);
@@ -806,18 +807,19 @@ protoGetter('_bytesDispatched', function _bytesDispatched() {
 
 protoGetter('bytesWritten', function bytesWritten() {
   let bytes = this._bytesDispatched;
+  const state = this._writableState;
   const data = this._pendingData;
   const encoding = this._pendingEncoding;
-  const writableBuffer = this.writableBuffer;
 
-  if (!writableBuffer)
+  if (!state)
     return undefined;
 
-  for (const el of writableBuffer) {
-    bytes += el.chunk instanceof Buffer ?
-      el.chunk.length :
-      Buffer.byteLength(el.chunk, el.encoding);
-  }
+  this.writableBuffer.forEach(function(el) {
+    if (el.chunk instanceof Buffer)
+      bytes += el.chunk.length;
+    else
+      bytes += Buffer.byteLength(el.chunk, el.encoding);
+  });
 
   if (ArrayIsArray(data)) {
     // Was a writev, iterate over chunks to get total length
@@ -1051,9 +1053,6 @@ function lookupAndConnect(self, options) {
         // calls net.Socket.connect() on it (that's us). There are no event
         // listeners registered yet so defer the error event to the next tick.
         process.nextTick(connectErrorNT, self, err);
-      } else if (!isIP(ip)) {
-        err = new ERR_INVALID_IP_ADDRESS(ip);
-        process.nextTick(connectErrorNT, self, err);
       } else if (addressType !== 4 && addressType !== 6) {
         err = new ERR_INVALID_ADDRESS_FAMILY(addressType,
                                              options.host,
@@ -1120,13 +1119,9 @@ function afterConnect(status, handle, req, readable, writable) {
   self._sockname = null;
 
   if (status === 0) {
-    if (self.readable && !readable) {
-      self.push(null);
-      self.read();
-    }
-    if (self.writable && !writable) {
-      self.end();
-    }
+    self.readable = readable;
+    if (!self._writableState.ended)
+      self.writable = writable;
     self._unrefTimer();
 
     self.emit('connect');
@@ -1233,7 +1228,7 @@ function createServerHandle(address, port, addressType, fd, flags) {
   } else if (port === -1 && addressType === -1) {
     handle = new Pipe(PipeConstants.SERVER);
     if (isWindows) {
-      const instances = NumberParseInt(process.env.NODE_PENDING_PIPE_INSTANCES);
+      const instances = parseInt(process.env.NODE_PENDING_PIPE_INSTANCES);
       if (!NumberIsNaN(instances)) {
         handle.setPendingInstances(instances);
       }
@@ -1490,7 +1485,7 @@ Server.prototype.listen = function(...args) {
                                     'must have the property "port" or "path"');
   }
 
-  throw new ERR_INVALID_OPT_VALUE('options', options);
+  throw new ERR_INVALID_OPT_VALUE('options', inspect(options));
 };
 
 function lookupAndListen(self, port, address, backlog, exclusive, flags) {

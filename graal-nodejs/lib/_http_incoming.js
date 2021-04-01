@@ -22,7 +22,6 @@
 'use strict';
 
 const {
-  ObjectDefineProperty,
   ObjectSetPrototypeOf,
 } = primordials;
 
@@ -48,11 +47,12 @@ function IncomingMessage(socket) {
     };
   }
 
-  Stream.Readable.call(this, { autoDestroy: false, ...streamOptions });
+  Stream.Readable.call(this, streamOptions);
 
   this._readableState.readingMore = true;
 
   this.socket = socket;
+  this.connection = socket;
 
   this.httpVersionMajor = null;
   this.httpVersionMinor = null;
@@ -62,6 +62,8 @@ function IncomingMessage(socket) {
   this.rawHeaders = [];
   this.trailers = {};
   this.rawTrailers = [];
+
+  this.readable = true;
 
   this.aborted = false;
 
@@ -83,15 +85,6 @@ function IncomingMessage(socket) {
 }
 ObjectSetPrototypeOf(IncomingMessage.prototype, Stream.Readable.prototype);
 ObjectSetPrototypeOf(IncomingMessage, Stream.Readable);
-
-ObjectDefineProperty(IncomingMessage.prototype, 'connection', {
-  get: function() {
-    return this.socket;
-  },
-  set: function(val) {
-    this.socket = val;
-  }
-});
 
 IncomingMessage.prototype.setTimeout = function setTimeout(msecs, callback) {
   if (callback)
@@ -121,7 +114,6 @@ IncomingMessage.prototype._read = function _read(n) {
 IncomingMessage.prototype.destroy = function destroy(error) {
   if (this.socket)
     this.socket.destroy(error);
-  return this;
 };
 
 

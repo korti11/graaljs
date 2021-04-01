@@ -11,7 +11,6 @@
 #include "src/compiler/operator.h"
 #include "src/handles/handles-inl.h"
 #include "src/objects/objects-inl.h"
-#include "src/objects/template-objects.h"
 
 namespace v8 {
 namespace internal {
@@ -23,7 +22,8 @@ std::ostream& operator<<(std::ostream& os, CallFrequency const& f) {
 }
 
 CallFrequency CallFrequencyOf(Operator const* op) {
-  DCHECK_EQ(op->opcode(), IrOpcode::kJSConstructWithArrayLike);
+  DCHECK(op->opcode() == IrOpcode::kJSCallWithArrayLike ||
+         op->opcode() == IrOpcode::kJSConstructWithArrayLike);
   return OpParameter<CallFrequency>(op);
 }
 
@@ -65,13 +65,11 @@ ConstructParameters const& ConstructParametersOf(Operator const* op) {
 }
 
 std::ostream& operator<<(std::ostream& os, CallParameters const& p) {
-  return os << p.arity() << ", " << p.frequency() << ", " << p.convert_mode()
-            << ", " << p.speculation_mode() << ", " << p.feedback_relation();
+  return os << p.arity() << ", " << p.frequency() << ", " << p.convert_mode();
 }
 
 const CallParameters& CallParametersOf(const Operator* op) {
   DCHECK(op->opcode() == IrOpcode::kJSCall ||
-         op->opcode() == IrOpcode::kJSCallWithArrayLike ||
          op->opcode() == IrOpcode::kJSCallWithSpread);
   return OpParameter<CallParameters>(op);
 }
@@ -226,7 +224,7 @@ size_t hash_value(FeedbackParameter const& p) {
 }
 
 std::ostream& operator<<(std::ostream& os, FeedbackParameter const& p) {
-  return os << p.feedback();
+  return os;
 }
 
 FeedbackParameter const& FeedbackParameterOf(const Operator* op) {
@@ -286,7 +284,8 @@ bool operator!=(PropertyAccess const& lhs, PropertyAccess const& rhs) {
 PropertyAccess const& PropertyAccessOf(const Operator* op) {
   DCHECK(op->opcode() == IrOpcode::kJSHasProperty ||
          op->opcode() == IrOpcode::kJSLoadProperty ||
-         op->opcode() == IrOpcode::kJSStoreProperty);
+         op->opcode() == IrOpcode::kJSStoreProperty ||
+         op->opcode() == IrOpcode::kJSGetIterator);
   return OpParameter<PropertyAccess>(op);
 }
 
@@ -437,7 +436,7 @@ size_t hash_value(CreateCollectionIteratorParameters const& p) {
 
 std::ostream& operator<<(std::ostream& os,
                          CreateCollectionIteratorParameters const& p) {
-  return os << p.collection_kind() << ", " << p.iteration_kind();
+  return os << p.collection_kind() << " " << p.iteration_kind();
 }
 
 const CreateCollectionIteratorParameters& CreateCollectionIteratorParametersOf(
@@ -472,34 +471,6 @@ const CreateBoundFunctionParameters& CreateBoundFunctionParametersOf(
     const Operator* op) {
   DCHECK_EQ(IrOpcode::kJSCreateBoundFunction, op->opcode());
   return OpParameter<CreateBoundFunctionParameters>(op);
-}
-
-bool operator==(GetTemplateObjectParameters const& lhs,
-                GetTemplateObjectParameters const& rhs) {
-  return lhs.description().location() == rhs.description().location() &&
-         lhs.shared().location() == rhs.shared().location() &&
-         lhs.feedback() == rhs.feedback();
-}
-
-bool operator!=(GetTemplateObjectParameters const& lhs,
-                GetTemplateObjectParameters const& rhs) {
-  return !(lhs == rhs);
-}
-
-size_t hash_value(GetTemplateObjectParameters const& p) {
-  return base::hash_combine(p.description().location(), p.shared().location(),
-                            FeedbackSource::Hash()(p.feedback()));
-}
-
-std::ostream& operator<<(std::ostream& os,
-                         GetTemplateObjectParameters const& p) {
-  return os << Brief(*p.description()) << ", " << Brief(*p.shared());
-}
-
-const GetTemplateObjectParameters& GetTemplateObjectParametersOf(
-    const Operator* op) {
-  DCHECK(op->opcode() == IrOpcode::kJSGetTemplateObject);
-  return OpParameter<GetTemplateObjectParameters>(op);
 }
 
 bool operator==(CreateClosureParameters const& lhs,
@@ -591,31 +562,6 @@ const CloneObjectParameters& CloneObjectParametersOf(const Operator* op) {
   return OpParameter<CloneObjectParameters>(op);
 }
 
-std::ostream& operator<<(std::ostream& os, GetIteratorParameters const& p) {
-  return os << p.loadFeedback() << ", " << p.callFeedback();
-}
-
-bool operator==(GetIteratorParameters const& lhs,
-                GetIteratorParameters const& rhs) {
-  return lhs.loadFeedback() == rhs.loadFeedback() &&
-         lhs.callFeedback() == rhs.callFeedback();
-}
-
-bool operator!=(GetIteratorParameters const& lhs,
-                GetIteratorParameters const& rhs) {
-  return !(lhs == rhs);
-}
-
-GetIteratorParameters const& GetIteratorParametersOf(const Operator* op) {
-  DCHECK(op->opcode() == IrOpcode::kJSGetIterator);
-  return OpParameter<GetIteratorParameters>(op);
-}
-
-size_t hash_value(GetIteratorParameters const& p) {
-  return base::hash_combine(FeedbackSource::Hash()(p.loadFeedback()),
-                            FeedbackSource::Hash()(p.callFeedback()));
-}
-
 size_t hash_value(ForInMode mode) { return static_cast<uint8_t>(mode); }
 
 std::ostream& operator<<(std::ostream& os, ForInMode mode) {
@@ -693,6 +639,7 @@ CompareOperationHint CompareOperationHintOf(const Operator* op) {
   V(GeneratorRestoreContinuation, Operator::kNoThrow, 1, 1)              \
   V(GeneratorRestoreContext, Operator::kNoThrow, 1, 1)                   \
   V(GeneratorRestoreInputOrDebugPos, Operator::kNoThrow, 1, 1)           \
+  V(StackCheck, Operator::kNoWrite, 0, 0)                                \
   V(Debugger, Operator::kNoProperties, 0, 0)                             \
   V(FulfillPromise, Operator::kNoDeopt | Operator::kNoThrow, 2, 1)       \
   V(PerformPromiseThen, Operator::kNoDeopt | Operator::kNoThrow, 4, 1)   \
@@ -883,12 +830,15 @@ const Operator* JSOperatorBuilder::CallForwardVarargs(size_t arity,
       parameters);                                               // parameter
 }
 
-const Operator* JSOperatorBuilder::Call(
-    size_t arity, CallFrequency const& frequency,
-    FeedbackSource const& feedback, ConvertReceiverMode convert_mode,
-    SpeculationMode speculation_mode, CallFeedbackRelation feedback_relation) {
+const Operator* JSOperatorBuilder::Call(size_t arity,
+                                        CallFrequency const& frequency,
+                                        FeedbackSource const& feedback,
+                                        ConvertReceiverMode convert_mode,
+                                        SpeculationMode speculation_mode) {
+  DCHECK_IMPLIES(speculation_mode == SpeculationMode::kAllowSpeculation,
+                 feedback.IsValid());
   CallParameters parameters(arity, frequency, feedback, convert_mode,
-                            speculation_mode, feedback_relation);
+                            speculation_mode);
   return new (zone()) Operator1<CallParameters>(   // --
       IrOpcode::kJSCall, Operator::kNoProperties,  // opcode
       "JSCall",                                    // name
@@ -897,26 +847,21 @@ const Operator* JSOperatorBuilder::Call(
 }
 
 const Operator* JSOperatorBuilder::CallWithArrayLike(
-    const CallFrequency& frequency, const FeedbackSource& feedback,
-    SpeculationMode speculation_mode, CallFeedbackRelation feedback_relation) {
-  CallParameters parameters(2, frequency, feedback, ConvertReceiverMode::kAny,
-                            speculation_mode, feedback_relation);
-  return new (zone()) Operator1<CallParameters>(                // --
+    CallFrequency const& frequency) {
+  return new (zone()) Operator1<CallFrequency>(                 // --
       IrOpcode::kJSCallWithArrayLike, Operator::kNoProperties,  // opcode
       "JSCallWithArrayLike",                                    // name
       3, 1, 1, 1, 1, 2,                                         // counts
-      parameters);                                              // parameter
+      frequency);                                               // parameter
 }
 
 const Operator* JSOperatorBuilder::CallWithSpread(
     uint32_t arity, CallFrequency const& frequency,
-    FeedbackSource const& feedback, SpeculationMode speculation_mode,
-    CallFeedbackRelation feedback_relation) {
+    FeedbackSource const& feedback, SpeculationMode speculation_mode) {
   DCHECK_IMPLIES(speculation_mode == SpeculationMode::kAllowSpeculation,
                  feedback.IsValid());
   CallParameters parameters(arity, frequency, feedback,
-                            ConvertReceiverMode::kAny, speculation_mode,
-                            feedback_relation);
+                            ConvertReceiverMode::kAny, speculation_mode);
   return new (zone()) Operator1<CallParameters>(             // --
       IrOpcode::kJSCallWithSpread, Operator::kNoProperties,  // opcode
       "JSCallWithSpread",                                    // name
@@ -1012,10 +957,9 @@ const Operator* JSOperatorBuilder::LoadProperty(
       access);                                             // parameter
 }
 
-const Operator* JSOperatorBuilder::GetIterator(
-    FeedbackSource const& load_feedback, FeedbackSource const& call_feedback) {
-  GetIteratorParameters access(load_feedback, call_feedback);
-  return new (zone()) Operator1<GetIteratorParameters>(   // --
+const Operator* JSOperatorBuilder::GetIterator(FeedbackSource const& feedback) {
+  PropertyAccess access(LanguageMode::kSloppy, feedback);
+  return new (zone()) Operator1<PropertyAccess>(          // --
       IrOpcode::kJSGetIterator, Operator::kNoProperties,  // opcode
       "JSGetIterator",                                    // name
       1, 1, 1, 1, 1, 2,                                   // counts
@@ -1153,15 +1097,6 @@ const Operator* JSOperatorBuilder::StoreGlobal(LanguageMode language_mode,
       "JSStoreGlobal",                                    // name
       1, 1, 1, 0, 1, 2,                                   // counts
       parameters);                                        // parameter
-}
-
-const Operator* JSOperatorBuilder::HasContextExtension(size_t depth) {
-  return new (zone()) Operator1<size_t>(        // --
-      IrOpcode::kJSHasContextExtension,         // opcode
-      Operator::kNoWrite | Operator::kNoThrow,  // flags
-      "JSHasContextExtension",                  // name
-      0, 1, 0, 1, 1, 0,                         // counts
-      depth);                                   // parameter
 }
 
 const Operator* JSOperatorBuilder::LoadContext(size_t depth, size_t index,
@@ -1322,18 +1257,6 @@ const Operator* JSOperatorBuilder::CreateLiteralObject(
       parameters);                                         // parameter
 }
 
-const Operator* JSOperatorBuilder::GetTemplateObject(
-    Handle<TemplateObjectDescription> description,
-    Handle<SharedFunctionInfo> shared, FeedbackSource const& feedback) {
-  GetTemplateObjectParameters parameters(description, shared, feedback);
-  return new (zone()) Operator1<GetTemplateObjectParameters>(  // --
-      IrOpcode::kJSGetTemplateObject,                          // opcode
-      Operator::kEliminatable,                                 // properties
-      "JSGetTemplateObject",                                   // name
-      0, 1, 1, 1, 1, 0,                                        // counts
-      parameters);                                             // parameter
-}
-
 const Operator* JSOperatorBuilder::CloneObject(FeedbackSource const& feedback,
                                                int literal_flags) {
   CloneObjectParameters parameters(feedback, literal_flags);
@@ -1343,15 +1266,6 @@ const Operator* JSOperatorBuilder::CloneObject(FeedbackSource const& feedback,
       "JSCloneObject",                                   // name
       1, 1, 1, 1, 1, 2,                                  // counts
       parameters);                                       // parameter
-}
-
-const Operator* JSOperatorBuilder::StackCheck(StackCheckKind kind) {
-  return new (zone()) Operator1<StackCheckKind>(  // --
-      IrOpcode::kJSStackCheck,                    // opcode
-      Operator::kNoWrite,                         // properties
-      "JSStackCheck",                             // name
-      0, 1, 1, 0, 1, 2,                           // counts
-      kind);                                      // parameter
 }
 
 const Operator* JSOperatorBuilder::CreateEmptyLiteralObject() {

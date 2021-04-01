@@ -57,7 +57,6 @@ import com.oracle.truffle.js.nodes.function.JSFunctionCallNode;
 import com.oracle.truffle.js.nodes.interop.ExportValueNode;
 import com.oracle.truffle.js.runtime.Errors;
 import com.oracle.truffle.js.runtime.JSArguments;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.builtins.JSProxy;
 import com.oracle.truffle.js.runtime.interop.JSInteropUtil;
@@ -106,7 +105,7 @@ public abstract class JSProxyPropertySetNode extends JavaScriptBaseNode {
         Object trapFun = trapGet.executeWithTarget(handler);
         if (hasTrap.profile(trapFun == Undefined.instance)) {
             if (JSDynamicObject.isJSDynamicObject(target)) {
-                return JSObject.setWithReceiver((DynamicObject) target, propertyKey, value, receiver, isStrict, targetClassProfile, this);
+                return JSObject.setWithReceiver((DynamicObject) target, propertyKey, value, receiver, isStrict, targetClassProfile);
             } else {
                 truffleWrite(target, propertyKey, value);
                 return true;
@@ -130,7 +129,7 @@ public abstract class JSProxyPropertySetNode extends JavaScriptBaseNode {
         ExportValueNode exportValue = exportValueNode;
         if (interop == null || exportValue == null) {
             CompilerDirectives.transferToInterpreterAndInvalidate();
-            interopNode = interop = insert(InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit));
+            interopNode = interop = insert(InteropLibrary.getFactory().createDispatched(3));
             exportValueNode = exportValue = insert(ExportValueNode.create());
         }
         JSInteropUtil.writeMember(obj, key, value, interop, exportValue, this);

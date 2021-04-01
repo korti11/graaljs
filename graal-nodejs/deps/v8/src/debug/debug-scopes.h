@@ -41,13 +41,10 @@ class ScopeIterator {
   static const int kScopeDetailsFunctionIndex = 5;
   static const int kScopeDetailsSize = 6;
 
-  enum class ReparseStrategy {
-    kScript,
-    kFunctionLiteral,
-  };
+  enum Option { DEFAULT, IGNORE_NESTED_SCOPES, COLLECT_NON_LOCALS };
 
   ScopeIterator(Isolate* isolate, FrameInspector* frame_inspector,
-                ReparseStrategy strategy);
+                Option options = DEFAULT);
 
   ScopeIterator(Isolate* isolate, Handle<JSFunction> function);
   ScopeIterator(Isolate* isolate, Handle<JSGeneratorObject> generator);
@@ -80,10 +77,8 @@ class ScopeIterator {
   // Set variable value and return true on success.
   bool SetVariableValue(Handle<String> variable_name, Handle<Object> new_value);
 
-  bool ClosureScopeHasThisReference() const;
-
   // Populate the set with collected non-local variable names.
-  Handle<StringSet> GetLocals() { return locals_; }
+  Handle<StringSet> GetNonLocals();
 
   // Similar to JSFunction::GetName return the function's name or it's inferred
   // name.
@@ -102,7 +97,6 @@ class ScopeIterator {
 
   bool InInnerScope() const { return !function_.is_null(); }
   bool HasContext() const;
-  bool NeedsAndHasContext() const;
   Handle<Context> CurrentContext() const {
     DCHECK(HasContext());
     return context_;
@@ -110,17 +104,13 @@ class ScopeIterator {
 
  private:
   Isolate* isolate_;
-  std::unique_ptr<ParseInfo> info_;
+  ParseInfo* info_ = nullptr;
   FrameInspector* const frame_inspector_ = nullptr;
   Handle<JSGeneratorObject> generator_;
-
-  // The currently-executing function from the inspected frame, or null if this
-  // ScopeIterator has already iterated to any Scope outside that function.
   Handle<JSFunction> function_;
-
   Handle<Context> context_;
   Handle<Script> script_;
-  Handle<StringSet> locals_;
+  Handle<StringSet> non_locals_;
   DeclarationScope* closure_scope_ = nullptr;
   Scope* start_scope_ = nullptr;
   Scope* current_scope_ = nullptr;
@@ -130,14 +120,11 @@ class ScopeIterator {
     return frame_inspector_->javascript_frame();
   }
 
-  void AdvanceOneScope();
-  void AdvanceToNonHiddenScope();
-  void AdvanceContext();
-  void CollectLocalsFromCurrentScope();
-
   int GetSourcePosition();
 
-  void TryParseAndRetrieveScopes(ReparseStrategy strategy);
+  void TryParseAndRetrieveScopes(ScopeIterator::Option option);
+
+  void RetrieveScopeChain(DeclarationScope* scope);
 
   void UnwrapEvaluationContext();
 

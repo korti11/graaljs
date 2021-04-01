@@ -18,8 +18,9 @@ namespace internal {
 
 TQ_OBJECT_CONSTRUCTORS_IMPL(JSPromise)
 
-BOOL_ACCESSORS(JSPromise, flags, has_handler, HasHandlerBit::kShift)
-BOOL_ACCESSORS(JSPromise, flags, handled_hint, HandledHintBit::kShift)
+TQ_SMI_ACCESSORS(JSPromise, flags)
+BOOL_ACCESSORS(JSPromise, flags, has_handler, kHasHandlerBit)
+BOOL_ACCESSORS(JSPromise, flags, handled_hint, kHandledHintBit)
 
 Object JSPromise::result() const {
   DCHECK_NE(Promise::kPending, status());

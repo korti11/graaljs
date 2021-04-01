@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -46,7 +46,6 @@ import java.util.Collections;
 import java.util.Map;
 
 import org.graalvm.polyglot.Context;
-import org.graalvm.polyglot.PolyglotAccess;
 import org.graalvm.polyglot.Source;
 
 import com.oracle.truffle.js.lang.JavaScriptLanguage;
@@ -69,12 +68,7 @@ public class TestCallable extends AbstractTestCallable {
         this.testSource = testSource;
         this.scriptFile = scriptFile;
 
-        if (getConfig().isPolyglot()) {
-            this.contextBuilder = Context.newBuilder();
-            contextBuilder.allowPolyglotAccess(PolyglotAccess.ALL);
-        } else {
-            this.contextBuilder = Context.newBuilder(JavaScriptLanguage.ID);
-        }
+        this.contextBuilder = Context.newBuilder(JavaScriptLanguage.ID);
         contextBuilder.allowIO(true);
         contextBuilder.allowExperimentalOptions(true);
         contextBuilder.option(JSContextOptions.ECMASCRIPT_VERSION_NAME, Integer.toString(ecmaScriptVersion));

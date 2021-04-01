@@ -6,31 +6,18 @@
 const {
   ArrayFrom,
   ArrayIsArray,
-  ArrayPrototypePush,
-  ArrayPrototypeUnshift,
   Boolean,
-  ErrorCaptureStackTrace,
-  FunctionPrototypeBind,
-  MathFloor,
-  Number,
-  NumberPrototypeToFixed,
+  Error,
+  Map,
   ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectPrototypeHasOwnProperty,
   ObjectValues,
   ReflectOwnKeys,
-  SafeMap,
-  SafeWeakMap,
-  StringPrototypeIncludes,
-  StringPrototypePadStart,
-  StringPrototypeRepeat,
-  StringPrototypeReplace,
-  StringPrototypeSlice,
-  StringPrototypeSplit,
   Symbol,
   SymbolHasInstance,
-  SymbolToStringTag,
+  WeakMap,
 } = primordials;
 
 const { trace } = internalBinding('trace_events');
@@ -67,9 +54,6 @@ const kTraceBegin = CHAR_LOWERCASE_B;
 const kTraceEnd = CHAR_LOWERCASE_E;
 const kTraceInstant = CHAR_LOWERCASE_N;
 
-const kSecond = 1000;
-const kMinute = 60 * kSecond;
-const kHour = 60 * kMinute;
 const kMaxGroupIndentation = 1000;
 
 // Lazy loaded for startup performance.
@@ -90,7 +74,7 @@ const kBindStreamsLazy = Symbol('kBindStreamsLazy');
 const kUseStdout = Symbol('kUseStdout');
 const kUseStderr = Symbol('kUseStderr');
 
-const optionsMap = new SafeWeakMap();
+const optionsMap = new WeakMap();
 
 function Console(options /* or: stdout, stderr, ignoreErrors = true */) {
   // We have to test new.target here to see if this function is called
@@ -152,7 +136,7 @@ function Console(options /* or: stdout, stderr, ignoreErrors = true */) {
     // We have to bind the methods grabbed from the instance instead of from
     // the prototype so that users extending the Console can override them
     // from the prototype chain of the subclass.
-    this[key] = FunctionPrototypeBind(this[key], this);
+    this[key] = this[key].bind(this);
     ObjectDefineProperty(this[key], 'name', {
       value: key
     });
@@ -234,9 +218,9 @@ ObjectDefineProperties(Console.prototype, {
           ...consolePropAttributes,
           value: Boolean(ignoreErrors)
         },
-        '_times': { ...consolePropAttributes, value: new SafeMap() },
+        '_times': { ...consolePropAttributes, value: new Map() },
         // Corresponds to https://console.spec.whatwg.org/#count-map
-        [kCounts]: { ...consolePropAttributes, value: new SafeMap() },
+        [kCounts]: { ...consolePropAttributes, value: new Map() },
         [kColorMode]: { ...consolePropAttributes, value: colorMode },
         [kIsConsole]: { ...consolePropAttributes, value: true },
         [kGroupIndent]: { ...consolePropAttributes, value: '' },
@@ -244,12 +228,6 @@ ObjectDefineProperties(Console.prototype, {
           ...consolePropAttributes,
           value: groupIndentation
         },
-        [SymbolToStringTag]: {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          value: 'console'
-        }
       });
     }
   },
@@ -265,8 +243,8 @@ ObjectDefineProperties(Console.prototype, {
         this._stdoutErrorHandler : this._stderrErrorHandler;
 
       if (groupIndent.length !== 0) {
-        if (StringPrototypeIncludes(string, '\n')) {
-          string = StringPrototypeReplace(string, /\n/g, `\n${groupIndent}`);
+        if (string.includes('\n')) {
+          string = string.replace(/\n/g, `\n${groupIndent}`);
         }
         string = groupIndent + string;
       }
@@ -405,7 +383,8 @@ const consoleMethods = {
       name: 'Trace',
       message: this[kFormatForStderr](args)
     };
-    ErrorCaptureStackTrace(err, trace);
+    // eslint-disable-next-line no-restricted-syntax
+    Error.captureStackTrace(err, trace);
     this.error(err.stack);
   },
 
@@ -460,16 +439,13 @@ const consoleMethods = {
     if (data.length > 0) {
       this.log(...data);
     }
-    this[kGroupIndent] +=
-      StringPrototypeRepeat(' ', this[kGroupIndentationWidth]);
+    this[kGroupIndent] += ' '.repeat(this[kGroupIndentationWidth]);
   },
 
   groupEnd() {
-    this[kGroupIndent] = StringPrototypeSlice(
-      this[kGroupIndent],
-      0,
-      this[kGroupIndent].length - this[kGroupIndentationWidth]
-    );
+    this[kGroupIndent] =
+      this[kGroupIndent].slice(0, this[kGroupIndent].length -
+        this[kGroupIndentationWidth]);
   },
 
   // https://console.spec.whatwg.org/#table
@@ -514,14 +490,14 @@ const consoleMethods = {
       let length = 0;
       if (mapIter) {
         for (; i < tabularData.length / 2; ++i) {
-          ArrayPrototypePush(keys, _inspect(tabularData[i * 2]));
-          ArrayPrototypePush(values, _inspect(tabularData[i * 2 + 1]));
+          keys.push(_inspect(tabularData[i * 2]));
+          values.push(_inspect(tabularData[i * 2 + 1]));
           length++;
         }
       } else {
         for (const [k, v] of tabularData) {
-          ArrayPrototypePush(keys, _inspect(k));
-          ArrayPrototypePush(values, _inspect(v));
+          keys.push(_inspect(k));
+          values.push(_inspect(v));
           length++;
         }
       }
@@ -543,7 +519,7 @@ const consoleMethods = {
       const values = [];
       let length = 0;
       for (const v of tabularData) {
-        ArrayPrototypePush(values, _inspect(v));
+        values.push(_inspect(v));
         length++;
       }
       return final([iterKey, valuesKey], [getIndexArray(length), values]);
@@ -578,11 +554,11 @@ const consoleMethods = {
     const keys = ObjectKeys(map);
     const values = ObjectValues(map);
     if (hasPrimitives) {
-      ArrayPrototypePush(keys, valuesKey);
-      ArrayPrototypePush(values, valuesKeyArray);
+      keys.push(valuesKey);
+      values.push(valuesKeyArray);
     }
-    ArrayPrototypeUnshift(keys, indexKey);
-    ArrayPrototypeUnshift(values, indexKeyArray);
+    keys.unshift(indexKey);
+    values.unshift(indexKeyArray);
 
     return final(keys, values);
   },
@@ -597,52 +573,12 @@ function timeLogImpl(self, name, label, data) {
   }
   const duration = process.hrtime(time);
   const ms = duration[0] * 1000 + duration[1] / 1e6;
-
-  const formatted = formatTime(ms);
-
   if (data === undefined) {
-    self.log('%s: %s', label, formatted);
+    self.log('%s: %sms', label, ms.toFixed(3));
   } else {
-    self.log('%s: %s', label, formatted, ...data);
+    self.log('%s: %sms', label, ms.toFixed(3), ...data);
   }
   return true;
-}
-
-function pad(value) {
-  return StringPrototypePadStart(`${value}`, 2, '0');
-}
-
-function formatTime(ms) {
-  let hours = 0;
-  let minutes = 0;
-  let seconds = 0;
-
-  if (ms >= kSecond) {
-    if (ms >= kMinute) {
-      if (ms >= kHour) {
-        hours = MathFloor(ms / kHour);
-        ms = ms % kHour;
-      }
-      minutes = MathFloor(ms / kMinute);
-      ms = ms % kMinute;
-    }
-    seconds = ms / kSecond;
-  }
-
-  if (hours !== 0 || minutes !== 0) {
-    [seconds, ms] = StringPrototypeSplit(
-      NumberPrototypeToFixed(seconds, 3),
-      '.'
-    );
-    const res = hours !== 0 ? `${hours}:${pad(minutes)}` : minutes;
-    return `${res}:${pad(seconds)}.${ms} (${hours !== 0 ? 'h:m' : ''}m:ss.mmm)`;
-  }
-
-  if (seconds !== 0) {
-    return `${NumberPrototypeToFixed(seconds, 3)}s`;
-  }
-
-  return `${Number(NumberPrototypeToFixed(ms, 3))}ms`;
 }
 
 const keyKey = 'Key';
@@ -666,6 +602,5 @@ Console.prototype.groupCollapsed = Console.prototype.group;
 module.exports = {
   Console,
   kBindStreamsLazy,
-  kBindProperties,
-  formatTime // exported for tests
+  kBindProperties
 };

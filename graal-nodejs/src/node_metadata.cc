@@ -1,7 +1,6 @@
 #include "node_metadata.h"
 #include "ares.h"
 #include "brotli/encode.h"
-#include "llhttp.h"
 #include "nghttp2/nghttp2ver.h"
 #include "node.h"
 #include "util.h"
@@ -73,12 +72,8 @@ Metadata::Versions::Versions() {
   modules = NODE_STRINGIFY(NODE_MODULE_VERSION);
   nghttp2 = NGHTTP2_VERSION;
   napi = NODE_STRINGIFY(NAPI_VERSION);
-  llhttp =
-      NODE_STRINGIFY(LLHTTP_VERSION_MAJOR)
-      "."
-      NODE_STRINGIFY(LLHTTP_VERSION_MINOR)
-      "."
-      NODE_STRINGIFY(LLHTTP_VERSION_PATCH);
+  llhttp = per_process::llhttp_version;
+  http_parser = per_process::http_parser_version;
 
   brotli =
     std::to_string(BrotliEncoderVersion() >> 24) +

@@ -120,7 +120,3 @@ module.exports = function(context) {
     'Program:exit': () => reportIfMissingCheck()
   };
 };
-
-module.exports.meta = {
-  fixable: 'code'
-};

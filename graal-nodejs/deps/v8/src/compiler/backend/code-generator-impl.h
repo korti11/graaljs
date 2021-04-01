@@ -26,7 +26,7 @@ class InstructionOperandConverter {
 
   // -- Instruction operand accesses with conversions --------------------------
 
-  Register InputRegister(size_t index) const {
+  Register InputRegister(size_t index) {
     return ToRegister(instr_->InputAt(index));
   }
 
@@ -60,10 +60,6 @@ class InstructionOperandConverter {
 
   int8_t InputInt8(size_t index) {
     return static_cast<int8_t>(InputInt32(index));
-  }
-
-  uint8_t InputUint8(size_t index) {
-    return bit_cast<uint8_t>(InputInt8(index));
   }
 
   int16_t InputInt16(size_t index) {
@@ -100,7 +96,7 @@ class InstructionOperandConverter {
     return ToRpoNumber(instr_->InputAt(index));
   }
 
-  Register OutputRegister(size_t index = 0) const {
+  Register OutputRegister(size_t index = 0) {
     return ToRegister(instr_->OutputAt(index));
   }
 
@@ -134,7 +130,7 @@ class InstructionOperandConverter {
     return ToConstant(op).ToRpoNumber();
   }
 
-  Register ToRegister(InstructionOperand* op) const {
+  Register ToRegister(InstructionOperand* op) {
     return LocationOperand::cast(op)->GetRegister();
   }
 
@@ -150,7 +146,7 @@ class InstructionOperandConverter {
     return LocationOperand::cast(op)->GetSimd128Register();
   }
 
-  Constant ToConstant(InstructionOperand* op) const {
+  Constant ToConstant(InstructionOperand* op) {
     if (op->IsImmediate()) {
       return gen_->instructions()->GetImmediate(ImmediateOperand::cast(op));
     }

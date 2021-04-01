@@ -117,21 +117,11 @@ void MemoryTracker::TrackField(const char* edge_name,
   TrackField(edge_name, value.get(), node_name);
 }
 
-template <typename T>
-void MemoryTracker::TrackField(const char* edge_name,
-                               const std::shared_ptr<T>& value,
-                               const char* node_name) {
-  if (value.get() == nullptr) {
-    return;
-  }
-  TrackField(edge_name, value.get(), node_name);
-}
-
 template <typename T, bool kIsWeak>
 void MemoryTracker::TrackField(const char* edge_name,
                                const BaseObjectPtrImpl<T, kIsWeak>& value,
                                const char* node_name) {
-  if (value.get() == nullptr || kIsWeak) return;
+  if (value.get() == nullptr) return;
   TrackField(edge_name, value.get(), node_name);
 }
 
@@ -214,7 +204,6 @@ template <typename T>
 void MemoryTracker::TrackField(const char* edge_name,
                                const v8::PersistentBase<T>& value,
                                const char* node_name) {
-  if (value.IsWeak()) return;
   TrackField(edge_name, value.Get(isolate_));
 }
 
@@ -231,12 +220,6 @@ void MemoryTracker::TrackField(const char* edge_name,
                                const MallocedBuffer<T>& value,
                                const char* node_name) {
   TrackFieldWithSize(edge_name, value.size, "MallocedBuffer");
-}
-
-void MemoryTracker::TrackField(const char* edge_name,
-                               const v8::BackingStore* value,
-                               const char* node_name) {
-  TrackFieldWithSize(edge_name, value->ByteLength(), "BackingStore");
 }
 
 void MemoryTracker::TrackField(const char* name,

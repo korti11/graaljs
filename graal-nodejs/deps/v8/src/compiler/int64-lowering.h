@@ -5,8 +5,6 @@
 #ifndef V8_COMPILER_INT64_LOWERING_H_
 #define V8_COMPILER_INT64_LOWERING_H_
 
-#include <memory>
-
 #include "src/common/globals.h"
 #include "src/compiler/common-operator.h"
 #include "src/compiler/graph.h"
@@ -24,9 +22,19 @@ namespace compiler {
 
 // Struct for CallDescriptors that need special lowering.
 struct V8_EXPORT_PRIVATE Int64LoweringSpecialCase {
-  // Map from CallDescriptors that should be replaced, to the replacement
-  // CallDescriptors.
-  std::unordered_map<const CallDescriptor*, const CallDescriptor*> replacements;
+  Int64LoweringSpecialCase()
+      : bigint_to_i64_call_descriptor(nullptr),
+        i64_to_bigint_call_descriptor(nullptr),
+        bigint_to_i32_pair_call_descriptor(nullptr),
+        i32_pair_to_bigint_call_descriptor(nullptr) {}
+
+  // CallDescriptors that need special lowering.
+  CallDescriptor* bigint_to_i64_call_descriptor;
+  CallDescriptor* i64_to_bigint_call_descriptor;
+
+  // The replacement CallDescriptors.
+  CallDescriptor* bigint_to_i32_pair_call_descriptor;
+  CallDescriptor* i32_pair_to_bigint_call_descriptor;
 };
 
 class V8_EXPORT_PRIVATE Int64Lowering {
@@ -64,8 +72,7 @@ class V8_EXPORT_PRIVATE Int64Lowering {
   void LowerWord64AtomicBinop(Node* node, const Operator* op);
   void LowerWord64AtomicNarrowOp(Node* node, const Operator* op);
 
-  const CallDescriptor* LowerCallDescriptor(
-      const CallDescriptor* call_descriptor);
+  CallDescriptor* LowerCallDescriptor(const CallDescriptor* call_descriptor);
 
   void ReplaceNode(Node* old, Node* new_low, Node* new_high);
   bool HasReplacementLow(Node* node);

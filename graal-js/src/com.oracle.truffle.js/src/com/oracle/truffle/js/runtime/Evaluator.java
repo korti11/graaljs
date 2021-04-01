@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -59,18 +59,20 @@ public interface Evaluator {
     String EVAL_AT_SOURCE_NAME_PREFIX = "eval at ";
 
     /**
-     * Parse (indirect) eval code using the global execution context.
+     * Evaluate using the global execution context. For example, this method can be used to compute
+     * the result of indirect calls to eval.
      *
      * @param lastNode the node invoking the eval or {@code null}
      */
-    ScriptNode parseEval(JSContext context, Node lastNode, Source code);
+    Object evaluate(JSRealm realm, Node lastNode, Source code);
 
     /**
-     * Parse direct eval code using the local execution context.
+     * Evaluate using the local execution context. For example, this method can be used to compute
+     * the result of direct calls to eval.
      *
      * @param lastNode the node invoking the eval or {@code null}
      */
-    ScriptNode parseDirectEval(JSContext context, Node lastNode, Source source, Object currEnv);
+    Object evaluate(JSRealm realm, Node lastNode, Source source, MaterializedFrame frame, Object thisObj, Object currEnv);
 
     Integer[] parseDate(JSRealm realm, String date);
 
@@ -120,5 +122,5 @@ public interface Evaluator {
     /**
      * Creates a script that will be evaluated in a specified lexical context.
      */
-    JavaScriptNode parseInlineScript(JSContext context, Source source, MaterializedFrame lexicalContextFrame, boolean isStrict, Node locationNode);
+    JavaScriptNode parseInlineScript(JSContext context, Source source, MaterializedFrame lexicalContextFrame, boolean isStrict);
 }

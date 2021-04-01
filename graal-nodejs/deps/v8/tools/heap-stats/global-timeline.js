@@ -4,18 +4,15 @@
 
 'use strict';
 
-import {
-  VIEW_BY_INSTANCE_TYPE,
-  VIEW_BY_INSTANCE_CATEGORY,
-  VIEW_BY_FIELD_TYPE
-} from './details-selection.js';
+const global_timeline_template =
+    document.currentScript.ownerDocument.querySelector(
+        '#global-timeline-template');
 
-defineCustomElement('global-timeline', (templateText) =>
- class GlobalTimeline extends HTMLElement {
+class GlobalTimeline extends HTMLElement {
   constructor() {
     super();
     const shadowRoot = this.attachShadow({mode: 'open'});
-    shadowRoot.innerHTML = templateText;
+    shadowRoot.appendChild(global_timeline_template.content.cloneNode(true));
   }
 
   $(id) {
@@ -220,4 +217,6 @@ defineCustomElement('global-timeline', (templateText) =>
     this.show();
     chart.draw(data, google.charts.Line.convertOptions(options));
   }
-});
+}
+
+customElements.define('global-timeline', GlobalTimeline);

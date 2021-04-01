@@ -57,21 +57,22 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
   bool IsRootForNonTracingGC(const v8::TracedGlobal<v8::Value>& handle) {
     return !InUse() || remote_tracer_->IsRootForNonTracingGC(handle);
   }
-
-  bool IsRootForNonTracingGC(const v8::TracedReference<v8::Value>& handle) {
-    return !InUse() || remote_tracer_->IsRootForNonTracingGC(handle);
-  }
-
-  void ResetHandleInNonTracingGC(const v8::TracedReference<v8::Value>& handle) {
+  void ResetHandleInNonTracingGC(const v8::TracedGlobal<v8::Value>& handle) {
     // Resetting is only called when IsRootForNonTracingGC returns false which
     // can only happen the EmbedderHeapTracer is set on API level.
     DCHECK(InUse());
     remote_tracer_->ResetHandleInNonTracingGC(handle);
   }
 
+  void NotifyV8MarkingWorklistWasEmpty() {
+    num_v8_marking_worklist_was_empty_++;
+  }
+
   bool ShouldFinalizeIncrementalMarking() {
+    static const size_t kMaxIncrementalFixpointRounds = 3;
     return !FLAG_incremental_marking_wrappers || !InUse() ||
-           (IsRemoteTracingDone() && embedder_worklist_empty_);
+           (IsRemoteTracingDone() && embedder_worklist_empty_) ||
+           num_v8_marking_worklist_was_empty_ > kMaxIncrementalFixpointRounds;
   }
 
   void SetEmbedderStackStateForNextFinalization(
@@ -108,8 +109,9 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
   Isolate* const isolate_;
   EmbedderHeapTracer* remote_tracer_ = nullptr;
 
+  size_t num_v8_marking_worklist_was_empty_ = 0;
   EmbedderHeapTracer::EmbedderStackState embedder_stack_state_ =
-      EmbedderHeapTracer::EmbedderStackState::kMayContainHeapPointers;
+      EmbedderHeapTracer::kUnknown;
   // Indicates whether the embedder worklist was observed empty on the main
   // thread. This is opportunistic as concurrent marking tasks may hold local
   // segments of potential embedder fields to move to the main thread.
@@ -138,11 +140,6 @@ class V8_EXPORT_PRIVATE EmbedderStackStateScope final {
       : local_tracer_(local_tracer),
         old_stack_state_(local_tracer_->embedder_stack_state_) {
     local_tracer_->embedder_stack_state_ = stack_state;
-    if (EmbedderHeapTracer::EmbedderStackState::kNoHeapPointers ==
-        stack_state) {
-      if (local_tracer->remote_tracer())
-        local_tracer->remote_tracer()->NotifyEmptyEmbedderStack();
-    }
   }
 
   ~EmbedderStackStateScope() {

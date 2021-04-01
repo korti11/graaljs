@@ -10,9 +10,8 @@
 namespace v8 {
 namespace internal {
 
-const bool Deoptimizer::kSupportsFixedDeoptExitSizes = false;
-const int Deoptimizer::kNonLazyDeoptExitSize = 0;
-const int Deoptimizer::kLazyDeoptExitSize = 0;
+const bool Deoptimizer::kSupportsFixedDeoptExitSize = false;
+const int Deoptimizer::kDeoptExitSize = 0;
 
 #define __ masm->
 
@@ -41,7 +40,7 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   }
 
   // Push all GPRs onto the stack
-  __ lay(sp, MemOperand(sp, -kNumberOfRegisters * kSystemPointerSize));
+  __ lay(sp, MemOperand(sp, -kNumberOfRegisters * kPointerSize));
   __ StoreMultipleP(r0, sp, MemOperand(sp));  // Save all 16 registers
 
   __ mov(r1, Operand(ExternalReference::Create(
@@ -49,7 +48,7 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   __ StoreP(fp, MemOperand(r1));
 
   const int kSavedRegistersAreaSize =
-      (kNumberOfRegisters * kSystemPointerSize) + kDoubleRegsSize;
+      (kNumberOfRegisters * kPointerSize) + kDoubleRegsSize;
 
   // The bailout id is passed using r10
   __ LoadRR(r4, r10);
@@ -72,7 +71,7 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   Label context_check;
   __ LoadP(r3, MemOperand(fp, CommonFrameConstants::kContextOrFrameTypeOffset));
   __ JumpIfSmi(r3, &context_check);
-  __ LoadP(r2, MemOperand(fp, StandardFrameConstants::kFunctionOffset));
+  __ LoadP(r2, MemOperand(fp, JavaScriptFrameConstants::kFunctionOffset));
   __ bind(&context_check);
   __ LoadImmP(r3, Operand(static_cast<int>(deopt_kind)));
   // r4: bailout id already loaded.
@@ -80,7 +79,7 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   // r6: Fp-to-sp delta.
   // Parm6: isolate is passed on the stack.
   __ mov(r7, Operand(ExternalReference::isolate_address(isolate)));
-  __ StoreP(r7, MemOperand(sp, kStackFrameExtraParamSlot * kSystemPointerSize));
+  __ StoreP(r7, MemOperand(sp, kStackFrameExtraParamSlot * kPointerSize));
 
   // Call Deoptimizer::New().
   {
@@ -95,14 +94,13 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   // Copy core registers into FrameDescription::registers_[kNumRegisters].
   // DCHECK_EQ(Register::kNumRegisters, kNumberOfRegisters);
   // __ mvc(MemOperand(r3, FrameDescription::registers_offset()),
-  //        MemOperand(sp), kNumberOfRegisters * kSystemPointerSize);
+  //        MemOperand(sp), kNumberOfRegisters * kPointerSize);
   // Copy core registers into FrameDescription::registers_[kNumRegisters].
   // TODO(john.yan): optimize the following code by using mvc instruction
   DCHECK_EQ(Register::kNumRegisters, kNumberOfRegisters);
   for (int i = 0; i < kNumberOfRegisters; i++) {
-    int offset =
-        (i * kSystemPointerSize) + FrameDescription::registers_offset();
-    __ LoadP(r4, MemOperand(sp, i * kSystemPointerSize));
+    int offset = (i * kPointerSize) + FrameDescription::registers_offset();
+    __ LoadP(r4, MemOperand(sp, i * kPointerSize));
     __ StoreP(r4, MemOperand(r3, offset));
   }
 
@@ -112,22 +110,10 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   for (int i = 0; i < config->num_allocatable_double_registers(); ++i) {
     int code = config->GetAllocatableDoubleCode(i);
     int dst_offset = code * kDoubleSize + double_regs_offset;
-    int src_offset =
-        code * kDoubleSize + kNumberOfRegisters * kSystemPointerSize;
+    int src_offset = code * kDoubleSize + kNumberOfRegisters * kPointerSize;
     // TODO(joransiu): MVC opportunity
     __ LoadDouble(d0, MemOperand(sp, src_offset));
     __ StoreDouble(d0, MemOperand(r3, dst_offset));
-  }
-
-  // Mark the stack as not iterable for the CPU profiler which won't be able to
-  // walk the stack without the return address.
-  {
-    UseScratchRegisterScope temps(masm);
-    Register is_iterable = temps.Acquire();
-    Register zero = r6;
-    __ Move(is_iterable, ExternalReference::stack_is_iterable_address(isolate));
-    __ lhi(zero, Operand(0));
-    __ StoreByte(zero, MemOperand(is_iterable));
   }
 
   // Remove the saved registers from the stack.
@@ -148,7 +134,7 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   __ bind(&pop_loop);
   __ pop(r6);
   __ StoreP(r6, MemOperand(r5, 0));
-  __ la(r5, MemOperand(r5, kSystemPointerSize));
+  __ la(r5, MemOperand(r5, kPointerSize));
   __ bind(&pop_loop_header);
   __ CmpP(r4, sp);
   __ bne(&pop_loop);
@@ -172,7 +158,7 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   // r3 = one past the last FrameDescription**.
   __ LoadlW(r3, MemOperand(r2, Deoptimizer::output_count_offset()));
   __ LoadP(r6, MemOperand(r2, Deoptimizer::output_offset()));  // r6 is output_.
-  __ ShiftLeftP(r3, r3, Operand(kSystemPointerSizeLog2));
+  __ ShiftLeftP(r3, r3, Operand(kPointerSizeLog2));
   __ AddP(r3, r6, r3);
   __ b(&outer_loop_header, Label::kNear);
 
@@ -192,7 +178,7 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   __ CmpP(r5, Operand::Zero());
   __ bne(&inner_push_loop);  // test for gt?
 
-  __ AddP(r6, r6, Operand(kSystemPointerSize));
+  __ AddP(r6, r6, Operand(kPointerSize));
   __ bind(&outer_loop_header);
   __ CmpP(r6, r3);
   __ blt(&outer_push_loop);
@@ -214,26 +200,15 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   // Restore the registers from the last output frame.
   __ LoadRR(r1, r4);
   for (int i = kNumberOfRegisters - 1; i > 0; i--) {
-    int offset =
-        (i * kSystemPointerSize) + FrameDescription::registers_offset();
+    int offset = (i * kPointerSize) + FrameDescription::registers_offset();
     if ((restored_regs & (1 << i)) != 0) {
       __ LoadP(ToRegister(i), MemOperand(r1, offset));
     }
   }
 
-  {
-    UseScratchRegisterScope temps(masm);
-    Register is_iterable = temps.Acquire();
-    Register one = r6;
-    __ Move(is_iterable, ExternalReference::stack_is_iterable_address(isolate));
-    __ lhi(one, Operand(1));
-    __ StoreByte(one, MemOperand(is_iterable));
-  }
-
   __ pop(ip);  // get continuation, leave pc on stack
   __ pop(r14);
   __ Jump(ip);
-
   __ stop();
 }
 
@@ -254,8 +229,6 @@ void FrameDescription::SetCallerConstantPool(unsigned offset, intptr_t value) {
   // No out-of-line constant pool support.
   UNREACHABLE();
 }
-
-void FrameDescription::SetPc(intptr_t pc) { pc_ = pc; }
 
 #undef __
 

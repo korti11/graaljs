@@ -57,7 +57,7 @@ describe('Other', function () {
             var point = new Point();
             // just make sure that it does not throw an error
             util.inspect(Point);
-            assert.match(util.inspect(point), /Point/);
+            util.inspect(point);
         });
     }
     it('should not regress in ExecuteNativeFunctionNode', function () {
@@ -86,9 +86,5 @@ describe('Other', function () {
     it('should be possible to use vm.compileFunction()', function () {
         var fn = vm.compileFunction('return a + b + c + d;', ['a', 'b'], {contextExtensions: [{c: 42}, {d: 211}]});
         assert.strictEqual(fn(1000, 20000), 21253);
-    });
-    it('should be possible to use TextDecoder("utf-8", { fatal: true })', function () {
-        // should not fail (fails when Node.js is built without intl support)
-        new util.TextDecoder('utf-8', { fatal: true });
     });
 });

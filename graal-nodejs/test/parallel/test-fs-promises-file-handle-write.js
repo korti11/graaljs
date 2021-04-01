@@ -22,8 +22,6 @@ async function validateWrite() {
   await fileHandle.write(buffer, 0, buffer.length);
   const readFileData = fs.readFileSync(filePathForHandle);
   assert.deepStrictEqual(buffer, readFileData);
-
-  await fileHandle.close();
 }
 
 async function validateEmptyWrite() {
@@ -34,8 +32,6 @@ async function validateEmptyWrite() {
   await fileHandle.write(buffer, 0, buffer.length);
   const readFileData = fs.readFileSync(filePathForHandle);
   assert.deepStrictEqual(buffer, readFileData);
-
-  await fileHandle.close();
 }
 
 async function validateNonUint8ArrayWrite() {
@@ -46,8 +42,6 @@ async function validateNonUint8ArrayWrite() {
   await fileHandle.write(buffer, 0, buffer.length);
   const readFileData = fs.readFileSync(filePathForHandle);
   assert.deepStrictEqual(Buffer.from(buffer, 'utf8'), readFileData);
-
-  await fileHandle.close();
 }
 
 async function validateNonStringValuesWrite() {
@@ -55,13 +49,12 @@ async function validateNonStringValuesWrite() {
   const fileHandle = await open(filePathForHandle, 'w+');
   const nonStringValues = [123, {}, new Map()];
   for (const nonStringValue of nonStringValues) {
-    await assert.rejects(
-      fileHandle.write(nonStringValue),
-      { message: /"buffer"/, code: 'ERR_INVALID_ARG_TYPE' }
-    );
+    await fileHandle.write(nonStringValue);
   }
 
-  await fileHandle.close();
+  const readFileData = fs.readFileSync(filePathForHandle);
+  const expected = ['123', '[object Object]', '[object Map]'].join('');
+  assert.deepStrictEqual(Buffer.from(expected, 'utf8'), readFileData);
 }
 
 Promise.all([

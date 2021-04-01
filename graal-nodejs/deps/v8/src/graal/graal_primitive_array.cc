@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -43,7 +43,8 @@
 #include "graal_primitive_array.h"
 #include "graal_value.h"
 
-#include "graal_primitive_array-inl.h"
+GraalPrimitiveArray::GraalPrimitiveArray(GraalIsolate* isolate, jobject java_object) : GraalHandleContent(isolate, java_object) {
+}
 
 GraalHandleContent* GraalPrimitiveArray::CopyImpl(jobject java_object_copy) {
     return new GraalPrimitiveArray(Isolate(), java_object_copy);

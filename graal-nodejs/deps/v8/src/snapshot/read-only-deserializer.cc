@@ -29,8 +29,8 @@ void ReadOnlyDeserializer::DeserializeInto(Isolate* isolate) {
   DCHECK(isolate->handle_scope_implementer()->blocks()->empty());
   // Read-only object cache is not yet populated.
   DCHECK(!ro_heap->read_only_object_cache_is_initialized());
-  // Startup object cache is not yet populated.
-  DCHECK(isolate->startup_object_cache()->empty());
+  // Partial snapshot cache is not yet populated.
+  DCHECK(isolate->partial_snapshot_cache()->empty());
   // Builtins are not yet created.
   DCHECK(!isolate->builtins()->is_initialized());
 
@@ -51,7 +51,6 @@ void ReadOnlyDeserializer::DeserializeInto(Isolate* isolate) {
       if (object->IsUndefined(roots)) break;
     }
     DeserializeDeferredObjects();
-    CheckNoArrayBufferBackingStores();
   }
 
   if (FLAG_rehash_snapshot && can_rehash()) {

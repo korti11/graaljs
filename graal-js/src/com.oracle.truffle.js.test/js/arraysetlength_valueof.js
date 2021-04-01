@@ -21,3 +21,5 @@ a.length = newLength;
 
 if (2 !== valueOfCalled) throw valueOfCalled;
 if (3 !== a.length) throw a.length;
+
+true;

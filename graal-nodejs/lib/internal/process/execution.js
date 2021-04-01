@@ -1,13 +1,17 @@
 'use strict';
 
+const {
+  JSONStringify,
+  PromiseResolve,
+} = primordials;
+
 const path = require('path');
 
 const {
   codes: {
     ERR_INVALID_ARG_TYPE,
-    ERR_UNCAUGHT_EXCEPTION_CAPTURE_ALREADY_SET,
-    ERR_EVAL_ESM_CANNOT_PRINT,
-  },
+    ERR_UNCAUGHT_EXCEPTION_CAPTURE_ALREADY_SET
+  }
 } = require('internal/errors');
 
 const {
@@ -35,18 +39,20 @@ function tryGetCwd() {
 }
 
 function evalModule(source, print) {
-  if (print) {
-    throw new ERR_EVAL_ESM_CANNOT_PRINT();
-  }
-  const { log } = require('internal/console/global');
-  const { loadESM } = require('internal/process/esm_loader');
-  const { handleMainPromise } = require('internal/modules/run_main');
-  return handleMainPromise(loadESM(async (loader) => {
+  const { log, error } = require('internal/console/global');
+  const { decorateErrorStack } = require('internal/util');
+  const asyncESM = require('internal/process/esm_loader');
+  PromiseResolve(asyncESM.ESMLoader).then(async (loader) => {
     const { result } = await loader.eval(source);
     if (print) {
       log(result);
     }
-  }));
+  })
+  .catch((e) => {
+    decorateErrorStack(e);
+    error(e);
+    process.exit(1);
+  });
 }
 
 function evalScript(name, body, breakFirstLine, print) {
@@ -55,53 +61,52 @@ function evalScript(name, body, breakFirstLine, print) {
   const { pathToFileURL } = require('url');
 
   const cwd = tryGetCwd();
-  const origModule = globalThis.module;  // Set e.g. when called from the REPL.
+  const origModule = global.module;  // Set e.g. when called from the REPL.
 
   const module = new CJSModule(name);
   module.filename = path.join(cwd, name);
   module.paths = CJSModule._nodeModulePaths(cwd);
 
-  const asyncESM = require('internal/process/esm_loader');
+  global.kVmBreakFirstLineSymbol = kVmBreakFirstLineSymbol;
+  global.asyncESM = require('internal/process/esm_loader');
+
   const baseUrl = pathToFileURL(module.filename).href;
 
-  // Create wrapper for cache entry
   const script = `
-    globalThis.module = module;
-    globalThis.exports = exports;
-    globalThis.__dirname = __dirname;
-    globalThis.require = require;
-    return (main) => main();
-  `;
-  globalThis.__filename = name;
-  const result = module._compile(script, `${name}-wrapper`)(() =>
-    require('vm').runInThisContext(body, {
-      filename: name,
-      displayErrors: true,
-      [kVmBreakFirstLineSymbol]: !!breakFirstLine,
-      async importModuleDynamically(specifier) {
-        const loader = await asyncESM.ESMLoader;
-        return loader.import(specifier, baseUrl);
-      }
-    }));
+    global.__filename = ${JSONStringify(name)};
+    global.exports = exports;
+    global.module = module;
+    global.__dirname = __dirname;
+    global.require = require;
+    const { kVmBreakFirstLineSymbol, asyncESM } = global;
+    delete global.kVmBreakFirstLineSymbol;
+    delete global.asyncESM;
+    return require("vm").runInThisContext(
+      ${JSONStringify(body)}, {
+        filename: ${JSONStringify(name)},
+        displayErrors: true,
+        [kVmBreakFirstLineSymbol]: ${!!breakFirstLine},
+        async importModuleDynamically (specifier) {
+          const loader = await asyncESM.ESMLoader;
+          return loader.import(specifier, ${JSONStringify(baseUrl)});
+        }
+      });\n`;
+  const result = module._compile(script, `${name}-wrapper`);
   if (print) {
     const { log } = require('internal/console/global');
     log(result);
   }
 
   if (origModule !== undefined)
-    globalThis.module = origModule;
+    global.module = origModule;
 }
 
-const exceptionHandlerState = {
-  captureFn: null,
-  reportFlag: false
-};
+const exceptionHandlerState = { captureFn: null };
 
 function setUncaughtExceptionCaptureCallback(fn) {
   if (fn === null) {
     exceptionHandlerState.captureFn = fn;
     shouldAbortOnUncaughtToggle[0] = 1;
-    process.report.reportOnUncaughtException = exceptionHandlerState.reportFlag;
     return;
   }
   if (typeof fn !== 'function') {
@@ -112,9 +117,6 @@ function setUncaughtExceptionCaptureCallback(fn) {
   }
   exceptionHandlerState.captureFn = fn;
   shouldAbortOnUncaughtToggle[0] = 0;
-  exceptionHandlerState.reportFlag =
-    process.report.reportOnUncaughtException === true;
-  process.report.reportOnUncaughtException = false;
 }
 
 function hasUncaughtExceptionCaptureCallback() {
@@ -184,10 +186,10 @@ function createOnGlobalUncaughtException() {
       do {
         emitAfter(executionAsyncId());
       } while (hasAsyncIdStack());
+    // Or completely empty the id stack.
+    } else {
+      clearAsyncIdStack();
     }
-    // And completely empty the id stack, including anything that may be
-    // cached on the native side.
-    clearAsyncIdStack();
 
     return true;
   };

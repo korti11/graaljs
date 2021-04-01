@@ -32,17 +32,14 @@ class TurboAssemblerTest : public TestWithIsolate {};
 
 TEST_F(TurboAssemblerTest, TestHardAbort) {
   auto buffer = AllocateAssemblerBuffer();
-  TurboAssembler tasm(isolate(), AssemblerOptions{}, CodeObjectRequired::kNo,
+  TurboAssembler tasm(nullptr, AssemblerOptions{}, CodeObjectRequired::kNo,
                       buffer->CreateView());
-  __ set_root_array_available(false);
   __ set_abort_hard(true);
-
-  __ CodeEntry();
 
   __ Abort(AbortReason::kNoReason);
 
   CodeDesc desc;
-  tasm.GetCode(isolate(), &desc);
+  tasm.GetCode(nullptr, &desc);
   buffer->MakeExecutable();
   // We need an isolate here to execute in the simulator.
   auto f = GeneratedCode<void>::FromBuffer(isolate(), buffer->start());
@@ -52,12 +49,9 @@ TEST_F(TurboAssemblerTest, TestHardAbort) {
 
 TEST_F(TurboAssemblerTest, TestCheck) {
   auto buffer = AllocateAssemblerBuffer();
-  TurboAssembler tasm(isolate(), AssemblerOptions{}, CodeObjectRequired::kNo,
+  TurboAssembler tasm(nullptr, AssemblerOptions{}, CodeObjectRequired::kNo,
                       buffer->CreateView());
-  __ set_root_array_available(false);
   __ set_abort_hard(true);
-
-  __ CodeEntry();
 
   // Fail if the first parameter is 17.
   __ Mov(w1, Immediate(17));
@@ -66,7 +60,7 @@ TEST_F(TurboAssemblerTest, TestCheck) {
   __ Ret();
 
   CodeDesc desc;
-  tasm.GetCode(isolate(), &desc);
+  tasm.GetCode(nullptr, &desc);
   buffer->MakeExecutable();
   // We need an isolate here to execute in the simulator.
   auto f = GeneratedCode<void, int>::FromBuffer(isolate(), buffer->start());
@@ -119,7 +113,6 @@ TEST_P(TurboAssemblerTestMoveObjectAndSlot, MoveObjectAndSlot) {
     TurboAssembler tasm(nullptr, AssemblerOptions{}, CodeObjectRequired::kNo,
                         buffer->CreateView());
 
-    __ CodeEntry();
     __ Push(x0, padreg);
     __ Mov(test_case.object, x1);
 
@@ -128,7 +121,7 @@ TEST_P(TurboAssemblerTestMoveObjectAndSlot, MoveObjectAndSlot) {
     Register dst_slot = test_case.dst_slot;
 
     Operand offset_operand(0);
-    if (test_case.offset_register == no_reg) {
+    if (test_case.offset_register.Is(no_reg)) {
       offset_operand = Operand(offset);
     } else {
       __ Mov(test_case.offset_register, Operand(offset));
@@ -138,7 +131,7 @@ TEST_P(TurboAssemblerTestMoveObjectAndSlot, MoveObjectAndSlot) {
     std::stringstream comment;
     comment << "-- " << test_case.comment << ": MoveObjectAndSlot("
             << dst_object << ", " << dst_slot << ", " << src_object << ", ";
-    if (test_case.offset_register == no_reg) {
+    if (test_case.offset_register.Is(no_reg)) {
       comment << "#" << offset;
     } else {
       comment << test_case.offset_register;

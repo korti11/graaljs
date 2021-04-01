@@ -14,8 +14,9 @@ snippet: "
 "
 frame size: 1
 parameter count: 1
-bytecode array length: 9
+bytecode array length: 10
 bytecodes: [
+  /*   27 E> */ B(StackCheck),
   /*   32 S> */ B(LdaGlobal), U8(0), U8(0),
                 B(Star), R(0),
   /*   39 E> */ B(CallUndefinedReceiver0), R(0), U8(2),
@@ -35,8 +36,9 @@ snippet: "
 "
 frame size: 4
 parameter count: 1
-bytecode array length: 23
+bytecode array length: 24
 bytecodes: [
+  /*   34 E> */ B(StackCheck),
   /*   39 S> */ B(LdaGlobal), U8(0), U8(0),
                 B(Star), R(0),
                 B(LdaSmi), I8(1),

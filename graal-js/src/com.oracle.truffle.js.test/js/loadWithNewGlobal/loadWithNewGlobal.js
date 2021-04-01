@@ -12,3 +12,4 @@ assertSame(42, loadWithNewGlobal({
     name: "testFn",
     script: "arguments[0] + arguments[1];"
 }, 39, 3));
+true;

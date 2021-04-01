@@ -36,7 +36,6 @@
 #define V8_CODEGEN_MIPS_ASSEMBLER_MIPS_H_
 
 #include <stdio.h>
-#include <memory>
 
 #include <set>
 
@@ -1479,11 +1478,13 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
   static bool IsAddImmediate(Instr instr);
   static Instr SetAddImmediateOffset(Instr instr, int16_t offset);
   static uint32_t CreateTargetAddress(Instr instr_lui, Instr instr_jic);
-  static void UnpackTargetAddress(uint32_t address, int16_t* lui_offset,
-                                  int16_t* jic_offset);
-  static void UnpackTargetAddressUnsigned(uint32_t address,
-                                          uint32_t* lui_offset,
-                                          uint32_t* jic_offset);
+  static void UnpackTargetAddress(
+      uint32_t address, int16_t& lui_offset,  // NOLINT(runtime/references)
+      int16_t& jic_offset);                   // NOLINT(runtime/references)
+  static void UnpackTargetAddressUnsigned(
+      uint32_t address,
+      uint32_t& lui_offset,   // NOLINT(runtime/references)
+      uint32_t& jic_offset);  // NOLINT(runtime/references)
 
   static bool IsAndImmediate(Instr instr);
   static bool IsEmittedConstant(Instr instr);
@@ -1514,7 +1515,7 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
 
   // Helper function for memory load/store using base register and offset.
   void AdjustBaseAndOffset(
-      MemOperand* src,
+      MemOperand& src,  // NOLINT(runtime/references)
       OffsetAccessType access_type = OffsetAccessType::SINGLE_ACCESS,
       int second_access_add_to_offset = 4);
 
@@ -1610,7 +1611,6 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
   // not have to check for overflow. The same is true for writes of large
   // relocation info entries.
   static constexpr int kGap = 32;
-  STATIC_ASSERT(AssemblerBase::kMinimalBufferSize >= 2 * kGap);
 
   // Repeated checking whether the trampoline pool should be emitted is rather
   // expensive. By default we only check again once a number of instructions

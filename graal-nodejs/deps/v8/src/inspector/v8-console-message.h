@@ -7,9 +7,7 @@
 
 #include <deque>
 #include <map>
-#include <memory>
 #include <set>
-
 #include "include/v8.h"
 #include "src/inspector/protocol/Console.h"
 #include "src/inspector/protocol/Forward.h"

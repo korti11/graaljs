@@ -11,6 +11,7 @@ function thrower() {
   if (x == 5)  %OptimizeOsr(1);
   if (x == 10) throw "terminate";
 }
+%PrepareFunctionForOptimization(thrower);
 
 %NeverOptimizeFunction(thrower);  // Don't want to inline the thrower.
 %NeverOptimizeFunction(test);     // Don't want to inline the func into test.

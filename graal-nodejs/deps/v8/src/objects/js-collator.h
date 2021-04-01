@@ -29,12 +29,12 @@ class Collator;
 namespace v8 {
 namespace internal {
 
-class JSCollator : public TorqueGeneratedJSCollator<JSCollator, JSObject> {
+class JSCollator : public JSObject {
  public:
   // ecma402/#sec-initializecollator
   V8_WARN_UNUSED_RESULT static MaybeHandle<JSCollator> New(
       Isolate* isolate, Handle<Map> map, Handle<Object> locales,
-      Handle<Object> options, const char* service);
+      Handle<Object> options);
 
   // ecma402/#sec-intl.collator.prototype.resolvedoptions
   static Handle<JSObject> ResolvedOptions(Isolate* isolate,
@@ -42,11 +42,18 @@ class JSCollator : public TorqueGeneratedJSCollator<JSCollator, JSObject> {
 
   V8_EXPORT_PRIVATE static const std::set<std::string>& GetAvailableLocales();
 
+  DECL_CAST(JSCollator)
   DECL_PRINTER(JSCollator)
+  DECL_VERIFIER(JSCollator)
+
+// Layout description.
+  DEFINE_FIELD_OFFSET_CONSTANTS(JSObject::kHeaderSize,
+                                TORQUE_GENERATED_JSCOLLATOR_FIELDS)
 
   DECL_ACCESSORS(icu_collator, Managed<icu::Collator>)
+  DECL_ACCESSORS(bound_compare, Object)
 
-  TQ_OBJECT_CONSTRUCTORS(JSCollator)
+  OBJECT_CONSTRUCTORS(JSCollator, JSObject);
 };
 
 }  // namespace internal

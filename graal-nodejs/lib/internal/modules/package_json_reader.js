@@ -2,39 +2,21 @@
 
 const { SafeMap } = primordials;
 const { internalModuleReadJSON } = internalBinding('fs');
-const { pathToFileURL } = require('url');
-const { toNamespacedPath } = require('path');
 
 const cache = new SafeMap();
 
-let manifest;
-
 /**
  *
- * @param {string} jsonPath
+ * @param {string} path
  */
-function read(jsonPath) {
-  if (cache.has(jsonPath)) {
-    return cache.get(jsonPath);
+function read(path) {
+  if (cache.has(path)) {
+    return cache.get(path);
   }
 
-  const [string, containsKeys] = internalModuleReadJSON(
-    toNamespacedPath(jsonPath)
-  );
+  const [string, containsKeys] = internalModuleReadJSON(path);
   const result = { string, containsKeys };
-  const { getOptionValue } = require('internal/options');
-  if (string !== undefined) {
-    if (manifest === undefined) {
-      manifest = getOptionValue('--experimental-policy') ?
-        require('internal/process/policy').manifest :
-        null;
-    }
-    if (manifest !== null) {
-      const jsonURL = pathToFileURL(jsonPath);
-      manifest.assertIntegrity(jsonURL, string);
-    }
-  }
-  cache.set(jsonPath, result);
+  cache.set(path, result);
   return result;
 }
 

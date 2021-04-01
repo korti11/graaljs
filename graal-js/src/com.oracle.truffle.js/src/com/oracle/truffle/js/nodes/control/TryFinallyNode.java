@@ -40,18 +40,17 @@
  */
 package com.oracle.truffle.js.nodes.control;
 
-import java.util.Set;
-
-import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.Tag;
-import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.nodes.ControlFlowException;
 import com.oracle.truffle.api.nodes.NodeInfo;
+import com.oracle.truffle.api.profiles.BranchProfile;
+import com.oracle.truffle.api.profiles.ValueProfile;
 import com.oracle.truffle.js.nodes.JavaScriptNode;
-import com.oracle.truffle.js.runtime.JSConfig;
 import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.objects.Undefined;
+
+import java.util.Set;
 
 /**
  * 12.14 The try Statement.
@@ -61,7 +60,8 @@ public class TryFinallyNode extends StatementNode implements ResumableNode {
 
     @Child private JavaScriptNode tryBlock;
     @Child private JavaScriptNode finallyBlock;
-    @Child private InteropLibrary exceptions;
+    private final BranchProfile catchBranch = BranchProfile.create();
+    private final ValueProfile typeProfile = ValueProfile.createClassProfile();
 
     TryFinallyNode(JavaScriptNode tryBlock, JavaScriptNode finallyBlock) {
         this.tryBlock = tryBlock;
@@ -87,7 +87,8 @@ public class TryFinallyNode extends StatementNode implements ResumableNode {
         } catch (ControlFlowException cfe) {
             throwable = cfe;
         } catch (Throwable ex) {
-            if (TryCatchNode.shouldCatch(ex, exceptions())) {
+            catchBranch.enter();
+            if (TryCatchNode.shouldCatch(ex, typeProfile)) {
                 throwable = ex;
             } else {
                 // skip finally block
@@ -105,30 +106,6 @@ public class TryFinallyNode extends StatementNode implements ResumableNode {
     }
 
     @Override
-    public void executeVoid(VirtualFrame frame) {
-        Throwable throwable;
-        try {
-            tryBlock.executeVoid(frame);
-            throwable = null;
-        } catch (ControlFlowException cfe) {
-            throwable = cfe;
-        } catch (Throwable ex) {
-            if (TryCatchNode.shouldCatch(ex, exceptions())) {
-                throwable = ex;
-            } else {
-                // skip finally block
-                throw ex;
-            }
-        }
-
-        finallyBlock.executeVoid(frame);
-
-        if (throwable != null) {
-            throw JSRuntime.rethrow(throwable);
-        }
-    }
-
-    @Override
     public Object resume(VirtualFrame frame) {
         Object result = EMPTY;
         Throwable throwable = null;
@@ -142,7 +119,8 @@ public class TryFinallyNode extends StatementNode implements ResumableNode {
             } catch (ControlFlowException cfe) {
                 throwable = cfe;
             } catch (Throwable ex) {
-                if (TryCatchNode.shouldCatch(ex, exceptions())) {
+                catchBranch.enter();
+                if (TryCatchNode.shouldCatch(ex, typeProfile)) {
                     throwable = ex;
                 } else {
                     // skip finally block
@@ -169,14 +147,5 @@ public class TryFinallyNode extends StatementNode implements ResumableNode {
         // Since we're in a generator function, we may ignore the result and return undefined;
         // otherwise we'd have to remember the result when yielding from the finally block.
         return result;
-    }
-
-    private InteropLibrary exceptions() {
-        InteropLibrary e = exceptions;
-        if (e == null) {
-            CompilerDirectives.transferToInterpreterAndInvalidate();
-            exceptions = e = insert(InteropLibrary.getFactory().createDispatched(JSConfig.InteropLibraryLimit));
-        }
-        return e;
     }
 }

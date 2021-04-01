@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -40,7 +40,7 @@
  */
 package com.oracle.truffle.js.runtime.array;
 
-public abstract class ByteArrayAccess {
+abstract class ByteArrayAccess {
 
     @SuppressWarnings("static-method")
     public final int getInt8(byte[] buffer, int byteIndex) {
@@ -58,6 +58,10 @@ public abstract class ByteArrayAccess {
     }
 
     public abstract int getInt32(byte[] buffer, int byteIndex);
+
+    public final long getUint32(byte[] buffer, int byteIndex) {
+        return getInt32(buffer, byteIndex) & 0xffffffffL;
+    }
 
     public abstract float getFloat(byte[] buffer, int byteIndex);
 
@@ -80,77 +84,123 @@ public abstract class ByteArrayAccess {
 
     public abstract void putInt64(byte[] buffer, int byteIndex, long value);
 
-    public static final ByteArrayAccess littleEndian() {
+    static final ByteArrayAccess littleEndian() {
         return ByteArraySupport.littleEndian();
     }
 
-    public static final ByteArrayAccess bigEndian() {
+    static final ByteArrayAccess bigEndian() {
         return ByteArraySupport.bigEndian();
     }
 
-    public static final ByteArrayAccess nativeOrder() {
+    static final ByteArrayAccess nativeOrder() {
         return ByteArraySupport.nativeOrder();
     }
 
-    public static final ByteArrayAccess forOrder(boolean littleEndian) {
+    static final ByteArrayAccess forOrder(boolean littleEndian) {
         return littleEndian ? littleEndian() : bigEndian();
     }
 }
 
-final class TruffleByteArrayAccess extends ByteArrayAccess {
-    private final com.oracle.truffle.api.memory.ByteArraySupport support;
+abstract class BytewiseByteArrayAccess extends ByteArrayAccess {
+    private static int makeInt16(byte b0, byte b1) {
+        return (b1 << 8) | (b0 & 0xff);
+    }
 
-    TruffleByteArrayAccess(com.oracle.truffle.api.memory.ByteArraySupport support) {
-        this.support = support;
+    private static int makeInt32(byte b0, byte b1, byte b2, byte b3) {
+        return (((b3) << 24) | ((b2 & 0xff) << 16) | ((b1 & 0xff) << 8) | ((b0 & 0xff)));
+    }
+
+    private static long makeInt64(byte b0, byte b1, byte b2, byte b3, byte b4, byte b5, byte b6, byte b7) {
+        return ((((long) b7) << 56) | (((long) b6 & 0xff) << 48) | (((long) b5 & 0xff) << 40) | (((long) b4 & 0xff) << 32) | (((long) b3 & 0xff) << 24) | (((long) b2 & 0xff) << 16) |
+                        (((long) b1 & 0xff) << 8) | (((long) b0 & 0xff)));
     }
 
     @Override
-    public int getInt16(byte[] buffer, int byteIndex) {
-        return support.getShort(buffer, byteIndex);
+    public final int getInt16(byte[] buffer, int byteIndex) {
+        return makeInt16(buffer[byteIndex + b(0, 2)], buffer[byteIndex + b(1, 2)]);
     }
 
     @Override
-    public int getInt32(byte[] buffer, int byteIndex) {
-        return support.getInt(buffer, byteIndex);
+    public final int getInt32(byte[] buffer, int byteIndex) {
+        return makeInt32(buffer[byteIndex + b(0, 4)], buffer[byteIndex + b(1, 4)], buffer[byteIndex + b(2, 4)], buffer[byteIndex + b(3, 4)]);
     }
 
     @Override
-    public float getFloat(byte[] buffer, int byteIndex) {
-        return support.getFloat(buffer, byteIndex);
+    public final float getFloat(byte[] buffer, int byteIndex) {
+        return Float.intBitsToFloat(getInt32(buffer, byteIndex));
     }
 
     @Override
-    public double getDouble(byte[] buffer, int byteIndex) {
-        return support.getDouble(buffer, byteIndex);
+    public final double getDouble(byte[] buffer, int byteIndex) {
+        return Double.longBitsToDouble(makeInt64(buffer[byteIndex + b(0, 8)], buffer[byteIndex + b(1, 8)], buffer[byteIndex + b(2, 8)], buffer[byteIndex + b(3, 8)], buffer[byteIndex + b(4, 8)],
+                        buffer[byteIndex + b(5, 8)], buffer[byteIndex + b(6, 8)], buffer[byteIndex + b(7, 8)]));
     }
 
     @Override
     public long getInt64(byte[] buffer, int byteIndex) {
-        return support.getLong(buffer, byteIndex);
+        return makeInt64(buffer[byteIndex + b(0, 8)], buffer[byteIndex + b(1, 8)], buffer[byteIndex + b(2, 8)], buffer[byteIndex + b(3, 8)], buffer[byteIndex + b(4, 8)],
+                        buffer[byteIndex + b(5, 8)], buffer[byteIndex + b(6, 8)], buffer[byteIndex + b(7, 8)]);
     }
 
     @Override
-    public void putInt16(byte[] buffer, int byteIndex, int value) {
-        support.putShort(buffer, byteIndex, (short) value);
+    public final void putInt16(byte[] buffer, int byteIndex, int value) {
+        buffer[byteIndex + b(0, 2)] = (byte) (value);
+        buffer[byteIndex + b(1, 2)] = (byte) (value >> 8);
     }
 
     @Override
-    public void putInt32(byte[] buffer, int byteIndex, int value) {
-        support.putInt(buffer, byteIndex, value);
+    public final void putInt32(byte[] buffer, int byteIndex, int value) {
+        buffer[byteIndex + b(0, 4)] = (byte) (value);
+        buffer[byteIndex + b(1, 4)] = (byte) (value >> 8);
+        buffer[byteIndex + b(2, 4)] = (byte) (value >> 16);
+        buffer[byteIndex + b(3, 4)] = (byte) (value >> 24);
     }
 
     @Override
-    public void putInt64(byte[] buffer, int byteIndex, long value) {
-        support.putLong(buffer, byteIndex, value);
+    public final void putInt64(byte[] buffer, int byteIndex, long value) {
+        buffer[byteIndex + b(0, 8)] = (byte) (value);
+        buffer[byteIndex + b(1, 8)] = (byte) (value >> 8);
+        buffer[byteIndex + b(2, 8)] = (byte) (value >> 16);
+        buffer[byteIndex + b(3, 8)] = (byte) (value >> 24);
+        buffer[byteIndex + b(4, 8)] = (byte) (value >> 32);
+        buffer[byteIndex + b(5, 8)] = (byte) (value >> 40);
+        buffer[byteIndex + b(6, 8)] = (byte) (value >> 48);
+        buffer[byteIndex + b(7, 8)] = (byte) (value >> 56);
     }
 
     @Override
-    public void putFloat(byte[] buffer, int byteIndex, float value) {
-        support.putFloat(buffer, byteIndex, value);
+    public final void putFloat(byte[] buffer, int byteIndex, float value) {
+        putInt32(buffer, byteIndex, Float.floatToRawIntBits(value));
     }
 
     @Override
-    public void putDouble(byte[] buffer, int byteIndex, double value) {
-        support.putDouble(buffer, byteIndex, value);
+    public final void putDouble(byte[] buffer, int byteIndex, double value) {
+        putInt64(buffer, byteIndex, Double.doubleToRawLongBits(value));
+    }
+
+    /**
+     * Byte order.
+     *
+     * @param bytePos byte position in little endian byte order
+     * @param size size of type in bytes
+     */
+    protected abstract int b(int bytePos, int size);
+}
+
+final class LittleEndianByteArrayAccess extends BytewiseByteArrayAccess {
+    static final ByteArrayAccess INSTANCE = new LittleEndianByteArrayAccess();
+
+    @Override
+    protected int b(int bytePos, int size) {
+        return bytePos;
+    }
+}
+
+final class BigEndianByteArrayAccess extends BytewiseByteArrayAccess {
+    static final ByteArrayAccess INSTANCE = new BigEndianByteArrayAccess();
+
+    @Override
+    protected int b(int bytePos, int size) {
+        return size - 1 - bytePos;
     }
 }

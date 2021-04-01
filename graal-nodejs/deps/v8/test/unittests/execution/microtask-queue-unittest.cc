@@ -30,10 +30,10 @@ void RunStdFunction(void* data) {
 }
 
 template <typename TMixin>
-class WithFinalizationRegistryMixin : public TMixin {
+class WithFinalizationGroupMixin : public TMixin {
  public:
-  WithFinalizationRegistryMixin() = default;
-  ~WithFinalizationRegistryMixin() override = default;
+  WithFinalizationGroupMixin() = default;
+  ~WithFinalizationGroupMixin() override = default;
 
   static void SetUpTestCase() {
     CHECK_NULL(save_flags_);
@@ -54,29 +54,21 @@ class WithFinalizationRegistryMixin : public TMixin {
  private:
   static SaveFlags* save_flags_;
 
-  DISALLOW_COPY_AND_ASSIGN(WithFinalizationRegistryMixin);
+  DISALLOW_COPY_AND_ASSIGN(WithFinalizationGroupMixin);
 };
 
 template <typename TMixin>
-SaveFlags* WithFinalizationRegistryMixin<TMixin>::save_flags_ = nullptr;
+SaveFlags* WithFinalizationGroupMixin<TMixin>::save_flags_ = nullptr;
 
-using TestWithNativeContextAndFinalizationRegistry =  //
-    WithInternalIsolateMixin<                         //
-        WithContextMixin<                             //
-            WithFinalizationRegistryMixin<            //
-                WithIsolateScopeMixin<                //
-                    WithIsolateMixin<                 //
+using TestWithNativeContextAndFinalizationGroup =  //
+    WithInternalIsolateMixin<                      //
+        WithContextMixin<                          //
+            WithFinalizationGroupMixin<            //
+                WithIsolateScopeMixin<             //
+                    WithSharedIsolateMixin<        //
                         ::testing::Test>>>>>;
 
-namespace {
-
-void DummyPromiseHook(PromiseHookType type, Local<Promise> promise,
-                      Local<Value> parent) {}
-
-}  // namespace
-
-class MicrotaskQueueTest : public TestWithNativeContextAndFinalizationRegistry,
-                           public ::testing::WithParamInterface<bool> {
+class MicrotaskQueueTest : public TestWithNativeContextAndFinalizationGroup {
  public:
   template <typename F>
   Handle<Microtask> NewMicrotask(F&& f) {
@@ -89,13 +81,7 @@ class MicrotaskQueueTest : public TestWithNativeContextAndFinalizationRegistry,
 
   void SetUp() override {
     microtask_queue_ = MicrotaskQueue::New(isolate());
-    native_context()->set_microtask_queue(isolate(), microtask_queue());
-
-    if (GetParam()) {
-      // Use a PromiseHook to switch the implementation to ResolvePromise
-      // runtime, instead of ResolvePromise builtin.
-      v8_isolate()->SetPromiseHook(&DummyPromiseHook);
-    }
+    native_context()->set_microtask_queue(microtask_queue());
   }
 
   void TearDown() override {
@@ -140,7 +126,7 @@ class RecordingVisitor : public RootVisitor {
 };
 
 // Sanity check. Ensure a microtask is stored in a queue and run.
-TEST_P(MicrotaskQueueTest, EnqueueAndRun) {
+TEST_F(MicrotaskQueueTest, EnqueueAndRun) {
   bool ran = false;
   EXPECT_EQ(0, microtask_queue()->capacity());
   EXPECT_EQ(0, microtask_queue()->size());
@@ -156,7 +142,7 @@ TEST_P(MicrotaskQueueTest, EnqueueAndRun) {
 }
 
 // Check for a buffer growth.
-TEST_P(MicrotaskQueueTest, BufferGrowth) {
+TEST_F(MicrotaskQueueTest, BufferGrowth) {
   int count = 0;
 
   // Enqueue and flush the queue first to have non-zero |start_|.
@@ -190,7 +176,7 @@ TEST_P(MicrotaskQueueTest, BufferGrowth) {
 }
 
 // MicrotaskQueue instances form a doubly linked list.
-TEST_P(MicrotaskQueueTest, InstanceChain) {
+TEST_F(MicrotaskQueueTest, InstanceChain) {
   ClearTestMicrotaskQueue();
 
   MicrotaskQueue* default_mtq = isolate()->default_microtask_queue();
@@ -221,7 +207,7 @@ TEST_P(MicrotaskQueueTest, InstanceChain) {
 
 // Pending Microtasks in MicrotaskQueues are strong roots. Ensure they are
 // visited exactly once.
-TEST_P(MicrotaskQueueTest, VisitRoot) {
+TEST_F(MicrotaskQueueTest, VisitRoot) {
   // Ensure that the ring buffer has separate in-use region.
   for (int i = 0; i < MicrotaskQueue::kMinimumCapacity / 2 + 1; ++i) {
     microtask_queue()->EnqueueMicrotask(*NewMicrotask([] {}));
@@ -247,16 +233,16 @@ TEST_P(MicrotaskQueueTest, VisitRoot) {
   EXPECT_EQ(expected, actual);
 }
 
-TEST_P(MicrotaskQueueTest, PromiseHandlerContext) {
+TEST_F(MicrotaskQueueTest, PromiseHandlerContext) {
   Local<v8::Context> v8_context2 = v8::Context::New(v8_isolate());
   Local<v8::Context> v8_context3 = v8::Context::New(v8_isolate());
   Local<v8::Context> v8_context4 = v8::Context::New(v8_isolate());
   Handle<Context> context2 = Utils::OpenHandle(*v8_context2, isolate());
   Handle<Context> context3 = Utils::OpenHandle(*v8_context3, isolate());
   Handle<Context> context4 = Utils::OpenHandle(*v8_context3, isolate());
-  context2->native_context().set_microtask_queue(isolate(), microtask_queue());
-  context3->native_context().set_microtask_queue(isolate(), microtask_queue());
-  context4->native_context().set_microtask_queue(isolate(), microtask_queue());
+  context2->native_context().set_microtask_queue(microtask_queue());
+  context3->native_context().set_microtask_queue(microtask_queue());
+  context4->native_context().set_microtask_queue(microtask_queue());
 
   Handle<JSFunction> handler;
   Handle<JSProxy> proxy;
@@ -341,7 +327,7 @@ TEST_P(MicrotaskQueueTest, PromiseHandlerContext) {
   v8_context2->DetachGlobal();
 }
 
-TEST_P(MicrotaskQueueTest, DetachGlobal_Enqueue) {
+TEST_F(MicrotaskQueueTest, DetachGlobal_Enqueue) {
   EXPECT_EQ(0, microtask_queue()->size());
 
   // Detach MicrotaskQueue from the current context.
@@ -353,7 +339,7 @@ TEST_P(MicrotaskQueueTest, DetachGlobal_Enqueue) {
   EXPECT_EQ(0, microtask_queue()->size());
 }
 
-TEST_P(MicrotaskQueueTest, DetachGlobal_Run) {
+TEST_F(MicrotaskQueueTest, DetachGlobal_Run) {
   EXPECT_EQ(0, microtask_queue()->size());
 
   // Enqueue microtasks to the current context.
@@ -391,7 +377,18 @@ TEST_P(MicrotaskQueueTest, DetachGlobal_Run) {
   }
 }
 
-TEST_P(MicrotaskQueueTest, DetachGlobal_PromiseResolveThenableJobTask) {
+namespace {
+
+void DummyPromiseHook(PromiseHookType type, Local<Promise> promise,
+                      Local<Value> parent) {}
+
+}  // namespace
+
+TEST_F(MicrotaskQueueTest, DetachGlobal_PromiseResolveThenableJobTask) {
+  // Use a PromiseHook to switch the implementation to ResolvePromise runtime,
+  // instead of ResolvePromise builtin.
+  v8_isolate()->SetPromiseHook(&DummyPromiseHook);
+
   RunJS(
       "var resolve;"
       "var promise = new Promise(r => { resolve = r; });"
@@ -413,71 +410,7 @@ TEST_P(MicrotaskQueueTest, DetachGlobal_PromiseResolveThenableJobTask) {
   EXPECT_EQ(0, microtask_queue()->size());
 }
 
-TEST_P(MicrotaskQueueTest, DetachGlobal_ResolveThenableForeignThen) {
-  Handle<JSArray> result = RunJS<JSArray>(
-      "let result = [false];"
-      "result");
-  Handle<JSFunction> then = RunJS<JSFunction>("() => { result[0] = true; }");
-
-  Handle<JSPromise> stale_promise;
-
-  {
-    // Create a context with its own microtask queue.
-    std::unique_ptr<MicrotaskQueue> sub_microtask_queue =
-        MicrotaskQueue::New(isolate());
-    Local<v8::Context> sub_context = v8::Context::New(
-        v8_isolate(),
-        /* extensions= */ nullptr,
-        /* global_template= */ MaybeLocal<ObjectTemplate>(),
-        /* global_object= */ MaybeLocal<Value>(),
-        /* internal_fields_deserializer= */ DeserializeInternalFieldsCallback(),
-        sub_microtask_queue.get());
-
-    {
-      v8::Context::Scope scope(sub_context);
-      CHECK(sub_context->Global()
-                ->Set(sub_context, NewString("then"),
-                      Utils::ToLocal(Handle<JSReceiver>::cast(then)))
-                .FromJust());
-
-      ASSERT_EQ(0, microtask_queue()->size());
-      ASSERT_EQ(0, sub_microtask_queue->size());
-      ASSERT_TRUE(Object::GetElement(isolate(), result, 0)
-                      .ToHandleChecked()
-                      ->IsFalse());
-
-      // With a regular thenable, a microtask is queued on the sub-context.
-      RunJS<JSPromise>("Promise.resolve({ then: cb => cb(1) })");
-      EXPECT_EQ(0, microtask_queue()->size());
-      EXPECT_EQ(1, sub_microtask_queue->size());
-      EXPECT_TRUE(Object::GetElement(isolate(), result, 0)
-                      .ToHandleChecked()
-                      ->IsFalse());
-
-      // But when the `then` method comes from another context, a microtask is
-      // instead queued on the main context.
-      stale_promise = RunJS<JSPromise>("Promise.resolve({ then })");
-      EXPECT_EQ(1, microtask_queue()->size());
-      EXPECT_EQ(1, sub_microtask_queue->size());
-      EXPECT_TRUE(Object::GetElement(isolate(), result, 0)
-                      .ToHandleChecked()
-                      ->IsFalse());
-    }
-
-    sub_context->DetachGlobal();
-  }
-
-  EXPECT_EQ(1, microtask_queue()->size());
-  EXPECT_TRUE(
-      Object::GetElement(isolate(), result, 0).ToHandleChecked()->IsFalse());
-
-  EXPECT_EQ(1, microtask_queue()->RunMicrotasks(isolate()));
-  EXPECT_EQ(0, microtask_queue()->size());
-  EXPECT_TRUE(
-      Object::GetElement(isolate(), result, 0).ToHandleChecked()->IsTrue());
-}
-
-TEST_P(MicrotaskQueueTest, DetachGlobal_HandlerContext) {
+TEST_F(MicrotaskQueueTest, DetachGlobal_HandlerContext) {
   // EnqueueMicrotask should use the context associated to the handler instead
   // of the current context. E.g.
   //   // At Context A.
@@ -556,7 +489,7 @@ TEST_P(MicrotaskQueueTest, DetachGlobal_HandlerContext) {
           .FromJust());
 }
 
-TEST_P(MicrotaskQueueTest, DetachGlobal_Chain) {
+TEST_F(MicrotaskQueueTest, DetachGlobal_Chain) {
   Handle<JSPromise> stale_rejected_promise;
 
   Local<v8::Context> sub_context = v8::Context::New(v8_isolate());
@@ -583,11 +516,11 @@ TEST_P(MicrotaskQueueTest, DetachGlobal_Chain) {
       Object::GetElement(isolate(), result, 0).ToHandleChecked()->IsTrue());
 }
 
-TEST_P(MicrotaskQueueTest, DetachGlobal_InactiveHandler) {
+TEST_F(MicrotaskQueueTest, DetachGlobal_InactiveHandler) {
   Local<v8::Context> sub_context = v8::Context::New(v8_isolate());
   Utils::OpenHandle(*sub_context)
       ->native_context()
-      .set_microtask_queue(isolate(), microtask_queue());
+      .set_microtask_queue(microtask_queue());
 
   Handle<JSArray> result;
   Handle<JSFunction> stale_handler;
@@ -625,7 +558,7 @@ TEST_P(MicrotaskQueueTest, DetachGlobal_InactiveHandler) {
       Object::GetElement(isolate(), result, 1).ToHandleChecked()->IsFalse());
 }
 
-TEST_P(MicrotaskQueueTest, MicrotasksScope) {
+TEST_F(MicrotaskQueueTest, MicrotasksScope) {
   ASSERT_NE(isolate()->default_microtask_queue(), microtask_queue());
   microtask_queue()->set_microtasks_policy(MicrotasksPolicy::kScoped);
 
@@ -640,12 +573,6 @@ TEST_P(MicrotaskQueueTest, MicrotasksScope) {
   }
   EXPECT_TRUE(ran);
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    , MicrotaskQueueTest, ::testing::Values(false, true),
-    [](const ::testing::TestParamInfo<MicrotaskQueueTest::ParamType>& info) {
-      return info.param ? "runtime" : "builtin";
-    });
 
 }  // namespace internal
 }  // namespace v8

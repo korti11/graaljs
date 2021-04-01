@@ -139,8 +139,8 @@ class ZlibContext : public MemoryRetainer {
   CompressionError ResetStream();
 
   // Zlib-specific:
-  void Init(int level, int window_bits, int mem_level, int strategy,
-            std::vector<unsigned char>&& dictionary);
+  CompressionError Init(int level, int window_bits, int mem_level, int strategy,
+                        std::vector<unsigned char>&& dictionary);
   void SetAllocationFunctions(alloc_func alloc, free_func free, void* opaque);
   CompressionError SetParams(int level, int strategy);
 
@@ -157,10 +157,7 @@ class ZlibContext : public MemoryRetainer {
  private:
   CompressionError ErrorForMessage(const char* message) const;
   CompressionError SetDictionary();
-  bool InitZlib();
 
-  Mutex mutex_;  // Protects zlib_init_done_.
-  bool zlib_init_done_ = false;
   int err_ = 0;
   int flush_ = 0;
   int level_ = 0;
@@ -598,8 +595,7 @@ class ZlibStream : public CompressionStream<ZlibContext> {
     CHECK(args[4]->IsUint32Array());
     Local<Uint32Array> array = args[4].As<Uint32Array>();
     Local<ArrayBuffer> ab = array->Buffer();
-    uint32_t* write_result = static_cast<uint32_t*>(
-        ab->GetBackingStore()->Data());
+    uint32_t* write_result = static_cast<uint32_t*>(ab->GetContents().Data());
 
     CHECK(args[5]->IsFunction());
     Local<Function> write_js_callback = args[5].As<Function>();
@@ -618,8 +614,13 @@ class ZlibStream : public CompressionStream<ZlibContext> {
     AllocScope alloc_scope(wrap);
     wrap->context()->SetAllocationFunctions(
         AllocForZlib, FreeForZlib, static_cast<CompressionStream*>(wrap));
-    wrap->context()->Init(level, window_bits, mem_level, strategy,
-                          std::move(dictionary));
+    const CompressionError err =
+        wrap->context()->Init(level, window_bits, mem_level, strategy,
+                              std::move(dictionary));
+    if (err.IsError())
+      wrap->EmitError(err);
+
+    return args.GetReturnValue().Set(!err.IsError());
   }
 
   static void Params(const FunctionCallbackInfo<Value>& args) {
@@ -722,15 +723,6 @@ using BrotliEncoderStream = BrotliCompressionStream<BrotliEncoderContext>;
 using BrotliDecoderStream = BrotliCompressionStream<BrotliDecoderContext>;
 
 void ZlibContext::Close() {
-  {
-    Mutex::ScopedLock lock(mutex_);
-    if (!zlib_init_done_) {
-      dictionary_.clear();
-      mode_ = NONE;
-      return;
-    }
-  }
-
   CHECK_LE(mode_, UNZIP);
 
   int status = Z_OK;
@@ -749,11 +741,6 @@ void ZlibContext::Close() {
 
 
 void ZlibContext::DoThreadPoolWork() {
-  bool first_init_call = InitZlib();
-  if (first_init_call && err_ != Z_OK) {
-    return;
-  }
-
   const Bytef* next_expected_header_byte = nullptr;
 
   // If the avail_out is left at 0, then it means that it ran out
@@ -909,11 +896,6 @@ CompressionError ZlibContext::GetErrorInfo() const {
 
 
 CompressionError ZlibContext::ResetStream() {
-  bool first_init_call = InitZlib();
-  if (first_init_call && err_ != Z_OK) {
-    return ErrorForMessage("Failed to init stream before reset");
-  }
-
   err_ = Z_OK;
 
   switch (mode_) {
@@ -947,7 +929,7 @@ void ZlibContext::SetAllocationFunctions(alloc_func alloc,
 }
 
 
-void ZlibContext::Init(
+CompressionError ZlibContext::Init(
     int level, int window_bits, int mem_level, int strategy,
     std::vector<unsigned char>&& dictionary) {
   if (!((window_bits == 0) &&
@@ -991,15 +973,6 @@ void ZlibContext::Init(
     window_bits_ *= -1;
   }
 
-  dictionary_ = std::move(dictionary);
-}
-
-bool ZlibContext::InitZlib() {
-  Mutex::ScopedLock lock(mutex_);
-  if (zlib_init_done_) {
-    return false;
-  }
-
   switch (mode_) {
     case DEFLATE:
     case GZIP:
@@ -1021,15 +994,15 @@ bool ZlibContext::InitZlib() {
       UNREACHABLE();
   }
 
+  dictionary_ = std::move(dictionary);
+
   if (err_ != Z_OK) {
     dictionary_.clear();
     mode_ = NONE;
-    return true;
+    return ErrorForMessage("zlib error");
   }
 
-  SetDictionary();
-  zlib_init_done_ = true;
-  return true;
+  return SetDictionary();
 }
 
 
@@ -1066,11 +1039,6 @@ CompressionError ZlibContext::SetDictionary() {
 
 
 CompressionError ZlibContext::SetParams(int level, int strategy) {
-  bool first_init_call = InitZlib();
-  if (first_init_call && err_ != Z_OK) {
-    return ErrorForMessage("Failed to init stream before set parameters");
-  }
-
   err_ = Z_OK;
 
   switch (mode_) {

@@ -95,16 +95,16 @@ void SymbolAccessorGetter(Local<Name> name,
                           const v8::PropertyCallbackInfo<v8::Value>& info) {
   CHECK(name->IsSymbol());
   Local<Symbol> sym = Local<Symbol>::Cast(name);
-  if (sym->Description()->IsUndefined()) return;
-  SimpleAccessorGetter(Local<String>::Cast(sym->Description()), info);
+  if (sym->Name()->IsUndefined()) return;
+  SimpleAccessorGetter(Local<String>::Cast(sym->Name()), info);
 }
 
 void SymbolAccessorSetter(Local<Name> name, Local<Value> value,
                           const v8::PropertyCallbackInfo<void>& info) {
   CHECK(name->IsSymbol());
   Local<Symbol> sym = Local<Symbol>::Cast(name);
-  if (sym->Description()->IsUndefined()) return;
-  SimpleAccessorSetter(Local<String>::Cast(sym->Description()), value, info);
+  if (sym->Name()->IsUndefined()) return;
+  SimpleAccessorSetter(Local<String>::Cast(sym->Name()), value, info);
 }
 
 void InterceptorGetter(Local<Name> generic_name,
@@ -154,7 +154,7 @@ void GenericInterceptorGetter(Local<Name> generic_name,
                               const v8::PropertyCallbackInfo<v8::Value>& info) {
   Local<String> str;
   if (generic_name->IsSymbol()) {
-    Local<Value> name = Local<Symbol>::Cast(generic_name)->Description();
+    Local<Value> name = Local<Symbol>::Cast(generic_name)->Name();
     if (name->IsUndefined()) return;
     str = String::Concat(info.GetIsolate(), v8_str("_sym_"),
                          Local<String>::Cast(name));
@@ -175,7 +175,7 @@ void GenericInterceptorSetter(Local<Name> generic_name, Local<Value> value,
                               const v8::PropertyCallbackInfo<v8::Value>& info) {
   Local<String> str;
   if (generic_name->IsSymbol()) {
-    Local<Value> name = Local<Symbol>::Cast(generic_name)->Description();
+    Local<Value> name = Local<Symbol>::Cast(generic_name)->Name();
     if (name->IsUndefined()) return;
     str = String::Concat(info.GetIsolate(), v8_str("_sym_"),
                          Local<String>::Cast(name));
@@ -2712,26 +2712,16 @@ THREADED_TEST(NoSideEffectPropertyHandler) {
       templ->NewInstance(context.local()).ToLocalChecked();
   context->Global()->Set(context.local(), v8_str("obj"), object).FromJust();
 
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.x"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj.x = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("'x' in obj"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("delete obj.x"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("obj.x"), true).IsEmpty());
+  CHECK(
+      v8::debug::EvaluateGlobal(isolate, v8_str("obj.x = 1"), true).IsEmpty());
+  CHECK(
+      v8::debug::EvaluateGlobal(isolate, v8_str("'x' in obj"), true).IsEmpty());
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("delete obj.x"), true)
             .IsEmpty());
   // Wrap the variable declaration since declaring globals is a side effect.
   CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("(function() { for (var p in obj) ; })()"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+            isolate, v8_str("(function() { for (var p in obj) ; })()"), true)
             .IsEmpty());
 
   // Side-effect-free version.
@@ -2744,25 +2734,15 @@ THREADED_TEST(NoSideEffectPropertyHandler) {
       templ2->NewInstance(context.local()).ToLocalChecked();
   context->Global()->Set(context.local(), v8_str("obj2"), object2).FromJust();
 
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("obj2.x"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  v8::debug::EvaluateGlobal(isolate, v8_str("obj2.x"), true).ToLocalChecked();
+  CHECK(
+      v8::debug::EvaluateGlobal(isolate, v8_str("obj2.x = 1"), true).IsEmpty());
+  v8::debug::EvaluateGlobal(isolate, v8_str("'x' in obj2"), true)
       .ToLocalChecked();
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("obj2.x = 1"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+  CHECK(v8::debug::EvaluateGlobal(isolate, v8_str("delete obj2.x"), true)
             .IsEmpty());
   v8::debug::EvaluateGlobal(
-      isolate, v8_str("'x' in obj2"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-      .ToLocalChecked();
-  CHECK(v8::debug::EvaluateGlobal(
-            isolate, v8_str("delete obj2.x"),
-            v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
-            .IsEmpty());
-  v8::debug::EvaluateGlobal(
-      isolate, v8_str("(function() { for (var p in obj2) ; })()"),
-      v8::debug::EvaluateGlobalMode::kDisableBreaksAndThrowOnSideEffect)
+      isolate, v8_str("(function() { for (var p in obj2) ; })()"), true)
       .ToLocalChecked();
 }
 

@@ -163,14 +163,14 @@ class GraalNodeJsBuildTask(mx.NativeBuildTask):
         if _is_windows:
             processDevkitRoot(env=build_env)
             _setEnvVar('PATH', pathsep.join([build_env['PATH']] + [mx.library(lib_name).get_path(True) for lib_name in ('NASM', 'NINJA')]), build_env)
-            extra_flags = ['--ninja', '--dest-cpu=x64', '--without-etw']
+            extra_flags = ['--ninja', '--dest-cpu=x64', '--without-etw', '--without-snapshot']
         else:
             extra_flags = []
 
         _mxrun(python_cmd() + [join(_suite.dir, 'configure'),
                 '--partly-static',
                 '--without-dtrace',
-                '--without-inspector',
+                '--without-snapshot',
                 '--without-node-snapshot',
                 '--without-node-code-cache',
                 '--java-home', _java_home(forBuild=True)
@@ -308,8 +308,6 @@ class PreparsedCoreModulesBuildTask(mx.ArchivableBuildTask):
             join('internal', 'readline', 'utils.js'),            # yield
             join('internal', 'streams', 'buffer_list.js'),       # yield
             join('internal', 'streams', 'from.js'),              # await
-            join('internal', 'streams', 'pipeline.js'),          # await
-            join('internal', 'streams', 'readable.js'),          # await
             join('internal', 'vm', 'module.js'),                 # await
         ]
 
@@ -434,9 +432,7 @@ def setupNodeEnvironment(args, add_graal_vm_args=True):
     _setEnvVar('LAUNCHER_COMMON_JAR_PATH', mx.distribution('sdk:LAUNCHER_COMMON').path)
     _setEnvVar('TRUFFLENODE_JAR_PATH', mx.distribution('TRUFFLENODE').path)
     node_jvm_cp = (os.environ['NODE_JVM_CLASSPATH'] + pathsep) if 'NODE_JVM_CLASSPATH' in os.environ else ''
-    node_cp = node_jvm_cp + mx.classpath(['TRUFFLENODE']
-        + (['tools:CHROMEINSPECTOR', 'tools:TRUFFLE_PROFILER', 'tools:INSIGHT'] if mx.suite('tools', fatalIfMissing=False) is not None else [])
-        + (['wasm:WASM'] if mx.suite('wasm', fatalIfMissing=False) is not None else []))
+    node_cp = node_jvm_cp + mx.classpath(['TRUFFLENODE'] + (['tools:CHROMEINSPECTOR', 'tools:TRUFFLE_PROFILER', 'tools:INSIGHT'] if mx.suite('tools', fatalIfMissing=False) is not None else []))
     _setEnvVar('NODE_JVM_CLASSPATH', node_cp)
 
     prevPATH = os.environ['PATH']
@@ -588,18 +584,10 @@ mx_sdk.register_graalvm_component(mx_sdk.GraalVmLanguage(
     suite=_suite,
     name='Graal.nodejs',
     short_name='njs',
-    dir_name='nodejs',
+    dir_name='js',
     license_files=[],
     third_party_license_files=[],
-    # TODO (GR-30451): generate gu metadata for installable components that are included in the base image and make the
-    #                  Graal.nodejs component depend on Graal.js.
-    # To generate the Graal.js standalone, the Graal.js component must have `installable=True`. However:
-    # 1. Graal.js is part of all base GraalVM images that we publish;
-    # 2. We do not generate gu metadata for installable components that are part of the base image (GR-30451);
-    # 3. We do not publish a Graal.js installable.
-    # As a consequence, if the Graal.nodejs component depended on Graal.js, gu would not be able to resolve the
-    # dependency at component-installation time.
-    dependencies=[],
+    dependencies=['Graal.js'],
     truffle_jars=['graal-nodejs:TRUFFLENODE'],
     support_distributions=['graal-nodejs:TRUFFLENODE_GRAALVM_SUPPORT'],
     provided_executables=[
@@ -607,23 +595,16 @@ mx_sdk.register_graalvm_component(mx_sdk.GraalVmLanguage(
         'bin/<cmd:npm>',
         'bin/<cmd:npx>',
     ],
-    polyglot_lib_build_args=['--language:nodejs'],
-    polyglot_lib_jar_dependencies=['graal-nodejs:TRUFFLENODE'],
-    library_configs=[
-        mx_sdk_vm.LibraryConfig(
-            destination='lib/<lib:graal-nodejs>',
-            jar_distributions=['graal-nodejs:TRUFFLENODE'],
-            build_args=[
-                '--tool:all',
-                '--language:nodejs',
-                '-Dgraalvm.libpolyglot=true',  # `lib:graal-nodejs` should be initialized like `lib:polyglot` (GR-10038)
-            ],
-            home_finder=True,
-        ),
+    polyglot_lib_build_args=[
+        "-H:+ReportExceptionStackTraces",
+        "-H:JNIConfigurationResources=svmnodejs.jniconfig,svmnodejs_jdkspecific.jniconfig",
+        "-H:ReflectionConfigurationResources=svmnodejs.reflectconfig",
+    ],
+    polyglot_lib_jar_dependencies=[
+        "graal-nodejs:TRUFFLENODE"
     ],
     has_polyglot_lib_entrypoints=True,
-    installable=True,
-    stability="supported",
+    installable=False,
 ))
 
 # pylint: disable=line-too-long

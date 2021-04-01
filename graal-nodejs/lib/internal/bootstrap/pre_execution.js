@@ -1,17 +1,12 @@
 'use strict';
 
 const {
-  NumberParseInt,
+  Map,
   ObjectDefineProperty,
-  SafeMap,
   SafeWeakMap,
-  StringPrototypeStartsWith,
 } = primordials;
 
-const {
-  getOptionValue,
-  shouldNotRegisterESMLoader
-} = require('internal/options');
+const { getOptionValue } = require('internal/options');
 const { Buffer } = require('buffer');
 const { ERR_MANIFEST_ASSERT_INTEGRITY } = require('internal/errors').codes;
 const assert = require('internal/assert');
@@ -91,13 +86,10 @@ function patchProcessObject(expandArgv1) {
   });
   process.argv[0] = process.execPath;
 
-  if (expandArgv1 && process.argv[1] &&
-      !StringPrototypeStartsWith(process.argv[1], '-')) {
+  if (expandArgv1 && process.argv[1] && !process.argv[1].startsWith('-')) {
     // Expand process.argv[1] into a full path.
     const path = require('path');
-    try {
-      process.argv[1] = path.resolve(process.argv[1]);
-    } catch {}
+    process.argv[1] = path.resolve(process.argv[1]);
   }
 
   // TODO(joyeecheung): most of these should be deprecated and removed,
@@ -331,7 +323,7 @@ function setupChildProcessIpcChannel() {
   if (process.env.NODE_CHANNEL_FD) {
     const assert = require('internal/assert');
 
-    const fd = NumberParseInt(process.env.NODE_CHANNEL_FD, 10);
+    const fd = parseInt(process.env.NODE_CHANNEL_FD, 10);
     assert(fd >= 0);
 
     // Make sure it's not accidentally inherited by child processes.
@@ -360,7 +352,7 @@ function initializePolicy() {
   if (experimentalPolicy) {
     process.emitWarning('Policies are experimental.',
                         'ExperimentalWarning');
-    const { pathToFileURL, URL } = require('internal/url');
+    const { pathToFileURL, URL } = require('url');
     // URL here as it is slightly different parsing
     // no bare specifiers for now
     let manifestURL;
@@ -377,7 +369,7 @@ function initializePolicy() {
     if (experimentalPolicyIntegrity) {
       const SRI = require('internal/policy/sri');
       const { createHash, timingSafeEqual } = require('crypto');
-      const realIntegrities = new SafeMap();
+      const realIntegrities = new Map();
       const integrityEntries = SRI.parse(experimentalPolicyIntegrity);
       let foundMatch = false;
       for (let i = 0; i < integrityEntries.length; i++) {
@@ -422,8 +414,6 @@ function initializeCJSLoader() {
 function initializeESMLoader() {
   // Create this WeakMap in js-land because V8 has no C++ API for WeakMap.
   internalBinding('module_wrap').callbackMap = new SafeWeakMap();
-
-  if (shouldNotRegisterESMLoader) return;
 
   const {
     setImportModuleDynamicallyCallback,

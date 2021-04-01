@@ -16,9 +16,9 @@ class Node;
 
 namespace interpreter {
 
-extern TNode<Object> GenerateInvokeIntrinsic(
-    InterpreterAssembler* assembler, TNode<Uint32T> function_id,
-    TNode<Context> context, const InterpreterAssembler::RegListNodePair& args);
+extern compiler::Node* GenerateInvokeIntrinsic(
+    InterpreterAssembler* assembler, compiler::Node* function_id,
+    compiler::Node* context, const InterpreterAssembler::RegListNodePair& args);
 
 }  // namespace interpreter
 }  // namespace internal

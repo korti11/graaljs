@@ -75,9 +75,9 @@ public final class ForeignConsolePrintTest {
     public void testForeignArray() {
         final String script = "(function (a) { return '' + a; })";
         final Value fun = ctx.eval(JavaScriptLanguage.ID, script);
-        Value res = fun.execute(new ArrayTruffleObject(new Object[]{0, 1, 2, 3, 4}));
+        Value res = fun.execute(new ArrayTruffleObject(new int[]{0, 1, 2, 3, 4}));
         String sRes = res.asString();
-        assertEquals("0,1,2,3,4", sRes);
+        assertEquals("(5)[0, 1, 2, 3, 4]", sRes);
     }
 
     @Test
@@ -112,32 +112,15 @@ public final class ForeignConsolePrintTest {
 
         Value res = fun.execute(map);
         String sRes = res.asString();
-        assertEquals("[object Object]", sRes);
-    }
-
-    @Test
-    public void testForeignArrayWithObjects() {
-        final String script = "(function (a) { return '' + a; })";
-        final Value fun = ctx.eval(JavaScriptLanguage.ID, script);
-
-        final ForeignTestMap map = new ForeignTestMap();
-        map.getContainer().put("x", 42);
-        map.getContainer().put("y", "foo");
-        ArrayTruffleObject arr = new ArrayTruffleObject(new Object[]{0, "string", map, 3, new ForeignTestFunction("test", (arg) -> {
-            return arg[0] + ", " + arg[1];
-        })});
-
-        Value res = fun.execute(arr);
-        String sRes = res.asString();
-        assertEquals("0,string,[object Object],3,function test() { [native code] }", sRes);
+        assertEquals("{x: 42, y: \"foo\"}", sRes);
     }
 
     @ExportLibrary(InteropLibrary.class)
     static final class ArrayTruffleObject implements TruffleObject {
 
-        private final Object[] array;
+        private final int[] array;
 
-        ArrayTruffleObject(Object[] array) {
+        ArrayTruffleObject(int[] array) {
             this.array = array;
         }
 

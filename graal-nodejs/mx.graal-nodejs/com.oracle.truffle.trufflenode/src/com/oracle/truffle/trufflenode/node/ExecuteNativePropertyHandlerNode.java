@@ -390,7 +390,7 @@ public class ExecuteNativePropertyHandlerNode extends JavaScriptRootNode {
             }
         }
         if (duplicates != 0) {
-            JSObject.set(ownKeys, JSAbstractArray.LENGTH, length - duplicates);
+            JSAbstractArray.arraySetLength(ownKeys, length - duplicates);
         }
     }
 

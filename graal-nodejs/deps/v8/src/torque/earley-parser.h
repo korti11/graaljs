@@ -6,7 +6,6 @@
 #define V8_TORQUE_EARLEY_PARSER_H_
 
 #include <map>
-#include <memory>
 #include <vector>
 
 #include "src/base/optional.h"
@@ -43,7 +42,6 @@ class ParseResultHolderBase {
 enum class ParseResultHolderBase::TypeId {
   kStdString,
   kBool,
-  kInt32,
   kStdVectorOfString,
   kExpressionPtr,
   kIdentifierPtr,
@@ -52,23 +50,20 @@ enum class ParseResultHolderBase::TypeId {
   kDeclarationPtr,
   kTypeExpressionPtr,
   kOptionalTypeExpressionPtr,
-  kTryHandlerPtr,
+  kLabelBlockPtr,
+  kOptionalLabelBlockPtr,
   kNameAndTypeExpression,
   kImplicitParameters,
   kOptionalImplicitParameters,
   kNameAndExpression,
   kAnnotation,
   kVectorOfAnnotation,
-  kAnnotationParameter,
-  kOptionalAnnotationParameter,
   kClassFieldExpression,
   kStructFieldExpression,
-  kBitFieldDeclaration,
   kStdVectorOfNameAndTypeExpression,
   kStdVectorOfNameAndExpression,
   kStdVectorOfClassFieldExpression,
   kStdVectorOfStructFieldExpression,
-  kStdVectorOfBitFieldDeclaration,
   kIncrementDecrementOperator,
   kOptionalStdString,
   kStdVectorOfStatementPtr,
@@ -81,15 +76,12 @@ enum class ParseResultHolderBase::TypeId {
   kOptionalTypeList,
   kLabelAndTypes,
   kStdVectorOfLabelAndTypes,
-  kStdVectorOfTryHandlerPtr,
+  kStdVectorOfLabelBlockPtr,
   kOptionalStatementPtr,
   kOptionalExpressionPtr,
   kTypeswitchCase,
   kStdVectorOfTypeswitchCase,
   kStdVectorOfIdentifierPtr,
-  kOptionalClassBody,
-  kGenericParameter,
-  kGenericParameters,
 
   kJsonValue,
   kJsonMember,
@@ -256,7 +248,7 @@ class Symbol {
   size_t rule_number() const { return rules_.size(); }
 
   void AddRule(const Rule& rule) {
-    rules_.push_back(std::make_unique<Rule>(rule));
+    rules_.push_back(base::make_unique<Rule>(rule));
     rules_.back()->SetLeftHandSide(this);
   }
 
@@ -432,9 +424,8 @@ class Grammar {
   // NewSymbol() allocates a fresh symbol and stores it in the current grammar.
   // This is necessary to define helpers that create new symbols.
   Symbol* NewSymbol(std::initializer_list<Rule> rules = {}) {
-    auto symbol = std::make_unique<Symbol>(rules);
-    Symbol* result = symbol.get();
-    generated_symbols_.push_back(std::move(symbol));
+    Symbol* result = new Symbol(rules);
+    generated_symbols_.push_back(std::unique_ptr<Symbol>(result));
     return result;
   }
 

@@ -33,7 +33,6 @@
 
 #include <functional>
 #include <map>
-#include <memory>
 #include <unordered_map>
 
 #include "src/base/macros.h"
@@ -77,7 +76,7 @@ class V8InspectorImpl : public V8Inspector {
   // V8Inspector implementation.
   std::unique_ptr<V8InspectorSession> connect(int contextGroupId,
                                               V8Inspector::Channel*,
-                                              StringView state) override;
+                                              const StringView& state) override;
   void contextCreated(const V8ContextInfo&) override;
   void contextDestroyed(v8::Local<v8::Context>) override;
   v8::MaybeLocal<v8::Context> contextById(int contextId) override;
@@ -85,29 +84,27 @@ class V8InspectorImpl : public V8Inspector {
   void resetContextGroup(int contextGroupId) override;
   void idleStarted() override;
   void idleFinished() override;
-  unsigned exceptionThrown(v8::Local<v8::Context>, StringView message,
+  unsigned exceptionThrown(v8::Local<v8::Context>, const StringView& message,
                            v8::Local<v8::Value> exception,
-                           StringView detailedMessage, StringView url,
-                           unsigned lineNumber, unsigned columnNumber,
-                           std::unique_ptr<V8StackTrace>,
+                           const StringView& detailedMessage,
+                           const StringView& url, unsigned lineNumber,
+                           unsigned columnNumber, std::unique_ptr<V8StackTrace>,
                            int scriptId) override;
   void exceptionRevoked(v8::Local<v8::Context>, unsigned exceptionId,
-                        StringView message) override;
+                        const StringView& message) override;
   std::unique_ptr<V8StackTrace> createStackTrace(
       v8::Local<v8::StackTrace>) override;
   std::unique_ptr<V8StackTrace> captureStackTrace(bool fullStack) override;
-  void asyncTaskScheduled(StringView taskName, void* task,
+  void asyncTaskScheduled(const StringView& taskName, void* task,
                           bool recurring) override;
   void asyncTaskCanceled(void* task) override;
   void asyncTaskStarted(void* task) override;
   void asyncTaskFinished(void* task) override;
   void allAsyncTasksCanceled() override;
 
-  V8StackTraceId storeCurrentStackTrace(StringView description) override;
+  V8StackTraceId storeCurrentStackTrace(const StringView& description) override;
   void externalAsyncTaskStarted(const V8StackTraceId& parent) override;
   void externalAsyncTaskFinished(const V8StackTraceId& parent) override;
-
-  std::shared_ptr<Counters> enableCounters() override;
 
   unsigned nextExceptionId() { return ++m_lastExceptionId; }
   void enableStackCapturingIfNeeded();
@@ -146,8 +143,6 @@ class V8InspectorImpl : public V8Inspector {
   };
 
  private:
-  friend class Counters;
-
   v8::Isolate* m_isolate;
   V8InspectorClient* m_client;
   std::unique_ptr<V8Debugger> m_debugger;
@@ -177,8 +172,6 @@ class V8InspectorImpl : public V8Inspector {
   std::unordered_map<int, int> m_contextIdToGroupIdMap;
 
   std::unique_ptr<V8Console> m_console;
-
-  Counters* m_counters = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(V8InspectorImpl);
 };

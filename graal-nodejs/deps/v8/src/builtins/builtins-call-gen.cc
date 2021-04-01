@@ -9,7 +9,6 @@
 #include "src/codegen/macro-assembler.h"
 #include "src/common/globals.h"
 #include "src/execution/isolate.h"
-#include "src/execution/protectors.h"
 #include "src/objects/api-callbacks.h"
 #include "src/objects/arguments.h"
 #include "src/objects/property-cell.h"
@@ -17,6 +16,9 @@
 
 namespace v8 {
 namespace internal {
+
+template <typename T>
+using TNode = compiler::TNode<T>;
 
 void Builtins::Generate_CallFunction_ReceiverIsNullOrUndefined(
     MacroAssembler* masm) {
@@ -65,14 +67,14 @@ void Builtins::Generate_CallFunctionForwardVarargs(MacroAssembler* masm) {
 }
 
 void CallOrConstructBuiltinsAssembler::CallOrConstructWithArrayLike(
-    TNode<Object> target, base::Optional<TNode<Object>> new_target,
+    TNode<Object> target, SloppyTNode<Object> new_target,
     TNode<Object> arguments_list, TNode<Context> context) {
   Label if_done(this), if_arguments(this), if_array(this),
       if_holey_array(this, Label::kDeferred),
       if_runtime(this, Label::kDeferred);
 
   // Perform appropriate checks on {target} (and {new_target} first).
-  if (!new_target) {
+  if (new_target == nullptr) {
     // Check that {target} is Callable.
     Label if_target_callable(this),
         if_target_not_callable(this, Label::kDeferred);
@@ -102,12 +104,12 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithArrayLike(
     // Check that {new_target} is a Constructor.
     Label if_new_target_constructor(this),
         if_new_target_not_constructor(this, Label::kDeferred);
-    GotoIf(TaggedIsSmi(*new_target), &if_new_target_not_constructor);
-    Branch(IsConstructor(CAST(*new_target)), &if_new_target_constructor,
+    GotoIf(TaggedIsSmi(new_target), &if_new_target_not_constructor);
+    Branch(IsConstructor(CAST(new_target)), &if_new_target_constructor,
            &if_new_target_not_constructor);
     BIND(&if_new_target_not_constructor);
     {
-      CallRuntime(Runtime::kThrowNotConstructor, context, *new_target);
+      CallRuntime(Runtime::kThrowNotConstructor, context, new_target);
       Unreachable();
     }
     BIND(&if_new_target_constructor);
@@ -168,8 +170,9 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithArrayLike(
   BIND(&if_arguments);
   {
     TNode<JSArgumentsObject> js_arguments = CAST(arguments_list);
-    // Try to extract the elements from a JSArgumentsObject with standard map.
-    TNode<Object> length = LoadJSArgumentsObjectLength(context, js_arguments);
+    // Try to extract the elements from an JSArgumentsObjectWithLength.
+    TNode<Object> length = LoadObjectField(
+        js_arguments, JSArgumentsObjectWithLength::kLengthOffset);
     TNode<FixedArrayBase> elements = LoadElements(js_arguments);
     TNode<Smi> elements_length = LoadFixedArrayBaseLength(elements);
     GotoIfNot(TaggedEqual(length, elements_length), &if_runtime);
@@ -215,12 +218,12 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithArrayLike(
 
     BIND(&if_not_double);
     {
-      if (!new_target) {
+      if (new_target == nullptr) {
         Callable callable = CodeFactory::CallVarargs(isolate());
         TailCallStub(callable, context, target, args_count, length, elements);
       } else {
         Callable callable = CodeFactory::ConstructVarargs(isolate());
-        TailCallStub(callable, context, target, *new_target, args_count, length,
+        TailCallStub(callable, context, target, new_target, args_count, length,
                      elements);
       }
     }
@@ -240,7 +243,7 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithArrayLike(
 // boxed as HeapNumbers, then tail calls CallVarargs/ConstructVarargs depending
 // on whether {new_target} was passed.
 void CallOrConstructBuiltinsAssembler::CallOrConstructDoubleVarargs(
-    TNode<Object> target, base::Optional<TNode<Object>> new_target,
+    TNode<Object> target, SloppyTNode<Object> new_target,
     TNode<FixedDoubleArray> elements, TNode<Int32T> length,
     TNode<Int32T> args_count, TNode<Context> context, TNode<Int32T> kind) {
   const ElementsKind new_kind = PACKED_ELEMENTS;
@@ -258,19 +261,19 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructDoubleVarargs(
   CopyFixedArrayElements(PACKED_DOUBLE_ELEMENTS, elements, new_kind,
                          new_elements, intptr_length, intptr_length,
                          barrier_mode);
-  if (!new_target) {
+  if (new_target == nullptr) {
     Callable callable = CodeFactory::CallVarargs(isolate());
     TailCallStub(callable, context, target, args_count, length, new_elements);
   } else {
     Callable callable = CodeFactory::ConstructVarargs(isolate());
-    TailCallStub(callable, context, target, *new_target, args_count, length,
+    TailCallStub(callable, context, target, new_target, args_count, length,
                  new_elements);
   }
 }
 
 void CallOrConstructBuiltinsAssembler::CallOrConstructWithSpread(
-    TNode<Object> target, base::Optional<TNode<Object>> new_target,
-    TNode<Object> spread, TNode<Int32T> args_count, TNode<Context> context) {
+    TNode<Object> target, TNode<Object> new_target, TNode<Object> spread,
+    TNode<Int32T> args_count, TNode<Context> context) {
   Label if_smiorobject(this), if_double(this),
       if_generic(this, Label::kDeferred);
 
@@ -294,7 +297,7 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithSpread(
   TNode<PropertyCell> protector_cell = ArrayIteratorProtectorConstant();
   GotoIf(
       TaggedEqual(LoadObjectField(protector_cell, PropertyCell::kValueOffset),
-                  SmiConstant(Protectors::kProtectorInvalid)),
+                  SmiConstant(Isolate::kProtectorInvalid)),
       &if_generic);
   {
     // The fast-path accesses the {spread} elements directly.
@@ -316,13 +319,7 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithSpread(
 
   BIND(&if_generic);
   {
-    Label if_iterator_fn_not_callable(this, Label::kDeferred),
-        if_iterator_is_null_or_undefined(this, Label::kDeferred),
-        throw_spread_error(this, Label::kDeferred);
-    TVARIABLE(Smi, message_id);
-
-    GotoIf(IsNullOrUndefined(spread), &if_iterator_is_null_or_undefined);
-
+    Label if_iterator_fn_not_callable(this, Label::kDeferred);
     TNode<Object> iterator_fn =
         GetProperty(context, spread, IteratorSymbolConstant());
     GotoIfNot(TaggedIsCallable(iterator_fn), &if_iterator_fn_not_callable);
@@ -338,19 +335,7 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithSpread(
            &if_smiorobject, &if_double);
 
     BIND(&if_iterator_fn_not_callable);
-    message_id = SmiConstant(
-        static_cast<int>(MessageTemplate::kIteratorSymbolNonCallable)),
-    Goto(&throw_spread_error);
-
-    BIND(&if_iterator_is_null_or_undefined);
-    message_id = SmiConstant(
-        static_cast<int>(MessageTemplate::kNotIterableNoSymbolLoad));
-    Goto(&throw_spread_error);
-
-    BIND(&throw_spread_error);
-    CallRuntime(Runtime::kThrowSpreadArgError, context, message_id.value(),
-                spread);
-    Unreachable();
+    ThrowTypeError(context, MessageTemplate::kIteratorSymbolNonCallable);
   }
 
   BIND(&if_smiorobject);
@@ -360,12 +345,12 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithSpread(
     CSA_ASSERT(this, Int32LessThanOrEqual(
                          length, Int32Constant(FixedArray::kMaxLength)));
 
-    if (!new_target) {
+    if (new_target == nullptr) {
       Callable callable = CodeFactory::CallVarargs(isolate());
       TailCallStub(callable, context, target, args_count, length, elements);
     } else {
       Callable callable = CodeFactory::ConstructVarargs(isolate());
-      TailCallStub(callable, context, target, *new_target, args_count, length,
+      TailCallStub(callable, context, target, new_target, args_count, length,
                    elements);
     }
   }
@@ -381,7 +366,7 @@ void CallOrConstructBuiltinsAssembler::CallOrConstructWithSpread(
 
 TF_BUILTIN(CallWithArrayLike, CallOrConstructBuiltinsAssembler) {
   TNode<Object> target = CAST(Parameter(Descriptor::kTarget));
-  base::Optional<TNode<Object>> new_target = base::nullopt;
+  SloppyTNode<Object> new_target = nullptr;
   TNode<Object> arguments_list = CAST(Parameter(Descriptor::kArgumentsList));
   TNode<Context> context = CAST(Parameter(Descriptor::kContext));
   CallOrConstructWithArrayLike(target, new_target, arguments_list, context);
@@ -389,7 +374,7 @@ TF_BUILTIN(CallWithArrayLike, CallOrConstructBuiltinsAssembler) {
 
 TF_BUILTIN(CallWithSpread, CallOrConstructBuiltinsAssembler) {
   TNode<Object> target = CAST(Parameter(Descriptor::kTarget));
-  base::Optional<TNode<Object>> new_target = base::nullopt;
+  SloppyTNode<Object> new_target = nullptr;
   TNode<Object> spread = CAST(Parameter(Descriptor::kSpread));
   TNode<Int32T> args_count =
       UncheckedCast<Int32T>(Parameter(Descriptor::kArgumentsCount));
@@ -429,9 +414,8 @@ TNode<JSReceiver> CallOrConstructBuiltinsAssembler::GetCompatibleReceiver(
       // {var_template} variable), and see if that is a HeapObject.
       // If it's a Smi then it is non-instance prototype on some
       // initial map, which cannot be the case for API instances.
-      TNode<Object> constructor =
-          LoadObjectField(var_template.value(),
-                          Map::kConstructorOrBackPointerOrNativeContextOffset);
+      TNode<Object> constructor = LoadObjectField(
+          var_template.value(), Map::kConstructorOrBackPointerOffset);
       GotoIf(TaggedIsSmi(constructor), &holder_next);
 
       // Now there are three cases for {constructor} that we care
@@ -529,9 +513,9 @@ void CallOrConstructBuiltinsAssembler::CallFunctionTemplate(
     TNode<Map> receiver_map = LoadMap(receiver);
     Label receiver_needs_access_check(this, Label::kDeferred),
         receiver_done(this);
-    GotoIfNot(IsSetWord32<Map::Bits1::IsAccessCheckNeededBit>(
-                  LoadMapBitField(receiver_map)),
-              &receiver_done);
+    GotoIfNot(
+        IsSetWord32<Map::IsAccessCheckNeededBit>(LoadMapBitField(receiver_map)),
+        &receiver_done);
     TNode<IntPtrT> function_template_info_flags = LoadAndUntagObjectField(
         function_template_info, FunctionTemplateInfo::kFlagOffset);
     Branch(IsSetWord(function_template_info_flags,
@@ -575,7 +559,7 @@ void CallOrConstructBuiltinsAssembler::CallFunctionTemplate(
   TNode<Foreign> foreign = LoadObjectField<Foreign>(
       call_handler_info, CallHandlerInfo::kJsCallbackOffset);
   TNode<RawPtrT> callback =
-      DecodeExternalPointer(LoadForeignForeignAddress(foreign));
+      LoadObjectField<RawPtrT>(foreign, Foreign::kForeignAddressOffset);
   TNode<Object> call_data =
       LoadObjectField<Object>(call_handler_info, CallHandlerInfo::kDataOffset);
   TailCallStub(CodeFactory::CallApiCallback(isolate()), context, callback, argc,

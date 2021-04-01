@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -63,62 +63,8 @@
 #include <cmath>
 #include <limits>
 
-#include "graal_value-inl.h"
-#include "graal_array-inl.h"
-#include "graal_array_buffer-inl.h"
-#include "graal_array_buffer_view-inl.h"
-#include "graal_big_int-inl.h"
-#include "graal_boolean-inl.h"
-#include "graal_date-inl.h"
-#include "graal_external-inl.h"
-#include "graal_function-inl.h"
-#include "graal_map-inl.h"
-#include "graal_missing_primitive-inl.h"
-#include "graal_number-inl.h"
-#include "graal_object-inl.h"
-#include "graal_promise-inl.h"
-#include "graal_proxy-inl.h"
-#include "graal_regexp-inl.h"
-#include "graal_set-inl.h"
-#include "graal_string-inl.h"
-#include "graal_symbol-inl.h"
-
-// Keep in sync with ValueType.java
-enum ValueType {
-    UNDEFINED_VALUE = 1,
-    NULL_VALUE = 2,
-    BOOLEAN_VALUE_TRUE = 3,
-    BOOLEAN_VALUE_FALSE = 4,
-    STRING_VALUE = 5,
-    NUMBER_VALUE = 6,
-    EXTERNAL_OBJECT = 7,
-    FUNCTION_OBJECT = 8,
-    ARRAY_OBJECT = 9,
-    DATE_OBJECT = 10,
-    REGEXP_OBJECT = 11,
-    ORDINARY_OBJECT = 12,
-    LAZY_STRING_VALUE = 13,
-    ARRAY_BUFFER_VIEW_OBJECT = 14,
-    ARRAY_BUFFER_OBJECT = 15,
-    SYMBOL_VALUE = 16,
-    UINT8ARRAY_OBJECT = 17,
-    UINT8CLAMPEDARRAY_OBJECT = 18,
-    INT8ARRAY_OBJECT = 20,
-    UINT16ARRAY_OBJECT = 21,
-    INT16ARRAY_OBJECT = 22,
-    UINT32ARRAY_OBJECT = 19,
-    INT32ARRAY_OBJECT = 23,
-    FLOAT32ARRAY_OBJECT = 24,
-    FLOAT64ARRAY_OBJECT = 25,
-    MAP_OBJECT = 26,
-    SET_OBJECT = 27,
-    PROMISE_OBJECT = 28,
-    PROXY_OBJECT = 29,
-    DATA_VIEW_OBJECT = 30,
-    BIG_INT_VALUE = 31,
-    BIGINT64ARRAY_OBJECT = 32,
-    BIGUINT64ARRAY_OBJECT = 33,
-};
+GraalValue::GraalValue(GraalIsolate* isolate, jobject java_object) : GraalData(isolate, java_object) {
+}
 
 bool GraalValue::IsObject() const {
     return false;
@@ -418,7 +364,7 @@ v8::Local<v8::Object> GraalValue::ToObject(v8::Isolate* isolate) const {
     if (java_object == NULL) {
         return v8::Local<v8::Object>();
     }
-    GraalObject* graal_object = GraalObject::Allocate(graal_isolate, java_object);
+    GraalObject* graal_object = new GraalObject(graal_isolate, java_object);
     return reinterpret_cast<v8::Object*> (graal_object);
 }
 
@@ -431,7 +377,7 @@ v8::Local<v8::String> GraalValue::ToString(v8::Isolate* isolate) const {
     if (java_string == NULL) {
         return v8::Local<v8::String>();
     }
-    GraalString* graal_string = GraalString::Allocate(graal_isolate, (jstring) java_string);
+    GraalString* graal_string = new GraalString(graal_isolate, (jstring) java_string);
     return reinterpret_cast<v8::String*> (graal_string);
 }
 
@@ -449,7 +395,7 @@ v8::Local<v8::Integer> GraalValue::ToInteger(v8::Isolate* isolate) const {
     GraalIsolate* graal_isolate = reinterpret_cast<GraalIsolate*> (isolate);
     JNI_CALL(jobject, java_number, graal_isolate, GraalAccessMethod::value_to_integer, Object, GetJavaObject());
     JNI_CALL(double, value_double, isolate, GraalAccessMethod::value_double, Double, java_number);
-    GraalNumber* graal_number = GraalNumber::Allocate(graal_isolate, value_double, java_number);
+    GraalNumber* graal_number = new GraalNumber(graal_isolate, value_double, java_number);
     return reinterpret_cast<v8::Integer*> (graal_number);
 }
 
@@ -460,7 +406,7 @@ v8::Local<v8::Int32> GraalValue::ToInt32(v8::Isolate* isolate) const {
     GraalIsolate* graal_isolate = reinterpret_cast<GraalIsolate*> (isolate);
     JNI_CALL(jobject, java_number, graal_isolate, GraalAccessMethod::value_to_int32, Object, GetJavaObject());
     JNI_CALL(double, value_double, isolate, GraalAccessMethod::value_double, Double, java_number);
-    GraalNumber* graal_number = GraalNumber::Allocate(graal_isolate, value_double, java_number);
+    GraalNumber* graal_number = new GraalNumber(graal_isolate, value_double, java_number);
     return reinterpret_cast<v8::Int32*> (graal_number);
 }
 
@@ -471,7 +417,7 @@ v8::Local<v8::Uint32> GraalValue::ToUint32(v8::Isolate* isolate) const {
     GraalIsolate* graal_isolate = reinterpret_cast<GraalIsolate*> (isolate);
     JNI_CALL(jobject, java_number, graal_isolate, GraalAccessMethod::value_to_uint32, Object, GetJavaObject());
     JNI_CALL(double, value_double, isolate, GraalAccessMethod::value_double, Double, java_number);
-    GraalNumber* graal_number = GraalNumber::Allocate(graal_isolate, value_double, java_number);
+    GraalNumber* graal_number = new GraalNumber(graal_isolate, value_double, java_number);
     return reinterpret_cast<v8::Uint32*> (graal_number);
 }
 
@@ -486,7 +432,7 @@ v8::Local<v8::Number> GraalValue::ToNumber(v8::Isolate* isolate) const {
         graal_number = nullptr;
     } else {
         JNI_CALL(double, value_double, isolate, GraalAccessMethod::value_double, Double, java_number);
-        graal_number = GraalNumber::Allocate(graal_isolate, value_double, java_number);
+        graal_number = new GraalNumber(graal_isolate, value_double, java_number);
     }
     return reinterpret_cast<v8::Number*> (graal_number);
 }
@@ -541,15 +487,15 @@ static inline GraalValue* CreateArrayBufferView(GraalIsolate* isolate, jobject j
         int32_t byte_length = isolate->ReadInt32FromSharedBuffer();
         int32_t byte_offset = isolate->ReadInt32FromSharedBuffer();
         if (placement) {
-            array_buffer_view = GraalArrayBufferView::Allocate(isolate, java_object, type, byte_length, byte_offset, placement);
+            array_buffer_view = new(placement) GraalArrayBufferView(isolate, java_object, type, byte_length, byte_offset);
         } else {
-            array_buffer_view = GraalArrayBufferView::Allocate(isolate, java_object, type, byte_length, byte_offset);
+            array_buffer_view = new GraalArrayBufferView(isolate, java_object, type, byte_length, byte_offset);
         }
     } else {
         if (placement) {
-            array_buffer_view = GraalArrayBufferView::Allocate(isolate, java_object, type, placement);
+            array_buffer_view = new(placement) GraalArrayBufferView(isolate, java_object, type);
         } else {
-            array_buffer_view = GraalArrayBufferView::Allocate(isolate, java_object, type);
+            array_buffer_view = new GraalArrayBufferView(isolate, java_object, type);
         }
     }
     return array_buffer_view;
@@ -567,46 +513,46 @@ GraalValue* GraalValue::FromJavaObject(GraalIsolate* isolate, jobject java_objec
 
     GraalValue* result;
     switch (type) {
-        case UNDEFINED_VALUE:
+        case 1:
             if (placement) {
-                result = GraalMissingPrimitive::Allocate(isolate, java_object, true, placement);
+                result = new(placement) GraalMissingPrimitive(isolate, java_object, true);
             } else {
                 isolate->GetJNIEnv()->DeleteLocalRef(java_object);
                 result = isolate->GetUndefined();
             }
             break;
-        case NULL_VALUE:
+        case 2:
             if (placement) {
-                result = GraalMissingPrimitive::Allocate(isolate, java_object, false, placement);
+                result = new(placement) GraalMissingPrimitive(isolate, java_object, false);
             } else {
                 isolate->GetJNIEnv()->DeleteLocalRef(java_object);
                 result = isolate->GetNull();
             }
             break;
-        case BOOLEAN_VALUE_TRUE:
+        case 3:
             if (placement) {
-                result = GraalBoolean::Allocate(isolate, true, java_object, placement);
+                result = new(placement) GraalBoolean(isolate, true, java_object);
             } else {
                 isolate->GetJNIEnv()->DeleteLocalRef(java_object);
                 result = isolate->GetTrue();
             }
             break;
-        case BOOLEAN_VALUE_FALSE:
+        case 4:
             if (placement) {
-                result = GraalBoolean::Allocate(isolate, false, java_object, placement);
+                result = new(placement) GraalBoolean(isolate, false, java_object);
             } else {
                 isolate->GetJNIEnv()->DeleteLocalRef(java_object);
                 result = isolate->GetFalse();
             }
             break;
-        case STRING_VALUE:
+        case 5:
             if (placement) {
-                result = GraalString::Allocate(isolate, (jstring) java_object, placement);
+                result = new(placement) GraalString(isolate, (jstring) java_object);
             } else {
-                result = GraalString::Allocate(isolate, (jstring) java_object);
+                result = new GraalString(isolate, (jstring) java_object);
             }
             break;
-        case NUMBER_VALUE:
+        case 6:
             double value_double;
             if (use_shared_buffer) {
                 value_double = isolate->ReadDoubleFromSharedBuffer();
@@ -615,150 +561,150 @@ GraalValue* GraalValue::FromJavaObject(GraalIsolate* isolate, jobject java_objec
                 value_double = result;
             }
             if (placement) {
-                result = GraalNumber::Allocate(isolate, value_double, java_object, placement);
+                result = new(placement) GraalNumber(isolate, value_double, java_object);
             } else {
-                result = GraalNumber::Allocate(isolate, value_double, java_object);
+                result = new GraalNumber(isolate, value_double, java_object);
             }
             break;
-        case EXTERNAL_OBJECT:
+        case 7:
             JNI_CALL(jlong, value_external, isolate, GraalAccessMethod::value_external, Long, java_object);
             if (placement) {
-                result = GraalExternal::Allocate(isolate, (void*) value_external, java_object, placement);
+                result = new(placement) GraalExternal(isolate, (void*) value_external, java_object);
             } else {
-                result = GraalExternal::Allocate(isolate, (void*) value_external, java_object);
+                result = new GraalExternal(isolate, (void*) value_external, java_object);
             }
             break;
-        case FUNCTION_OBJECT:
+        case 8:
             if (placement) {
-                result = GraalFunction::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalFunction(isolate, java_object);
             } else {
-                result = GraalFunction::Allocate(isolate, java_object);
+                result = new GraalFunction(isolate, java_object);
             }
             break;
-        case ARRAY_OBJECT:
+        case 9:
             if (placement) {
-                result = GraalArray::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalArray(isolate, java_object);
             } else {
-                result = GraalArray::Allocate(isolate, java_object);
+                result = new GraalArray(isolate, java_object);
             }
             break;
-        case DATE_OBJECT:
+        case 10:
             JNI_CALL(double, time, isolate, GraalAccessMethod::date_value_of, Double, java_object);
             if (placement) {
-                result = GraalDate::Allocate(isolate, time, java_object, placement);
+                result = new(placement) GraalDate(isolate, time, java_object);
             } else {
-                result = GraalDate::Allocate(isolate, time, java_object);
+                result = new GraalDate(isolate, time, java_object);
             }
             break;
-        case REGEXP_OBJECT:
+        case 11:
             if (placement) {
-                result = GraalRegExp::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalRegExp(isolate, java_object);
             } else {
-                result = GraalRegExp::Allocate(isolate, java_object);
+                result = new GraalRegExp(isolate, java_object);
             }
             break;
-        case ORDINARY_OBJECT:
+        case 12:
             if (placement) {
-                result = GraalObject::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalObject(isolate, java_object);
             } else {
-                result = GraalObject::Allocate(isolate, java_object);
+                result = new GraalObject(isolate, java_object);
             }
             break;
-        case LAZY_STRING_VALUE:
+        case 13:
             JNI_CALL(jobject, value_string, isolate, GraalAccessMethod::value_string, Object, java_object);
             isolate->GetJNIEnv()->DeleteLocalRef(java_object);
             if (placement) {
-                result = GraalString::Allocate(isolate, (jstring) value_string, placement);
+                result = new(placement) GraalString(isolate, (jstring) value_string);
             } else {
-                result = GraalString::Allocate(isolate, (jstring) value_string);
+                result = new GraalString(isolate, (jstring) value_string);
             }
             break;
-        case ARRAY_BUFFER_VIEW_OBJECT:
+        case 14:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kUnknownArray, use_shared_buffer, placement);
             break;
-        case UINT8ARRAY_OBJECT:
+        case 17:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kUint8Array, use_shared_buffer, placement);
             break;
-        case UINT8CLAMPEDARRAY_OBJECT:
+        case 18:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kUint8ClampedArray, use_shared_buffer, placement);
             break;
-        case INT8ARRAY_OBJECT:
+        case 20:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kInt8Array, use_shared_buffer, placement);
             break;
-        case UINT16ARRAY_OBJECT:
+        case 21:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kUint16Array, use_shared_buffer, placement);
             break;
-        case INT16ARRAY_OBJECT:
+        case 22:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kInt16Array, use_shared_buffer, placement);
             break;
-        case UINT32ARRAY_OBJECT:
+        case 19:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kUint32Array, use_shared_buffer, placement);
             break;
-        case INT32ARRAY_OBJECT:
+        case 23:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kInt32Array, use_shared_buffer, placement);
             break;
-        case FLOAT32ARRAY_OBJECT:
+        case 24:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kFloat32Array, use_shared_buffer, placement);
             break;
-        case FLOAT64ARRAY_OBJECT:
+        case 25:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kFloat64Array, use_shared_buffer, placement);
             break;
-        case DATA_VIEW_OBJECT:
+        case 30:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kDataView, use_shared_buffer, placement);
             break;
-        case BIGINT64ARRAY_OBJECT:
+        case 32:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kBigInt64Array, use_shared_buffer, placement);
             break;
-        case BIGUINT64ARRAY_OBJECT:
+        case 33:
             result = CreateArrayBufferView(isolate, java_object, GraalArrayBufferView::kBigUint64Array, use_shared_buffer, placement);
             break;
-        case ARRAY_BUFFER_OBJECT:
+        case 15:
             if (placement) {
-                result = GraalArrayBuffer::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalArrayBuffer(isolate, java_object);
             } else {
-                result = GraalArrayBuffer::Allocate(isolate, java_object);
+                result = new GraalArrayBuffer(isolate, java_object);
             }
             break;
-        case SYMBOL_VALUE:
+        case 16:
             if (placement) {
-                result = GraalSymbol::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalSymbol(isolate, java_object);
             } else {
-                result = GraalSymbol::Allocate(isolate, java_object);
+                result = new GraalSymbol(isolate, java_object);
             }
             break;
-        case MAP_OBJECT:
+        case 26:
             if (placement) {
-                result = GraalMap::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalMap(isolate, java_object);
             } else {
-                result = GraalMap::Allocate(isolate, java_object);
+                result = new GraalMap(isolate, java_object);
             }
             break;
-        case SET_OBJECT:
+        case 27:
             if (placement) {
-                result = GraalSet::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalSet(isolate, java_object);
             } else {
-                result = GraalSet::Allocate(isolate, java_object);
+                result = new GraalSet(isolate, java_object);
             }
             break;
-        case PROMISE_OBJECT:
+        case 28:
             if (placement) {
-                result = GraalPromise::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalPromise(isolate, java_object);
             } else {
-                result = GraalPromise::Allocate(isolate, java_object);
+                result = new GraalPromise(isolate, java_object);
             }
             break;
-        case PROXY_OBJECT:
+        case 29:
             if (placement) {
-                result = GraalProxy::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalProxy(isolate, java_object);
             } else {
-                result = GraalProxy::Allocate(isolate, java_object);
+                result = new GraalProxy(isolate, java_object);
             }
             break;
-        case BIG_INT_VALUE:
+        case 31:
             if (placement) {
-                result = GraalBigInt::Allocate(isolate, java_object, placement);
+                result = new(placement) GraalBigInt(isolate, java_object);
             } else {
-                result = GraalBigInt::Allocate(isolate, java_object);
+                result = new GraalBigInt(isolate, java_object);
             }
             break;
         default:
@@ -766,9 +712,9 @@ GraalValue* GraalValue::FromJavaObject(GraalIsolate* isolate, jobject java_objec
             JNI_CALL(jobject, value_unknown, isolate, GraalAccessMethod::value_unknown, Object, java_object);
             isolate->GetJNIEnv()->DeleteLocalRef(java_object);
             if (placement) {
-                result = GraalString::Allocate(isolate, (jstring) value_unknown, placement);
+                result = new(placement) GraalString(isolate, (jstring) value_unknown);
             } else {
-                result = GraalString::Allocate(isolate, (jstring) value_unknown);
+                result = new GraalString(isolate, (jstring) value_unknown);
             }
             break;
     }
@@ -780,6 +726,6 @@ v8::Local<v8::String> GraalValue::TypeOf(v8::Isolate* isolate) {
     GraalIsolate* graal_isolate = reinterpret_cast<GraalIsolate*> (isolate);
     jobject java_value = GetJavaObject();
     JNI_CALL(jobject, java_type, graal_isolate, GraalAccessMethod::value_type_of, Object, java_value);
-    GraalString* graal_type = GraalString::Allocate(graal_isolate, (jstring) java_type);
+    GraalString* graal_type = new GraalString(graal_isolate, (jstring) java_type);
     return reinterpret_cast<v8::String*> (graal_type);
 }

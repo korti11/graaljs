@@ -21,3 +21,5 @@ assertSame(3, array.length);
 assertSame(211, array[0]);
 assertSame(undefined, array[1]);
 assertSame(42, array[2]);
+
+true;

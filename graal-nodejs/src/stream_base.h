@@ -4,7 +4,6 @@
 #if defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS
 
 #include "env.h"
-#include "allocated_buffer.h"
 #include "async_wrap.h"
 #include "node.h"
 #include "util.h"
@@ -25,7 +24,6 @@ struct StreamWriteResult {
   int err;
   WriteWrap* wrap;
   size_t bytes;
-  BaseObjectPtr<AsyncWrap> wrap_obj;
 };
 
 using JSMethodFunction = void(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -41,20 +39,21 @@ class StreamReq {
     kInternalFieldCount
   };
 
-  inline explicit StreamReq(
-      StreamBase* stream,
-      v8::Local<v8::Object> req_wrap_obj);
+  explicit StreamReq(StreamBase* stream,
+                     v8::Local<v8::Object> req_wrap_obj) : stream_(stream) {
+    AttachToObject(req_wrap_obj);
+  }
 
   virtual ~StreamReq() = default;
   virtual AsyncWrap* GetAsyncWrap() = 0;
-  inline v8::Local<v8::Object> object();
+  v8::Local<v8::Object> object();
 
-  inline void Done(int status, const char* error_str = nullptr);
-  inline void Dispose();
+  void Done(int status, const char* error_str = nullptr);
+  void Dispose();
 
-  StreamBase* stream() const { return stream_; }
+  inline StreamBase* stream() const { return stream_; }
 
-  static inline StreamReq* FromObject(v8::Local<v8::Object> req_wrap_obj);
+  static StreamReq* FromObject(v8::Local<v8::Object> req_wrap_obj);
 
   // Sets all internal fields of `req_wrap_obj` to `nullptr`.
   // This is what the `WriteWrap` and `ShutdownWrap` JS constructors do,
@@ -66,7 +65,7 @@ class StreamReq {
  protected:
   virtual void OnDone(int status) = 0;
 
-  inline void AttachToObject(v8::Local<v8::Object> req_wrap_obj);
+  void AttachToObject(v8::Local<v8::Object> req_wrap_obj);
 
  private:
   StreamBase* const stream_;
@@ -74,14 +73,9 @@ class StreamReq {
 
 class ShutdownWrap : public StreamReq {
  public:
-  inline ShutdownWrap(
-      StreamBase* stream,
-      v8::Local<v8::Object> req_wrap_obj);
-
-  static inline ShutdownWrap* FromObject(v8::Local<v8::Object> req_wrap_obj);
-  template <typename T, bool kIsWeak>
-  static inline ShutdownWrap* FromObject(
-      const BaseObjectPtrImpl<T, kIsWeak>& base_obj);
+  ShutdownWrap(StreamBase* stream,
+               v8::Local<v8::Object> req_wrap_obj)
+    : StreamReq(stream, req_wrap_obj) { }
 
   // Call stream()->EmitAfterShutdown() and dispose of this request wrap.
   void OnDone(int status) override;
@@ -89,16 +83,11 @@ class ShutdownWrap : public StreamReq {
 
 class WriteWrap : public StreamReq {
  public:
-  inline void SetAllocatedStorage(AllocatedBuffer&& storage);
+  void SetAllocatedStorage(AllocatedBuffer&& storage);
 
-  inline WriteWrap(
-      StreamBase* stream,
-      v8::Local<v8::Object> req_wrap_obj);
-
-  static inline WriteWrap* FromObject(v8::Local<v8::Object> req_wrap_obj);
-  template <typename T, bool kIsWeak>
-  static inline WriteWrap* FromObject(
-      const BaseObjectPtrImpl<T, kIsWeak>& base_obj);
+  WriteWrap(StreamBase* stream,
+            v8::Local<v8::Object> req_wrap_obj)
+    : StreamReq(stream, req_wrap_obj) { }
 
   // Call stream()->EmitAfterWrite() and dispose of this request wrap.
   void OnDone(int status) override;
@@ -162,14 +151,14 @@ class StreamListener {
   virtual void OnStreamDestroy() {}
 
   // The stream this is currently associated with, or nullptr if there is none.
-  StreamResource* stream() const { return stream_; }
+  inline StreamResource* stream() { return stream_; }
 
  protected:
   // Pass along a read error to the `StreamListener` instance that was active
   // before this one. For example, a protocol parser does not care about read
   // errors and may instead want to let the original handler
   // (e.g. the JS handler) take care of the situation.
-  inline void PassReadErrorToPreviousListener(ssize_t nread);
+  void PassReadErrorToPreviousListener(ssize_t nread);
 
   StreamResource* stream_ = nullptr;
   StreamListener* previous_listener_ = nullptr;
@@ -266,25 +255,23 @@ class StreamResource {
 
   // Transfer ownership of this stream to `listener`. The previous listener
   // will not receive any more callbacks while the new listener was active.
-  inline void PushStreamListener(StreamListener* listener);
+  void PushStreamListener(StreamListener* listener);
   // Remove a listener, and, if this was the currently active one,
   // transfer ownership back to the previous listener.
-  inline void RemoveStreamListener(StreamListener* listener);
+  void RemoveStreamListener(StreamListener* listener);
 
  protected:
   // Call the current listener's OnStreamAlloc() method.
-  inline uv_buf_t EmitAlloc(size_t suggested_size);
+  uv_buf_t EmitAlloc(size_t suggested_size);
   // Call the current listener's OnStreamRead() method and update the
   // stream's read byte counter.
-  inline void EmitRead(
-      ssize_t nread,
-      const uv_buf_t& buf = uv_buf_init(nullptr, 0));
+  void EmitRead(ssize_t nread, const uv_buf_t& buf = uv_buf_init(nullptr, 0));
   // Call the current listener's OnStreamAfterWrite() method.
-  inline void EmitAfterWrite(WriteWrap* w, int status);
+  void EmitAfterWrite(WriteWrap* w, int status);
   // Call the current listener's OnStreamAfterShutdown() method.
-  inline void EmitAfterShutdown(ShutdownWrap* w, int status);
+  void EmitAfterShutdown(ShutdownWrap* w, int status);
   // Call the current listener's OnStreamWantsWrite() method.
-  inline void EmitWantsWrite(size_t suggested_size);
+  void EmitWantsWrite(size_t suggested_size);
 
   StreamListener* listener_ = nullptr;
   uint64_t bytes_read_ = 0;
@@ -324,14 +311,13 @@ class StreamBase : public StreamResource {
 
   // This is named `stream_env` to avoid name clashes, because a lot of
   // subclasses are also `BaseObject`s.
-  Environment* stream_env() const { return env_; }
+  Environment* stream_env() const;
 
   // Shut down the current stream. This request can use an existing
   // ShutdownWrap object (that was created in JS), or a new one will be created.
   // Returns 1 in case of a synchronous completion, 0 in case of asynchronous
   // completion, and a libuv error case in case of synchronous failure.
-  inline int Shutdown(
-      v8::Local<v8::Object> req_wrap_obj = v8::Local<v8::Object>());
+  int Shutdown(v8::Local<v8::Object> req_wrap_obj = v8::Local<v8::Object>());
 
   // Write data to the current stream. This request can use an existing
   // WriteWrap object (that was created in JS), or a new one will be created.
@@ -339,7 +325,7 @@ class StreamBase : public StreamResource {
   // asynchronously using `DoWrite()`.
   // If the return value indicates a synchronous completion, no callback will
   // be invoked.
-  inline StreamWriteResult Write(
+  StreamWriteResult Write(
       uv_buf_t* bufs,
       size_t count,
       uv_stream_t* send_handle = nullptr,
@@ -356,10 +342,10 @@ class StreamBase : public StreamResource {
   virtual AsyncWrap* GetAsyncWrap() = 0;
   virtual v8::Local<v8::Object> GetObject();
 
-  static inline StreamBase* FromObject(v8::Local<v8::Object> obj);
+  static StreamBase* FromObject(v8::Local<v8::Object> obj);
 
  protected:
-  inline explicit StreamBase(Environment* env);
+  explicit StreamBase(Environment* env);
 
   // JS Methods
   int ReadStartJS(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -375,7 +361,7 @@ class StreamBase : public StreamResource {
   static void GetExternal(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void GetBytesRead(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void GetBytesWritten(const v8::FunctionCallbackInfo<v8::Value>& args);
-  inline void AttachToObject(v8::Local<v8::Object> obj);
+  void AttachToObject(v8::Local<v8::Object> obj);
 
   template <int (StreamBase::*Method)(
       const v8::FunctionCallbackInfo<v8::Value>& args)>

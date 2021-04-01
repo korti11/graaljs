@@ -52,6 +52,7 @@ import com.oracle.truffle.js.runtime.objects.JSDynamicObject;
 import com.oracle.truffle.js.runtime.objects.JSLazyString;
 import com.oracle.truffle.js.runtime.objects.JSLazyStringFlattened;
 import com.oracle.truffle.js.runtime.objects.JSLazyStringRaw;
+import com.oracle.truffle.js.runtime.objects.PropertyReference;
 
 /**
  * @see JavaScriptNode
@@ -119,12 +120,22 @@ public class JSTypes {
     }
 
     @ImplicitCast
+    public static String castString(PropertyReference value) {
+        return value.toString();
+    }
+
+    @ImplicitCast
     public static CharSequence castCharSequence(String value) {
         return value;
     }
 
     @ImplicitCast
     public static CharSequence castCharSequence(JSLazyString value) {
+        return value;
+    }
+
+    @ImplicitCast
+    public static CharSequence castCharSequence(PropertyReference value) {
         return value;
     }
 }

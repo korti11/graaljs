@@ -8,7 +8,6 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
-#include <memory>
 
 #include "src/common/globals.h"
 #include "src/snapshot/embedded/embedded-data.h"
@@ -121,11 +120,6 @@ class EmbeddedFileWriter : public EmbeddedFileWriterInterface {
   }
 
   void WriteExternalFilenames(PlatformEmbeddedFileWriterBase* w) const {
-#ifndef DEBUG
-    // Release builds must not contain debug infos.
-    CHECK_EQ(external_filenames_by_index_.size(), 0);
-#endif
-
     w->Comment(
         "Source positions in the embedded blob refer to filenames by id.");
     w->Comment("Assembly directives here map the id to a filename.");

@@ -19,30 +19,22 @@ class GeneratorBuiltinsAssembler : public CodeStubAssembler {
       : CodeStubAssembler(state) {}
 
  protected:
-  // Currently, AsyncModules in V8 are built on top of JSAsyncFunctionObjects
-  // with an initial yield. Thus, we need some way to 'resume' the
-  // underlying JSAsyncFunctionObject owned by an AsyncModule. To support this
-  // the body of resume is factored out below, and shared by JSGeneratorObject
-  // prototype methods as well as AsyncModuleEvaluate. The only difference
-  // between AsyncModuleEvaluate and JSGeneratorObject::PrototypeNext is
-  // the expected receiver.
-  void InnerResume(CodeStubArguments* args, TNode<JSGeneratorObject> receiver,
-                   TNode<Object> value, TNode<Context> context,
-                   JSGeneratorObject::ResumeMode resume_mode,
-                   char const* const method_name);
-  void GeneratorPrototypeResume(CodeStubArguments* args, TNode<Object> receiver,
-                                TNode<Object> value, TNode<Context> context,
+  void GeneratorPrototypeResume(CodeStubArguments* args, Node* receiver,
+                                Node* value, Node* context,
                                 JSGeneratorObject::ResumeMode resume_mode,
                                 char const* const method_name);
 };
 
-void GeneratorBuiltinsAssembler::InnerResume(
-    CodeStubArguments* args, TNode<JSGeneratorObject> receiver,
-    TNode<Object> value, TNode<Context> context,
+void GeneratorBuiltinsAssembler::GeneratorPrototypeResume(
+    CodeStubArguments* args, Node* receiver, Node* value, Node* context,
     JSGeneratorObject::ResumeMode resume_mode, char const* const method_name) {
+  // Check if the {receiver} is actually a JSGeneratorObject.
+  ThrowIfNotInstanceType(context, receiver, JS_GENERATOR_OBJECT_TYPE,
+                         method_name);
+
   // Check if the {receiver} is running or already closed.
   TNode<Smi> receiver_continuation =
-      LoadObjectField<Smi>(receiver, JSGeneratorObject::kContinuationOffset);
+      CAST(LoadObjectField(receiver, JSGeneratorObject::kContinuationOffset));
   Label if_receiverisclosed(this, Label::kDeferred),
       if_receiverisrunning(this, Label::kDeferred);
   TNode<Smi> closed = SmiConstant(JSGeneratorObject::kGeneratorClosed);
@@ -56,21 +48,17 @@ void GeneratorBuiltinsAssembler::InnerResume(
                                  SmiConstant(resume_mode));
 
   // Resume the {receiver} using our trampoline.
-  // Close the generator if there was an exception.
-  TVARIABLE(Object, var_exception);
+  VARIABLE(var_exception, MachineRepresentation::kTagged, UndefinedConstant());
   Label if_exception(this, Label::kDeferred), if_final_return(this);
-  TNode<Object> result;
-  {
-    compiler::ScopedExceptionHandler handler(this, &if_exception,
-                                             &var_exception);
-    result = CallStub(CodeFactory::ResumeGenerator(isolate()), context, value,
-                      receiver);
-  }
+  TNode<Object> result = CallStub(CodeFactory::ResumeGenerator(isolate()),
+                                  context, value, receiver);
+  // Make sure we close the generator if there was an exception.
+  GotoIfException(result, &if_exception, &var_exception);
 
   // If the generator is not suspended (i.e., its state is 'executing'),
   // close it and wrap the return value in IteratorResult.
   TNode<Smi> result_continuation =
-      LoadObjectField<Smi>(receiver, JSGeneratorObject::kContinuationOffset);
+      CAST(LoadObjectField(receiver, JSGeneratorObject::kContinuationOffset));
 
   // The generator function should not close the generator by itself, let's
   // check it is indeed not closed yet.
@@ -94,7 +82,7 @@ void GeneratorBuiltinsAssembler::InnerResume(
   BIND(&if_receiverisclosed);
   {
     // The {receiver} is closed already.
-    TNode<Object> result;
+    Node* result = nullptr;
     switch (resume_mode) {
       case JSGeneratorObject::kNext:
         result = CallBuiltin(Builtins::kCreateIterResultObject, context,
@@ -123,49 +111,17 @@ void GeneratorBuiltinsAssembler::InnerResume(
   }
 }
 
-void GeneratorBuiltinsAssembler::GeneratorPrototypeResume(
-    CodeStubArguments* args, TNode<Object> receiver, TNode<Object> value,
-    TNode<Context> context, JSGeneratorObject::ResumeMode resume_mode,
-    char const* const method_name) {
-  // Check if the {receiver} is actually a JSGeneratorObject.
-  ThrowIfNotInstanceType(context, receiver, JS_GENERATOR_OBJECT_TYPE,
-                         method_name);
-  TNode<JSGeneratorObject> generator = CAST(receiver);
-  InnerResume(args, generator, value, context, resume_mode, method_name);
-}
-
-TF_BUILTIN(AsyncModuleEvaluate, GeneratorBuiltinsAssembler) {
-  const int kValueArg = 0;
-
-  TNode<Int32T> argc =
-      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount));
-  CodeStubArguments args(this, argc);
-
-  TNode<Object> receiver = args.GetReceiver();
-  TNode<Object> value = args.GetOptionalArgumentValue(kValueArg);
-  TNode<Context> context = Cast(Parameter(Descriptor::kContext));
-
-  // AsyncModules act like JSAsyncFunctions. Thus we check here
-  // that the {receiver} is a JSAsyncFunction.
-  char const* const method_name = "[AsyncModule].evaluate";
-  ThrowIfNotInstanceType(context, receiver, JS_ASYNC_FUNCTION_OBJECT_TYPE,
-                         method_name);
-  TNode<JSAsyncFunctionObject> async_function = CAST(receiver);
-  InnerResume(&args, async_function, value, context, JSGeneratorObject::kNext,
-              method_name);
-}
-
 // ES6 #sec-generator.prototype.next
 TF_BUILTIN(GeneratorPrototypeNext, GeneratorBuiltinsAssembler) {
   const int kValueArg = 0;
 
-  TNode<Int32T> argc =
-      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount));
+  TNode<IntPtrT> argc =
+      ChangeInt32ToIntPtr(Parameter(Descriptor::kJSActualArgumentsCount));
   CodeStubArguments args(this, argc);
 
   TNode<Object> receiver = args.GetReceiver();
   TNode<Object> value = args.GetOptionalArgumentValue(kValueArg);
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
+  Node* context = Parameter(Descriptor::kContext);
 
   GeneratorPrototypeResume(&args, receiver, value, context,
                            JSGeneratorObject::kNext,
@@ -176,13 +132,13 @@ TF_BUILTIN(GeneratorPrototypeNext, GeneratorBuiltinsAssembler) {
 TF_BUILTIN(GeneratorPrototypeReturn, GeneratorBuiltinsAssembler) {
   const int kValueArg = 0;
 
-  TNode<Int32T> argc =
-      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount));
+  TNode<IntPtrT> argc =
+      ChangeInt32ToIntPtr(Parameter(Descriptor::kJSActualArgumentsCount));
   CodeStubArguments args(this, argc);
 
   TNode<Object> receiver = args.GetReceiver();
   TNode<Object> value = args.GetOptionalArgumentValue(kValueArg);
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
+  Node* context = Parameter(Descriptor::kContext);
 
   GeneratorPrototypeResume(&args, receiver, value, context,
                            JSGeneratorObject::kReturn,
@@ -193,13 +149,13 @@ TF_BUILTIN(GeneratorPrototypeReturn, GeneratorBuiltinsAssembler) {
 TF_BUILTIN(GeneratorPrototypeThrow, GeneratorBuiltinsAssembler) {
   const int kExceptionArg = 0;
 
-  TNode<Int32T> argc =
-      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount));
+  TNode<IntPtrT> argc =
+      ChangeInt32ToIntPtr(Parameter(Descriptor::kJSActualArgumentsCount));
   CodeStubArguments args(this, argc);
 
   TNode<Object> receiver = args.GetReceiver();
   TNode<Object> exception = args.GetOptionalArgumentValue(kExceptionArg);
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
+  Node* context = Parameter(Descriptor::kContext);
 
   GeneratorPrototypeResume(&args, receiver, exception, context,
                            JSGeneratorObject::kThrow,

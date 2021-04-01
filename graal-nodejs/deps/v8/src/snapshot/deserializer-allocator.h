@@ -8,8 +8,7 @@
 #include "src/common/globals.h"
 #include "src/heap/heap.h"
 #include "src/objects/heap-object.h"
-#include "src/snapshot/references.h"
-#include "src/snapshot/snapshot-data.h"
+#include "src/snapshot/serializer-common.h"
 
 namespace v8 {
 namespace internal {

@@ -26,11 +26,9 @@
 const {
   Array,
   ArrayIsArray,
-  Int8Array,
   MathAbs,
   ObjectCreate,
   ObjectKeys,
-  String,
 } = primordials;
 
 const { Buffer } = require('buffer');
@@ -54,7 +52,7 @@ const QueryString = module.exports = {
   decode: parse
 };
 
-const unhexTable = new Int8Array([
+const unhexTable = [
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 0 - 15
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 16 - 31
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 32 - 47
@@ -71,7 +69,7 @@ const unhexTable = new Int8Array([
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1  // ... 255
-]);
+];
 // A safe fast alternative to decodeURIComponent
 function unescapeBuffer(s, decodeSpaces) {
   const out = Buffer.allocUnsafe(s.length);
@@ -96,13 +94,13 @@ function unescapeBuffer(s, decodeSpaces) {
       hexHigh = unhexTable[currentChar];
       if (!(hexHigh >= 0)) {
         out[outIndex++] = 37; // '%'
-        continue;
       } else {
         nextChar = s.charCodeAt(++index);
         hexLow = unhexTable[nextChar];
         if (!(hexLow >= 0)) {
           out[outIndex++] = 37; // '%'
-          index--;
+          out[outIndex++] = currentChar;
+          currentChar = nextChar;
         } else {
           hasHex = true;
           currentChar = hexHigh * 16 + hexLow;
@@ -131,7 +129,7 @@ function qsUnescape(s, decodeSpaces) {
 // digits
 // alpha (uppercase)
 // alpha (lowercase)
-const noEscape = new Int8Array([
+const noEscape = [
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0 - 15
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 16 - 31
   0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, // 32 - 47
@@ -140,9 +138,9 @@ const noEscape = new Int8Array([
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, // 80 - 95
   0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 96 - 111
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0  // 112 - 127
-]);
+];
 // QueryString.escape() replaces encodeURIComponent()
-// https://www.ecma-international.org/ecma-262/5.1/#sec-15.1.3.4
+// http://www.ecma-international.org/ecma-262/5.1/#sec-15.1.3.4
 function qsEscape(str) {
   if (typeof str !== 'string') {
     if (typeof str === 'object')

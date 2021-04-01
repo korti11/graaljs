@@ -4,7 +4,6 @@
 
 #include "src/compiler/state-values-utils.h"
 
-#include "src/compiler/common-operator.h"
 #include "src/utils/bit-vector.h"
 
 namespace v8 {
@@ -241,9 +240,9 @@ void CheckTreeContainsValues(Node* tree, Node** values, size_t count,
   auto itend = access.end();
   for (i = 0; it != itend; ++it, ++i) {
     if (liveness == nullptr || liveness->Contains(liveness_offset + i)) {
-      DCHECK_EQ(it.node(), values[i]);
+      DCHECK_EQ((*it).node, values[i]);
     } else {
-      DCHECK_NULL(it.node());
+      DCHECK_NULL((*it).node);
     }
   }
   DCHECK_EQ(static_cast<size_t>(i), count);
@@ -330,18 +329,11 @@ void StateValuesAccess::iterator::Pop() {
   current_depth_--;
 }
 
+bool StateValuesAccess::iterator::done() const { return current_depth_ < 0; }
+
 void StateValuesAccess::iterator::Advance() {
   Top()->Advance();
   EnsureValid();
-}
-
-size_t StateValuesAccess::iterator::AdvanceTillNotEmpty() {
-  size_t count = 0;
-  while (!done() && Top()->IsEmpty()) {
-    count += Top()->AdvanceToNextRealOrEnd();
-    EnsureValid();
-  }
-  return count;
 }
 
 void StateValuesAccess::iterator::EnsureValid() {
@@ -384,18 +376,21 @@ Node* StateValuesAccess::iterator::node() { return Top()->Get(nullptr); }
 
 MachineType StateValuesAccess::iterator::type() {
   Node* parent = Top()->parent();
-  DCHECK(!Top()->IsEmpty());
   if (parent->opcode() == IrOpcode::kStateValues) {
     return MachineType::AnyTagged();
   } else {
     DCHECK_EQ(IrOpcode::kTypedStateValues, parent->opcode());
 
-    ZoneVector<MachineType> const* types = MachineTypesOf(parent->op());
-    return (*types)[Top()->real_index()];
+    if (Top()->IsEmpty()) {
+      return MachineType::None();
+    } else {
+      ZoneVector<MachineType> const* types = MachineTypesOf(parent->op());
+      return (*types)[Top()->real_index()];
+    }
   }
 }
 
-bool StateValuesAccess::iterator::operator!=(iterator const& other) const {
+bool StateValuesAccess::iterator::operator!=(iterator const& other) {
   // We only allow comparison with end().
   CHECK(other.done());
   return !done();
@@ -411,7 +406,8 @@ StateValuesAccess::TypedNode StateValuesAccess::iterator::operator*() {
   return TypedNode(node(), type());
 }
 
-size_t StateValuesAccess::size() const {
+
+size_t StateValuesAccess::size() {
   size_t count = 0;
   SparseInputMask mask = SparseInputMaskOf(node_->op());
 

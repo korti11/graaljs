@@ -1,14 +1,9 @@
 'use strict';
 
 const {
-  ArrayPrototypePush,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSome,
+  Map,
   ObjectKeys,
   ObjectValues,
-  RegExpPrototypeTest,
-  SafeMap,
-  StringPrototypeStartsWith,
 } = primordials;
 
 const assert = require('internal/assert');
@@ -28,7 +23,7 @@ const { validatePort } = require('internal/validators');
 
 module.exports = cluster;
 
-const handles = new SafeMap();
+const handles = new Map();
 cluster.isWorker = false;
 cluster.isMaster = true;
 cluster.Worker = Worker;
@@ -58,7 +53,7 @@ cluster.schedulingPolicy = schedulingPolicy;
 
 cluster.setupMaster = function(options) {
   const settings = {
-    args: ArrayPrototypeSlice(process.argv, 2),
+    args: process.argv.slice(2),
     exec: process.argv[1],
     execArgv: process.execArgv,
     silent: false,
@@ -70,10 +65,8 @@ cluster.setupMaster = function(options) {
   // Without --logfile=v8-%p.log, everything ends up in a single, unusable
   // file. (Unusable because what V8 logs are memory addresses and each
   // process has its own memory mappings.)
-  if (ArrayPrototypeSome(settings.execArgv,
-                         (s) => StringPrototypeStartsWith(s, '--prof')) &&
-      !ArrayPrototypeSome(settings.execArgv,
-                          (s) => StringPrototypeStartsWith(s, '--logfile='))) {
+  if (settings.execArgv.some((s) => s.startsWith('--prof')) &&
+      !settings.execArgv.some((s) => s.startsWith('--logfile='))) {
     settings.execArgv = [...settings.execArgv, '--logfile=v8-%p.log'];
   }
 
@@ -116,9 +109,8 @@ function createWorkerProcess(id, env) {
   const nodeOptions = process.env.NODE_OPTIONS ?
     process.env.NODE_OPTIONS : '';
 
-  if (ArrayPrototypeSome(execArgv,
-                         (arg) => RegExpPrototypeTest(debugArgRegex, arg)) ||
-      RegExpPrototypeTest(debugArgRegex, nodeOptions)) {
+  if (execArgv.some((arg) => arg.match(debugArgRegex)) ||
+      nodeOptions.match(debugArgRegex)) {
     let inspectPort;
     if ('inspectPort' in cluster.settings) {
       if (typeof cluster.settings.inspectPort === 'function')
@@ -134,7 +126,7 @@ function createWorkerProcess(id, env) {
       debugPortOffset++;
     }
 
-    ArrayPrototypePush(execArgv, `--inspect-port=${inspectPort}`);
+    execArgv.push(`--inspect-port=${inspectPort}`);
   }
 
   return fork(cluster.settings.exec, cluster.settings.args, {

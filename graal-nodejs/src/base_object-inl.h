@@ -100,16 +100,15 @@ Environment* BaseObject::env() const {
   return env_;
 }
 
-BaseObject* BaseObject::FromJSObject(v8::Local<v8::Value> value) {
-  v8::Local<v8::Object> obj = value.As<v8::Object>();
-  DCHECK_GE(obj->InternalFieldCount(), BaseObject::kSlot);
+BaseObject* BaseObject::FromJSObject(v8::Local<v8::Object> obj) {
+  CHECK_GT(obj->InternalFieldCount(), 0);
   return static_cast<BaseObject*>(
       obj->GetAlignedPointerFromInternalField(BaseObject::kSlot));
 }
 
 
 template <typename T>
-T* BaseObject::FromJSObject(v8::Local<v8::Value> object) {
+T* BaseObject::FromJSObject(v8::Local<v8::Object> object) {
   return static_cast<T*>(FromJSObject(object));
 }
 
@@ -156,7 +155,6 @@ BaseObject::MakeLazilyInitializedJSTemplate(Environment* env) {
   };
 
   v8::Local<v8::FunctionTemplate> t = env->NewFunctionTemplate(constructor);
-  t->Inherit(BaseObject::GetConstructorTemplate(env));
   t->InstanceTemplate()->SetInternalFieldCount(
       BaseObject::kInternalFieldCount);
   return t;
@@ -336,20 +334,6 @@ T* BaseObjectPtrImpl<T, kIsWeak>::operator->() const {
 template <typename T, bool kIsWeak>
 BaseObjectPtrImpl<T, kIsWeak>::operator bool() const {
   return get() != nullptr;
-}
-
-template <typename T, bool kIsWeak>
-template <typename U, bool kW>
-bool BaseObjectPtrImpl<T, kIsWeak>::operator ==(
-    const BaseObjectPtrImpl<U, kW>& other) const {
-  return get() == other.get();
-}
-
-template <typename T, bool kIsWeak>
-template <typename U, bool kW>
-bool BaseObjectPtrImpl<T, kIsWeak>::operator !=(
-    const BaseObjectPtrImpl<U, kW>& other) const {
-  return get() != other.get();
 }
 
 template <typename T, typename... Args>

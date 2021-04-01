@@ -89,13 +89,11 @@ public class Test262Runnable extends TestRunnable {
 
     private static final Set<String> SUPPORTED_FEATURES = new HashSet<>(Arrays.asList(new String[]{
                     "AggregateError",
-                    "Array.prototype.at",
                     "Array.prototype.flat",
                     "Array.prototype.flatMap",
                     "Array.prototype.values",
                     "ArrayBuffer",
                     "Atomics",
-                    "Atomics.waitAsync",
                     "BigInt",
                     "DataView",
                     "DataView.prototype.getFloat32",
@@ -107,10 +105,8 @@ public class Test262Runnable extends TestRunnable {
                     "DataView.prototype.getUint32",
                     "DataView.prototype.setUint8",
                     "FinalizationRegistry",
-                    "FinalizationRegistry.prototype.cleanupSome",
                     "Float32Array",
                     "Float64Array",
-                    "Int16Array",
                     "Int32Array",
                     "Int8Array",
                     "Intl.DateTimeFormat-datetimestyle",
@@ -123,7 +119,6 @@ public class Test262Runnable extends TestRunnable {
                     "Map",
                     "Object.fromEntries",
                     "Object.is",
-                    "Promise",
                     "Promise.allSettled",
                     "Promise.any",
                     "Promise.prototype.finally",
@@ -135,7 +130,6 @@ public class Test262Runnable extends TestRunnable {
                     "Set",
                     "SharedArrayBuffer",
                     "String.fromCodePoint",
-                    "String.prototype.at",
                     "String.prototype.endsWith",
                     "String.prototype.includes",
                     "String.prototype.matchAll",
@@ -158,18 +152,13 @@ public class Test262Runnable extends TestRunnable {
                     "Symbol.toStringTag",
                     "Symbol.unscopables",
                     "TypedArray",
-                    "TypedArray.prototype.at",
                     "Uint16Array",
-                    "Uint32Array",
                     "Uint8Array",
                     "Uint8ClampedArray",
                     "WeakMap",
                     "WeakRef",
                     "WeakSet",
 
-                    "__getter__",
-                    "__proto__",
-                    "__setter__",
                     "arrow-function",
                     "async-functions",
                     "async-iteration",
@@ -181,7 +170,6 @@ public class Test262Runnable extends TestRunnable {
                     "class-static-fields-private",
                     "class-static-fields-public",
                     "class-static-methods-private",
-                    "cleanupSome",
                     "coalesce-expression",
                     "computed-property-names",
                     "const",
@@ -197,10 +185,8 @@ public class Test262Runnable extends TestRunnable {
                     "globalThis",
                     "hashbang",
                     "host-gc-required",
-                    "intl-normative-optional",
                     "import.meta",
                     "json-superset",
-                    "legacy-regexp",
                     "let",
                     "logical-assignment-operators",
                     "new.target",
@@ -224,25 +210,27 @@ public class Test262Runnable extends TestRunnable {
                     "top-level-await",
     }));
     private static final Set<String> UNSUPPORTED_FEATURES = new HashSet<>(Arrays.asList(new String[]{
+                    "Atomics.waitAsync",
                     "Intl.DateTimeFormat-dayPeriod",
                     "Intl.DateTimeFormat-formatRange",
                     "Intl.DateTimeFormat-fractionalSecondDigits",
                     "IsHTMLDDA",
-                    "align-detached-buffer-semantics-with-web-reality",
-                    "arbitrary-module-namespace-names",
                     "tail-call-optimization",
     }));
-    private static final Set<String> ES2022_FEATURES = new HashSet<>(Arrays.asList(new String[]{
-                    "Array.prototype.at",
-                    "String.prototype.at",
-                    "TypedArray.prototype.at",
-                    "Atomics.waitAsync",
+    private static final Set<String> ES2021_FEATURES = new HashSet<>(Arrays.asList(new String[]{
+                    "AggregateError",
+                    "FinalizationRegistry",
+                    "Promise.any",
+                    "String.prototype.replaceAll",
+                    "WeakRef",
                     "class-fields-private",
                     "class-fields-public",
                     "class-methods-private",
                     "class-static-fields-private",
                     "class-static-fields-public",
                     "class-static-methods-private",
+                    "host-gc-required",
+                    "logical-assignment-operators",
                     "regexp-match-indices",
                     "top-level-await",
     }));
@@ -289,8 +277,8 @@ public class Test262Runnable extends TestRunnable {
         for (String feature : features) {
             if (SUPPORTED_FEATURES.contains(feature)) {
                 assert !UNSUPPORTED_FEATURES.contains(feature) : feature;
-                if (ES2022_FEATURES.contains(feature)) {
-                    featureVersion = JSConfig.ECMAScript2022;
+                if (ES2021_FEATURES.contains(feature)) {
+                    featureVersion = JSConfig.ECMAScript2021;
                 }
             } else {
                 assert UNSUPPORTED_FEATURES.contains(feature) : feature;
@@ -326,7 +314,6 @@ public class Test262Runnable extends TestRunnable {
         if (suite.getConfig().isExtLauncher()) {
             return runExternalLauncher(ecmaVersion, testSource, negative, asyncTest, strict, module, negativeExpectedMessage, harnessSources, extraOptions, byteArrayOutputStream, outputStream);
         } else {
-            Thread.currentThread().setName("Test262 Main Thread");
             return runInJVM(ecmaVersion, file, testSource, negative, asyncTest, negativeExpectedMessage, harnessSources, extraOptions, byteArrayOutputStream, outputStream);
         }
     }

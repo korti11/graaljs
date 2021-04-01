@@ -266,10 +266,8 @@
 }
 
 {
-  class A extends class { } {
-    #a() {}
-  }
-
+  // TODO(v8:9177): test extending a class expression that does not have
+  // a private method.
   class D extends class {
     #c() {}
   } {
@@ -280,7 +278,6 @@
     #e() {}
   }
 
-  new A;
   new D;
   new E;
 }
@@ -297,13 +294,4 @@
   }
 
   assertEquals(1, new C().fn());
-}
-
-{
-  assertThrows(() => {
-    class A {
-      [this.#a] = 1;
-      #a() { }
-    }
-  }, TypeError);
 }

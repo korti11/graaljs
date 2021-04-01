@@ -4,9 +4,7 @@ const ModuleJob = require('internal/modules/esm/module_job');
 const {
   SafeMap,
 } = primordials;
-let debug = require('internal/util/debuglog').debuglog('esm', (fn) => {
-  debug = fn;
-});
+const debug = require('internal/util/debuglog').debuglog('esm');
 const { ERR_INVALID_ARG_TYPE } = require('internal/errors').codes;
 const { validateString } = require('internal/validators');
 
